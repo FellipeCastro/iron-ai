@@ -14,19 +14,18 @@ export function Hero() {
           <span className="grid size-[35px] shrink-0 place-items-center rounded-full bg-ink text-white">
             <Dumbbell className="size-[18px]" />
           </span>
-          <span className="text-[14px] font-medium lg:text-[15px]">Seu parceiro de treino no Telegram ⚡</span>
+          <span className="text-[14px] font-medium lg:text-[15px]">Seu parceiro de treino inteligente ⚡</span>
         </div>
         <h1 className="mt-[12px] text-[36px] leading-[46px] font-semibold tracking-tight lg:text-[50px] lg:leading-[65px]">
-          <span className="font-bold">Conheça o Iron AI</span>
-          <br />
+
           <span className="font-medium">
-            Registre seus treinos
+            Seu contato inteligente
             <br />
-            só com uma mensagem
+            para progredir nos treinos
           </span>
         </h1>
         <p className="mt-[18px] max-w-[515px] text-base leading-6 text-neutral-500 lg:text-[17px]">
-          O agente de IA no Telegram que anota suas séries, corrige na hora e conduz a progressão de carga. Sem
+          Anota suas séries e conduz a progressão de carga. Sem
           planilha, sem app extra: você treina, ele cuida do resto.
         </p>
         <div className="mt-6 lg:mt-[14px]">
@@ -57,25 +56,10 @@ export function Hero() {
           52kg
         </div>
         <div className="absolute top-[180px] left-[255px] hidden items-center gap-1.5 rounded-xl bg-white px-4 py-3 text-[13px] leading-4 font-semibold shadow-lg [animation:float_7s_ease-in-out_infinite] lg:flex">
-          <TrendingUp className="size-4 text-emerald-500" />
+          <TrendingUp className="size-4 text-sky-500" />
           +18%
         </div>
 
-        <svg
-          className="absolute top-[290px] left-[285px] hidden lg:block"
-          width="110"
-          height="80"
-          viewBox="0 0 110 80"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden="true"
-        >
-          <path d="M3 28C25 58 55 70 68 55C80 40 62 8 52 12C42 16 55 50 100 62" />
-          <path d="M88 52L102 63L84 68" />
-        </svg>
       </div>
     </section>
   )

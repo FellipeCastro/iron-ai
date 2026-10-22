@@ -5,9 +5,11 @@ const API_URL = (import.meta.env.VITE_API_URL ?? 'http://localhost:8000').replac
 
 export class ApiError extends Error {
   status: number
-  constructor(status: number, message: string) {
+  detail?: unknown
+  constructor(status: number, message: string, detail?: unknown) {
     super(message)
     this.status = status
+    this.detail = detail
   }
 }
 
@@ -25,6 +27,7 @@ export type Target = { set: number; reps: number | null; kg: number | null }
 export type RoutineExercise = { exercise_id: number; name: string; group: string | null; sets: number; targets: Target[] }
 export type Workout = { id: number; letter: string; name: string; focus: string; weekday: number | null; exercises: RoutineExercise[] }
 export type Routine = { workouts: Workout[]; next_workout_id: number | null; reminder_time: string | null }
+export type RoutineInput = { workouts: { name: string; weekday: number | null; exercises: { name: string; sets: number }[] }[] }
 export type SessionSet = { exercise: string; set_number: number; reps: number; kg: number }
 export type Session = { id: number; date: string; workout: string; letter: string | null; focus: string; volume: number; sets: SessionSet[] }
 export type WeekPoint = { week: string; range: string; week_start: string }
@@ -70,7 +73,7 @@ export function useApi() {
       }
       if (!res.ok) {
         const body = await res.json().catch(() => null)
-        throw new ApiError(res.status, messageFrom(body?.detail, 'Algo deu errado. Tente novamente.'))
+        throw new ApiError(res.status, messageFrom(body?.detail, 'Algo deu errado. Tente novamente.'), body?.detail)
       }
       return res.status === 204 ? (undefined as T) : ((await res.json()) as T)
     },

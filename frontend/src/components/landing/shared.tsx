@@ -1,4 +1,3 @@
-import { Send } from 'lucide-react'
 import iconBlack from '../../assets/logo-icon-black.png'
 import iconWhite from '../../assets/logo-icon-white.png'
 import textBlack from '../../assets/logo-text-black.png'
@@ -24,13 +23,6 @@ export function CtaButtons({ size = 'md' }: { size?: 'sm' | 'md' }) {
         className={`${h} inline-flex items-center whitespace-nowrap rounded-lg bg-ink font-semibold text-white ring-1 ring-black transition hover:bg-neutral-800`}
       >
         Começar agora
-      </a>
-      <a
-        href="#como-funciona"
-        className={`${h} inline-flex items-center gap-2 whitespace-nowrap rounded-lg bg-ink font-semibold text-white ring-1 ring-black transition hover:bg-neutral-800`}
-      >
-        <Send className="size-5 text-sky-400" />
-        Abrir Telegram
       </a>
     </div>
   )

@@ -14,14 +14,16 @@ from backend.utils.workout_tools import make_tools
 ROUTER_PROMPT = (
     "Classifique a última mensagem do usuário de um app de treino de academia. "
     "Use o histórico para entender respostas curtas (ex.: 'reto' respondendo a uma pergunta sobre o exercício, "
-    "'sim' confirmando uma rotina)."
+    "'sim'). Se o assistente acabou de pedir o treino do usuário, a resposta é routine. "
+    "Se o assistente acabou de perguntar um dado de uma série (repetições, série, exercício ou kg), "
+    "a resposta é log_set."
 )
 
 GENERAL_PROMPT = (
     subagents.STYLE
     + "\n\nVocê conversa de forma geral. Explique o que o Iron faz quando perguntarem: registra séries pelo "
     "Telegram, sugere a meta da próxima sessão (sobe 1 rep até 12, depois volta para 8 reps com mais carga), "
-    "monta a rotina e mostra a evolução. Não tem acesso a dados nesta resposta; se o usuário pedir dados, "
+    "guarda a rotina e mostra a evolução. Responda em poucas palavras. Não tem acesso a dados nesta resposta; se o usuário pedir dados, "
     "peça que reformule o pedido."
 )
 

@@ -1,5 +1,5 @@
 import { AuthenticateWithRedirectCallback } from '@clerk/react'
-import { BrowserRouter, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AppLayout } from './components/app/AppLayout'
 import { ProtectedRoute } from './components/app/ProtectedRoute'
 import Auth from './pages/Auth'
@@ -7,9 +7,9 @@ import Dashboard from './pages/Dashboard'
 import History from './pages/History'
 import Landing from './pages/Landing'
 import LinkTelegram from './pages/LinkTelegram'
+import Profile from './pages/Profile'
 import Progress from './pages/Progress'
 import Routine from './pages/Routine'
-import Settings from './pages/Settings'
 
 function App() {
   return (
@@ -29,7 +29,8 @@ function App() {
             <Route path="treinos" element={<Routine />} />
             <Route path="historico" element={<History />} />
             <Route path="progresso" element={<Progress />} />
-            <Route path="configuracoes" element={<Settings />} />
+            <Route path="perfil" element={<Profile />} />
+            <Route path="configuracoes" element={<Navigate to="/app/perfil" replace />} />
           </Route>
         </Route>
       </Routes>

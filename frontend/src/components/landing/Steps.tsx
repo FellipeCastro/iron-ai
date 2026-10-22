@@ -2,7 +2,7 @@ const steps = [
   { title: 'Crie sua conta', text: 'Cadastre-se no site em poucos segundos, sem complicação.' },
   {
     title: 'Vincule o Telegram',
-    text: 'Gere seu código IRON-XXXX, abra o bot do Iron no Telegram e envie o código. Ele vale por 15 minutos.',
+    text: 'Conecte sua conta ao bot do Iron no Telegram em poucos toques. É só uma vez.',
   },
   {
     title: 'Monte seus treinos',

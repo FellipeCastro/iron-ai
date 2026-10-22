@@ -13,9 +13,10 @@ class RouterSchema(BaseModel):
 
     intent: Intent = Field(
         description=(
-            "log_set: registrar série feita (exercício, reps, carga). "
+            "log_set: registrar série(s) feita(s) (exercício, reps, carga), uma por mensagem ou várias juntas, "
+            "ex.: 'supino reto 1 serie 10x20kg' ou um exercício seguido de uma série por linha. "
             "correct_set: corrigir a última série registrada. "
-            "routine: criar, importar, ver ou alterar rotina; confirmar ou cancelar uma proposta de rotina; "
+            "routine: cadastrar, ver ou alterar o treino/rotina (inclui responder à pergunta sobre o treino atual); "
             "perguntar qual é o próximo treino. "
             "progress: consultar evolução, cargas, recordes ou histórico de um exercício. "
             "feedback: sugestão, elogio ou reclamação sobre o Iron. "

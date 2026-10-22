@@ -4,7 +4,7 @@ import { useState } from 'react'
 const faqs = [
   {
     q: 'Como eu vinculo meu Telegram ao Iron?',
-    a: 'Depois de criar a conta, gere um código IRON-XXXX no site, abra o bot do Iron no Telegram e envie o código. O código é de uso único, vale por 15 minutos e cada conta tem um número.',
+    a: 'Depois de criar a conta, o site te leva até o bot do Iron no Telegram para conectar sua conta em poucos toques. Você faz isso uma única vez.',
   },
   {
     q: 'Como o Iron decide a carga e as repetições da próxima série?',

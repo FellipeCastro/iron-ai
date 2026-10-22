@@ -1,7 +1,7 @@
 import { Menu, X } from 'lucide-react'
 import { useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
-import { useClerk, useUser } from '@clerk/react'
+import { useUser } from '@clerk/react'
 import { Logo } from '../landing/shared'
 
 const links = [
@@ -9,13 +9,11 @@ const links = [
   { label: 'Treinos', to: '/app/treinos' },
   { label: 'Histórico', to: '/app/historico' },
   { label: 'Progresso', to: '/app/progresso' },
-  { label: 'Configurações', to: '/app/configuracoes' },
 ]
 
 export function AppLayout() {
   const [menuOpen, setMenuOpen] = useState(false)
   const { user } = useUser()
-  const { signOut } = useClerk()
   const name = user?.fullName ?? user?.primaryEmailAddress?.emailAddress ?? ''
   const initials = name
     .split(' ')
@@ -25,7 +23,7 @@ export function AppLayout() {
   return (
     <div className="min-h-screen overflow-x-clip bg-gradient-to-b from-[#fffffe] via-[#f8fbf6] to-[#f4fafa]">
       <header className="relative z-20 mx-auto flex h-20 max-w-[1440px] items-center justify-between px-5 lg:px-20">
-        <Logo height={36} href="/app" />
+        <Logo height={28} href="/app" />
         <nav className="absolute left-1/2 hidden -translate-x-1/2 items-center gap-[30px] text-base font-medium lg:flex">
           {links.map((l) => (
             <NavLink
@@ -39,11 +37,14 @@ export function AppLayout() {
           ))}
         </nav>
         <div className="flex items-center gap-3 text-[15px] font-medium">
-          <span className="hidden text-neutral-600 lg:inline">{name}</span>
-          <span className="grid size-10 place-items-center rounded-full bg-ink text-sm font-semibold text-white">{initials}</span>
-          <button type="button" onClick={() => signOut()} className="hidden rounded-lg px-3 py-2 text-neutral-600 transition hover:bg-gray-100 lg:block">
-            Sair
-          </button>
+          <NavLink
+            to="/app/perfil"
+            aria-label="Abrir perfil"
+            className={({ isActive }) => `flex items-center gap-3 rounded-full py-1 pr-1 pl-3 transition hover:bg-gray-100 ${isActive ? 'bg-gray-100' : ''}`}
+          >
+            <span className="hidden text-neutral-600 lg:inline">{name}</span>
+            <span className="grid size-10 place-items-center rounded-full bg-ink text-sm font-semibold text-white">{initials}</span>
+          </NavLink>
           <button
             type="button"
             aria-label={menuOpen ? 'Fechar menu' : 'Abrir menu'}
@@ -68,9 +69,13 @@ export function AppLayout() {
               {l.label}
             </NavLink>
           ))}
-          <button type="button" onClick={() => signOut()} className="rounded-lg px-4 py-3 text-left transition hover:bg-gray-100">
-            Sair
-          </button>
+          <NavLink
+            to="/app/perfil"
+            onClick={() => setMenuOpen(false)}
+            className={({ isActive }) => `rounded-lg px-4 py-3 transition ${isActive ? 'bg-ink text-white' : 'hover:bg-gray-100'}`}
+          >
+            Perfil
+          </NavLink>
         </nav>
       )}
       <main className="mx-auto max-w-[1120px] px-5 pt-10 pb-24 lg:pt-[72px] lg:pb-[140px]">

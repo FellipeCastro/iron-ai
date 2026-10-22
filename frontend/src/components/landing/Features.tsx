@@ -7,8 +7,8 @@ import image04 from '../../assets/image-04.png'
 
 const features = [
   {
-    title: 'Registre e corrija séries conversando',
-    text: 'Mande a série do seu jeito, como “supino reto 1 série 10kg”. O Iron entende, anota e confirma na hora. Errou? É só dizer “errei, foi 25kg”.',
+    title: 'Registre suas séries conversando',
+    text: 'Mande a série do seu jeito, como “supino reto 1 série 10kg”. O Iron entende, anota e já define a meta da próxima.',
     image: image01,
   },
   {
@@ -87,9 +87,9 @@ const reasons = [
   },
   {
     icon: TrendingUp,
-    tint: 'text-emerald-600',
+    tint: 'text-sky-600',
     title: 'Evolução sem esforço',
-    text: 'Acompanhe carga, 1RM estimado e volume total no Telegram e no site, e veja seu progresso semana a semana.',
+    text: 'Acompanhe carga, 1RM estimado e volume total no site e na conversa, e veja seu progresso semana a semana.',
   },
 ]
 

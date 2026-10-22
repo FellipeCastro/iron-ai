@@ -16,11 +16,11 @@ const columns: Card[][] = [
       statLabel: 'supino reto · 1 série',
     },
     {
-      title: 'Corrija sem drama',
-      text: 'Errou o peso? Diga “errei, foi 25kg” e pronto. 💪',
+      title: 'Treinos em sequência',
+      text: 'Seus treinos A→B→C giram sozinhos e o Iron sempre sabe qual é o próximo. 💪',
       height: 571,
-      stat: '25kg',
-      statLabel: 'série corrigida na hora',
+      stat: 'A·B·C',
+      statLabel: 'o próximo treino é sempre o certo',
     },
   ],
   [
@@ -32,8 +32,8 @@ const columns: Card[][] = [
       statLabel: 'seu treino está chegando',
     },
     {
-      title: 'Sem app extra',
-      text: 'Tudo no Telegram, direto no seu celular 🔥',
+      title: 'Sem planilhas',
+      text: 'Seu treino registrado com uma mensagem, direto no seu celular 🔥',
       height: 571,
       stat: '+15kg',
       statLabel: 'de carga em 2 meses',
@@ -60,11 +60,11 @@ const columns: Card[][] = [
 function ShowcaseCard({ card }: { card: Card }) {
   return (
     <article
-      className="relative h-[360px] overflow-hidden rounded-[28px] bg-gradient-to-b from-[#12332b] via-[#0d1a17] to-black shadow-[0_10px_30px_rgba(0,0,0,0.12)] lg:h-[var(--card-h)]"
+      className="relative h-[360px] overflow-hidden rounded-[28px] bg-gradient-to-b from-[#12304a] via-[#0b1823] to-black shadow-[0_10px_30px_rgba(0,0,0,0.12)] lg:h-[var(--card-h)]"
       style={{ '--card-h': `${card.height}px` } as React.CSSProperties}
     >
       <div className="absolute top-16 left-1/2 w-full -translate-x-1/2 text-center text-white lg:top-20">
-        <div className="text-[72px] leading-none font-bold tracking-tight text-emerald-400 lg:text-[96px]">{card.stat}</div>
+        <div className="text-[72px] leading-none font-bold tracking-tight text-sky-400 lg:text-[96px]">{card.stat}</div>
         <div className="mt-3 text-lg text-white/70">{card.statLabel}</div>
       </div>
       <div className="absolute inset-x-4 bottom-4 rounded-[20px] border border-white/25 bg-gradient-to-br from-black/50 to-black/30 p-6 pt-5 text-white backdrop-blur-md">

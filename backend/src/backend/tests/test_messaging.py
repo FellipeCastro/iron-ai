@@ -131,7 +131,7 @@ def test_unknown_chat_gets_site_link_and_start_with_code_links(db, make_user):
     assert db.query(ChannelLink).one().external_id == "55"
     enqueue(update(3, 66, f"/start {code}"))  # código já usado
     inbox_worker.process_one(gw)
-    assert "inválido" in gw.sent[2][1]
+    assert "inválido" in gw.sent[-1][1]
 
 
 def test_daily_limit_blocks_agent(db, make_user, monkeypatch):
@@ -192,3 +192,21 @@ def test_reminder_skipped_before_time_other_weekday_or_after_training(db, make_u
     db.commit()
     assert reminders.send_due_reminders(gw, EVENING) == 0
     assert gw.sent == []
+
+
+def test_reply_blocks_are_sent_as_separate_messages_with_buttons_on_last():
+    from backend.services.conversation import send_reply
+
+    class Gw:
+        def __init__(self):
+            self.calls = []
+
+        def send_text(self, chat_id, text):
+            self.calls.append(("text", text))
+
+        def send_buttons(self, chat_id, text, buttons):
+            self.calls.append(("buttons", text))
+
+    gw = Gw()
+    send_reply(gw, "1", "Anotado!\n\nQuantas séries no próximo?", [("Ok", "x:1")])
+    assert gw.calls == [("text", "Anotado!"), ("buttons", "Quantas séries no próximo?")]

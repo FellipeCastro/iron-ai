@@ -3,9 +3,9 @@
 from langchain_core.tools import BaseTool, tool
 from pydantic import BaseModel, Field
 
+from backend.config import settings
 from backend.models.db import Feedback, User
 from backend.models.schema import AgentContext
-from backend.services import confirmations
 from backend.services import workouts as wk
 from backend.utils.database import SessionLocal
 
@@ -28,8 +28,8 @@ class ProgressInput(BaseModel):
 
 
 class ExerciseIn(BaseModel):
-    name: str
-    sets: int = Field(default=3, ge=1, le=10)
+    name: str = Field(description="Nome do exercício")
+    sets: int = Field(ge=1, le=10, description="Número de séries. Nunca chute: se o usuário não disse, pergunte")
 
 
 class WorkoutIn(BaseModel):
@@ -38,12 +38,8 @@ class WorkoutIn(BaseModel):
     exercises: list[ExerciseIn]
 
 
-class ProposeRoutineInput(BaseModel):
+class SaveRoutineInput(BaseModel):
     workouts: list[WorkoutIn] = Field(description="Treinos na ordem da rotação (A, B, C...)")
-
-
-class ConfirmInput(BaseModel):
-    accept: bool = Field(description="true para salvar a rotina proposta, false para descartar")
 
 
 class FeedbackInput(BaseModel):
@@ -89,29 +85,21 @@ def make_tools(ctx: AgentContext) -> dict[str, BaseTool]:
         with SessionLocal() as session:
             return wk.progress_summary(session, _user(session, ctx), exercise)
 
-    @tool(args_schema=ProposeRoutineInput, return_direct=True)
-    def propose_routine(workouts: list[WorkoutIn]) -> str:
-        """Propõe uma rotina ao usuário. Nada é salvo até ele confirmar pelos botões."""
+    @tool(args_schema=SaveRoutineInput)
+    def save_routine(workouts: list[WorkoutIn]) -> dict:
+        """Salva a rotina do usuário (substitui a atual). Só chame com nome e séries de todos os exercícios."""
         raw = [w.model_dump() for w in workouts]
         with SessionLocal.begin() as session:
             specs, ambiguous = wk.build_specs(session, ctx.user_id, raw)
             if ambiguous:
-                lines = [f"- \"{a['typed']}\": {', '.join(a['options']) or 'não encontrei opções'}" for a in ambiguous]
-                return "Antes de montar a rotina, preciso saber qual exercício você quer:\n" + "\n".join(lines)
-            if not specs or any(not w.exercises for w in specs):
-                return "Preciso de pelo menos um exercício em cada treino. Me conte o que você faz em cada dia."
-            pending = confirmations.create_pending(session, ctx.user_id, "routine", wk.routine_specs_to_payload(specs))
+                return {"status": "ambiguous", "items": ambiguous}
+            try:
+                wk.save_routine(session, ctx.user_id, specs)
+            except wk.ServiceError as exc:
+                return {"status": "error", "message": str(exc)}
             summary = wk.describe_routine(specs)
-        ctx.buttons = [("Confirmar", f"confirm:{pending.id}"), ("Cancelar", f"cancel:{pending.id}")]
-        return f"Essa é a rotina que montei:\n\n{summary}\n\nQuer salvar assim?"
-
-    @tool(args_schema=ConfirmInput)
-    def confirm_routine(accept: bool) -> dict:
-        """Salva (accept=true) ou descarta (accept=false) a rotina que está aguardando confirmação."""
-        with SessionLocal.begin() as session:
-            result = confirmations.resolve_pending(session, _user(session, ctx), accept)
-        ctx.mutated = ctx.mutated or result["status"] == "saved"
-        return result
+        ctx.mutated = True
+        return {"status": "saved", "summary": summary, "review_url": f"{settings.site_url.rstrip('/')}/app/treinos"}
 
     @tool(args_schema=FeedbackInput)
     def send_feedback(text: str) -> dict:
@@ -125,7 +113,6 @@ def make_tools(ctx: AgentContext) -> dict[str, BaseTool]:
         "correct_last_set": correct_last_set,
         "get_next_workout": get_next_workout,
         "get_progress": get_progress,
-        "propose_routine": propose_routine,
-        "confirm_routine": confirm_routine,
+        "save_routine": save_routine,
         "send_feedback": send_feedback,
     }

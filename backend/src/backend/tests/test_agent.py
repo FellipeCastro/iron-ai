@@ -8,7 +8,7 @@ from langchain_core.runnables import RunnableLambda
 
 from backend.agents import iron_agent
 from backend.models.db import SetLog
-from backend.services import conversation, workouts
+from backend.services import workouts
 from backend.utils import llm_pick
 
 
@@ -96,42 +96,21 @@ def test_ambiguous_exercise_asks_instead_of_logging(db, make_user, script):
     assert set_rows(db) == []
 
 
-def test_routine_proposal_needs_confirmation_buttons(db, make_user, script):
+def test_routine_is_saved_directly_and_returns_site_link(db, make_user, script):
     user = make_user()
     db.commit()
     script.intents = ["routine"]
     script.responses = [
         call(
-            "propose_routine",
+            "save_routine",
             {"workouts": [{"name": "Peito", "weekday": 0, "exercises": [{"name": "supino reto", "sets": 4}]}]},
-        )
+        ),
+        AIMessage("Anotado! Confira em http://localhost:5173/app/treinos"),
     ]
-    reply = iron_agent.respond(user.id, "monta um treino de peito na segunda")
-    assert "Essa é a rotina" in reply.text and "Supino reto: 4 séries" in reply.text
-    labels = [b[0] for b in reply.buttons]
-    assert labels == ["Confirmar", "Cancelar"]
-    assert workouts.active_routine(db, user.id) is None
-
-    class Gateway:
-        sent = []
-
-        def answer_callback(self, _id): ...
-
-        def send_text(self, chat_id, text):
-            self.sent.append(text)
-
-    from backend.services import linking
-    from backend.utils.messaging import IncomingMessage
-
-    code, _ = linking.create_link_code(db, user)
-    db.commit()
-    linking.consume_link_code(db, code, "555")
-    db.commit()
-    gw = Gateway()
-    conversation.handle_message(gw, IncomingMessage(1, "telegram", "555", callback_data=reply.buttons[0][1], callback_id="cb"))
+    reply = iron_agent.respond(user.id, "segunda peito: supino reto 4 séries")
+    assert "/app/treinos" in reply.text and not reply.buttons
     db.expire_all()
     assert workouts.active_routine(db, user.id).workouts[0].exercises[0].sets_count == 4
-    assert "Rotina salva" in gw.sent[0]
 
 
 def test_failure_after_write_does_not_duplicate(db, make_user, script):
@@ -161,3 +140,37 @@ def test_feedback_is_stored_without_llm_reply(db, make_user, script):
     reply = iron_agent.respond(user.id, "adorei o app")
     assert "feedback" in reply.text
     assert db.query(Feedback).one().text == "adorei o app"
+
+
+def test_batch_message_logs_every_set_with_numbers(db, make_user, script):
+    user = make_user()
+    db.commit()
+    script.intents = ["log_set"]
+    script.responses = [
+        AIMessage(
+            content="",
+            tool_calls=[
+                {"name": "log_set", "args": {"exercise": "supino reto", "reps": r, "kg": kg, "set_number": n}, "id": f"c{n}"}
+                for n, r, kg in [(1, 10, 20), (2, 10, 30), (3, 10, 40)]
+            ],
+        ),
+        AIMessage("Anotado!"),
+    ]
+    reply = iron_agent.respond(user.id, "supino reto\n1 serie 10x20kg\n2 serie 10x30kg\n3 serie 10x40kg")
+    assert reply.text == "Anotado!"
+    assert sorted((s.set_number, float(s.weight_kg)) for s in set_rows(db)) == [(1, 20.0), (2, 30.0), (3, 40.0)]
+
+
+def test_missing_data_asks_and_then_logs_with_answer(db, make_user, script):
+    user = make_user()
+    db.commit()
+    script.intents = ["log_set", "log_set"]
+    script.responses = [
+        AIMessage("Quantas repetições você fez?"),
+        call("log_set", {"exercise": "supino reto", "reps": 8, "kg": 20, "set_number": 1}),
+        AIMessage("Supino reto, série 1: 8 reps com 20kg. Anotado!"),
+    ]
+    first = iron_agent.respond(user.id, "supino reto 1 serie 20kg")
+    assert "repetições" in first.text and set_rows(db) == []
+    second = iron_agent.respond(user.id, "8")
+    assert "Anotado" in second.text and [(s.set_number, s.reps) for s in set_rows(db)] == [(1, 8)]

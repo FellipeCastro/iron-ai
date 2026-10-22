@@ -11,7 +11,7 @@ const links = [
 export function Header() {
   return (
     <header className="relative z-20 mx-auto flex h-20 max-w-[1440px] items-center justify-between px-5 lg:px-20">
-      <Logo height={36} />
+      <Logo height={28} />
       <nav className="absolute left-1/2 hidden -translate-x-1/2 items-center gap-[30px] text-base font-medium lg:flex">
         {links.map((l) => (
           <a key={l.label} href={l.href} className="transition hover:opacity-60">
