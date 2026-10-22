@@ -1,8 +1,9 @@
 import { Dumbbell, Flame, Send, TrendingUp } from 'lucide-react'
+import { useUser } from '@clerk/react'
 import { Link } from 'react-router-dom'
 import { ChartCard, MultiLine, VolumeArea, VolumeBars } from '../components/app/charts'
 import { Card, PageHeader, Stat, btnLight } from '../components/app/ui'
-import { nextWorkoutId, oneRmByExercise, sessions, user, weeklyOverview, workouts } from '../lib/mock'
+import { nextWorkoutId, oneRmByExercise, sessions, weeklyOverview, workouts } from '../lib/mock'
 
 const oneRmSeries = [
   { key: 'supino', name: 'Supino reto', color: '#0a0a0a' },
@@ -11,11 +12,12 @@ const oneRmSeries = [
 ]
 
 export default function Dashboard() {
+  const { user } = useUser()
   const next = workouts.find((w) => w.id === nextWorkoutId)!
   return (
     <>
       <PageHeader
-        title={`Olá, ${user.name.split(' ')[0]} 👋`}
+        title={`Olá, ${user?.firstName ?? ''} 👋`}
         subtitle="Seu próximo treino já está pronto. Registre as séries pelo Telegram e acompanhe tudo por aqui."
       />
 

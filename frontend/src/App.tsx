@@ -1,5 +1,7 @@
+import { AuthenticateWithRedirectCallback } from '@clerk/react'
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import { AppLayout } from './components/app/AppLayout'
+import { ProtectedRoute } from './components/app/ProtectedRoute'
 import Auth from './pages/Auth'
 import Dashboard from './pages/Dashboard'
 import History from './pages/History'
@@ -16,13 +18,19 @@ function App() {
         <Route path="/" element={<Landing />} />
         <Route path="/entrar" element={<Auth mode="login" />} />
         <Route path="/cadastro" element={<Auth mode="signup" />} />
-        <Route path="/vincular" element={<LinkTelegram />} />
-        <Route path="/app" element={<AppLayout />}>
-          <Route index element={<Dashboard />} />
-          <Route path="treinos" element={<Routine />} />
-          <Route path="historico" element={<History />} />
-          <Route path="progresso" element={<Progress />} />
-          <Route path="configuracoes" element={<Settings />} />
+        <Route
+          path="/sso-callback"
+          element={<AuthenticateWithRedirectCallback signInFallbackRedirectUrl="/app" signUpFallbackRedirectUrl="/vincular" />}
+        />
+        <Route element={<ProtectedRoute />}>
+          <Route path="/vincular" element={<LinkTelegram />} />
+          <Route path="/app" element={<AppLayout />}>
+            <Route index element={<Dashboard />} />
+            <Route path="treinos" element={<Routine />} />
+            <Route path="historico" element={<History />} />
+            <Route path="progresso" element={<Progress />} />
+            <Route path="configuracoes" element={<Settings />} />
+          </Route>
         </Route>
       </Routes>
     </BrowserRouter>

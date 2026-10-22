@@ -1,7 +1,7 @@
 import { Menu, X } from 'lucide-react'
 import { useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
-import { user } from '../../lib/mock'
+import { useClerk, useUser } from '@clerk/react'
 import { Logo } from '../landing/shared'
 
 const links = [
@@ -14,7 +14,10 @@ const links = [
 
 export function AppLayout() {
   const [menuOpen, setMenuOpen] = useState(false)
-  const initials = user.name
+  const { user } = useUser()
+  const { signOut } = useClerk()
+  const name = user?.fullName ?? user?.primaryEmailAddress?.emailAddress ?? ''
+  const initials = name
     .split(' ')
     .map((n) => n[0])
     .slice(0, 2)
@@ -36,8 +39,11 @@ export function AppLayout() {
           ))}
         </nav>
         <div className="flex items-center gap-3 text-[15px] font-medium">
-          <span className="hidden text-neutral-600 lg:inline">{user.name}</span>
+          <span className="hidden text-neutral-600 lg:inline">{name}</span>
           <span className="grid size-10 place-items-center rounded-full bg-ink text-sm font-semibold text-white">{initials}</span>
+          <button type="button" onClick={() => signOut()} className="hidden rounded-lg px-3 py-2 text-neutral-600 transition hover:bg-gray-100 lg:block">
+            Sair
+          </button>
           <button
             type="button"
             aria-label={menuOpen ? 'Fechar menu' : 'Abrir menu'}
@@ -62,6 +68,9 @@ export function AppLayout() {
               {l.label}
             </NavLink>
           ))}
+          <button type="button" onClick={() => signOut()} className="rounded-lg px-4 py-3 text-left transition hover:bg-gray-100">
+            Sair
+          </button>
         </nav>
       )}
       <main className="mx-auto max-w-[1120px] px-5 pt-10 pb-24 lg:pt-[72px] lg:pb-[140px]">
