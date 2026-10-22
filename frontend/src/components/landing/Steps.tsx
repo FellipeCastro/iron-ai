@@ -1,12 +1,12 @@
 const steps = [
   { title: 'Crie sua conta', text: 'Cadastre-se no site em poucos segundos, sem complicação.' },
   {
-    title: 'Vincule o WhatsApp',
-    text: 'Gere seu código IRON-XXXX e envie para o número do Iron. Ele vale por 15 minutos.',
+    title: 'Vincule o Telegram',
+    text: 'Gere seu código IRON-XXXX, abra o bot do Iron no Telegram e envie o código. Ele vale por 15 minutos.',
   },
   {
-    title: 'Monte sua rotina',
-    text: 'Importe a rotina que você já tem ou peça para o Iron gerar uma. Você confirma antes de salvar.',
+    title: 'Monte seus treinos',
+    text: 'Importe os treinos que você já tem ou peça para o Iron gerar uma. Você confirma antes de salvar.',
   },
   {
     title: 'Registre suas séries',
@@ -14,7 +14,7 @@ const steps = [
   },
   {
     title: 'Veja sua evolução',
-    text: 'Veja gráficos de carga, 1RM e volume no site, ou pergunte direto pelo WhatsApp.',
+    text: 'Veja gráficos de carga, 1RM e volume no site, ou pergunte direto pelo Telegram.',
   },
 ]
 

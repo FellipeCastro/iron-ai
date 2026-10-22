@@ -14,7 +14,7 @@ export function Hero() {
           <span className="grid size-[35px] shrink-0 place-items-center rounded-full bg-ink text-white">
             <Dumbbell className="size-[18px]" />
           </span>
-          <span className="text-[14px] font-medium lg:text-[15px]">Seu parceiro de treino no WhatsApp ⚡</span>
+          <span className="text-[14px] font-medium lg:text-[15px]">Seu parceiro de treino no Telegram ⚡</span>
         </div>
         <h1 className="mt-[12px] text-[36px] leading-[46px] font-semibold tracking-tight lg:text-[50px] lg:leading-[65px]">
           <span className="font-bold">Conheça o Iron AI</span>
@@ -26,7 +26,7 @@ export function Hero() {
           </span>
         </h1>
         <p className="mt-[18px] max-w-[515px] text-base leading-6 text-neutral-500 lg:text-[17px]">
-          O agente de IA no WhatsApp que anota suas séries, corrige na hora e conduz a progressão de carga. Sem
+          O agente de IA no Telegram que anota suas séries, corrige na hora e conduz a progressão de carga. Sem
           planilha, sem app extra: você treina, ele cuida do resto.
         </p>
         <div className="mt-6 lg:mt-[14px]">

@@ -1,4 +1,4 @@
-import { Dumbbell, MessageCircle } from 'lucide-react'
+import { Dumbbell, Send } from 'lucide-react'
 import { CtaButtons, Logo } from './shared'
 
 function Laurel({ flip = false }: { flip?: boolean }) {
@@ -39,8 +39,8 @@ export function FinalCta() {
           Mande a primeira série hoje
         </h2>
         <div className="mt-[18px] flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-base">
-          <MessageCircle className="size-5" />
-          <span>Direto no WhatsApp</span>
+          <Send className="size-5" />
+          <span>Direto no Telegram</span>
           <span className="text-neutral-400">·</span>
           <span>Evolução no site</span>
         </div>

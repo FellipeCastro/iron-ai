@@ -3,7 +3,8 @@
     "allow": [
       "mcp__claude-in-chrome__tabs_context_mcp",
       "ClaudeInChromeDomain(localhost:5174)",
-      "ClaudeInChromeDomain(localhost:5199)"
+      "ClaudeInChromeDomain(localhost:5199)",
+      "ClaudeInChromeDomain(localhost:5173)"
     ]
   }
 }

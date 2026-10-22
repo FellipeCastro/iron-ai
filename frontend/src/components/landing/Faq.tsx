@@ -3,8 +3,8 @@ import { useState } from 'react'
 
 const faqs = [
   {
-    q: 'Como eu vinculo meu número de WhatsApp ao Iron?',
-    a: 'Depois de criar a conta, gere um código IRON-XXXX no site e envie para o número do Iron. O código é de uso único, vale por 15 minutos e cada conta tem um número.',
+    q: 'Como eu vinculo meu Telegram ao Iron?',
+    a: 'Depois de criar a conta, gere um código IRON-XXXX no site, abra o bot do Iron no Telegram e envie o código. O código é de uso único, vale por 15 minutos e cada conta tem um número.',
   },
   {
     q: 'Como o Iron decide a carga e as repetições da próxima série?',
@@ -23,8 +23,8 @@ const faqs = [
     a: 'Você escolhe o horário e o Iron avisa nos dias de treino, com as metas de cada exercício. Se você já registrou uma série naquele dia, ele não manda o lembrete.',
   },
   {
-    q: 'Posso registrar exercícios que não estão na minha rotina?',
-    a: 'Pode. Exercícios fora da rotina entram como avulsos, sem meta. A meta nasce da primeira série que você registrar.',
+    q: 'Posso registrar exercícios que não estão nos meus treinos?',
+    a: 'Pode. Exercícios fora dos seus treinos entram como avulsos, sem meta. A meta nasce da primeira série que você registrar.',
   },
 ]
 

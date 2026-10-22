@@ -13,12 +13,12 @@ const features = [
   },
   {
     title: 'Receba o treino do dia com as metas',
-    text: 'Sua rotina A→B→C gira sozinha. O Iron sabe qual é o próximo treino e envia exercícios, séries, reps e carga alvo de cada um.',
+    text: 'Seus treinos A→B→C giram sozinha. O Iron sabe qual é o próximo treino e envia exercícios, séries, reps e carga alvo de cada um.',
     image: image02,
   },
   {
     title: 'Evolução completa de carga, 1RM e volume',
-    text: 'Pergunte “evolução no supino reto” e veja gráficos, 1RM estimado e volume total, com o resumo de cada sessão e o quanto você já progrediu.',
+    text: 'Pergunte “evolução no supino reto” e veja gráficos, 1RM estimado e volume total, com o resumo de cada treino e o quanto você já progrediu.',
     image: image03,
   },
   {
@@ -89,7 +89,7 @@ const reasons = [
     icon: TrendingUp,
     tint: 'text-emerald-600',
     title: 'Evolução sem esforço',
-    text: 'Acompanhe carga, 1RM estimado e volume total no WhatsApp e no site, e veja seu progresso semana a semana.',
+    text: 'Acompanhe carga, 1RM estimado e volume total no Telegram e no site, e veja seu progresso semana a semana.',
   },
 ]
 

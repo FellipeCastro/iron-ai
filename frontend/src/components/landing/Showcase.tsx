@@ -33,7 +33,7 @@ const columns: Card[][] = [
     },
     {
       title: 'Sem app extra',
-      text: 'Tudo no WhatsApp que você já usa 🔥',
+      text: 'Tudo no Telegram, direto no seu celular 🔥',
       height: 571,
       stat: '+15kg',
       statLabel: 'de carga em 2 meses',
