@@ -44,7 +44,7 @@ async def clerk_webhook(request: Request):
     try:
         Webhook(settings.clerk_webhook_secret).verify(payload, dict(request.headers))
     except WebhookVerificationError:
-        raise HTTPException(status_code=400, detail="invalid signature")
+        raise HTTPException(status_code=400, detail="invalid signature") from None
 
     await run_in_threadpool(_apply_event, json.loads(payload))
     return {"ok": True}

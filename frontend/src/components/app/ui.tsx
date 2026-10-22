@@ -27,6 +27,38 @@ export const btnDark =
 export const btnLight =
   'inline-flex h-12 items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-white px-5 text-[16px] font-semibold text-ink ring-1 ring-neutral-300 transition hover:bg-gray-100'
 
+export function Loading({ label = 'Carregando…' }: { label?: string }) {
+  return (
+    <div role="status" className="mt-16 grid place-items-center gap-3 text-neutral-500">
+      <span className="size-8 animate-spin rounded-full border-2 border-neutral-300 border-t-ink" />
+      <span className="text-sm">{label}</span>
+    </div>
+  )
+}
+
+export function ErrorState({ error, onRetry }: { error: Error; onRetry?: () => void }) {
+  return (
+    <Card className="mx-auto mt-10 max-w-[560px] text-center">
+      <h3 className="text-xl font-semibold">Não foi possível carregar</h3>
+      <p className="mt-2 text-[15px] text-neutral-500">{error.message}</p>
+      {onRetry && (
+        <button type="button" onClick={onRetry} className={`${btnLight} mt-5`}>
+          Tentar de novo
+        </button>
+      )}
+    </Card>
+  )
+}
+
+export function Empty({ title, children }: { title: string; children?: ReactNode }) {
+  return (
+    <Card className="mx-auto mt-10 max-w-[560px] text-center">
+      <h3 className="text-xl font-semibold">{title}</h3>
+      {children && <p className="mt-2 text-[15px] text-neutral-500">{children}</p>}
+    </Card>
+  )
+}
+
 export function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
     <Card className="!rounded-2xl !p-3 sm:!rounded-[32px] sm:!p-6">

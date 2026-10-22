@@ -1,8 +1,9 @@
 import { Search } from 'lucide-react'
 import { useState } from 'react'
 import { ChartCard, MultiLine, VolumeBars } from '../components/app/charts'
-import { PageHeader, Stat } from '../components/app/ui'
-import { progress, progressExercises } from '../lib/mock'
+import { Empty, ErrorState, Loading, PageHeader, Stat } from '../components/app/ui'
+import { useExercises, useProgress } from '../hooks/useData'
+import { fmtKg, fmtVolume, signed } from '../lib/format'
 
 const norm = (t: string) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
 
@@ -12,11 +13,27 @@ const loadSeries = [
 ]
 
 export default function Progress() {
-  const [exercise, setExercise] = useState(progressExercises[0])
+  const exercises = useExercises()
+  const [picked, setPicked] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
-  const matches = progressExercises.filter((e) => norm(e).includes(norm(query)))
-  const last = progress[progress.length - 1]
+
+  const exercise = picked ?? exercises.data?.[0] ?? null
+  const progress = useProgress(exercise)
+
+  if (exercises.error) return <ErrorState error={exercises.error} onRetry={exercises.refetch} />
+  if (!exercises.data) return <Loading />
+  if (exercises.data.length === 0) {
+    return (
+      <>
+        <PageHeader title="Seu progresso" subtitle="Carga, 1RM estimado (Epley) e volume total por exercício." />
+        <Empty title="Sem dados por enquanto">Registre séries pelo Telegram e a evolução de cada exercício aparece aqui.</Empty>
+      </>
+    )
+  }
+
+  const matches = exercises.data.filter((e) => norm(e).includes(norm(query)))
+  const summary = progress.data?.summary
   return (
     <>
       <PageHeader title="Seu progresso" subtitle="Carga, 1RM estimado (Epley) e volume total por exercício." />
@@ -44,7 +61,7 @@ export default function Progress() {
                   type="button"
                   onMouseDown={(ev) => ev.preventDefault()}
                   onClick={() => {
-                    setExercise(e)
+                    setPicked(e)
                     setQuery('')
                     setOpen(false)
                   }}
@@ -60,20 +77,34 @@ export default function Progress() {
 
       <h2 className="mt-10 text-center text-[28px] leading-[1.2] font-semibold tracking-tight lg:mt-[56px] lg:text-[40px]">{exercise}</h2>
 
-      <div className="mt-6 grid grid-cols-3 gap-2 sm:gap-4 lg:mt-8 lg:gap-8">
-        <Stat label="Carga" value={`${last.kg} kg`} hint="+5 kg" />
-        <Stat label="1RM" value={`${last.rm} kg`} hint="+9,5 kg" />
-        <Stat label="Volume" value={`${last.volume.toLocaleString('pt-BR')} kg`} hint="+38%" />
-      </div>
+      {progress.error ? (
+        <ErrorState error={progress.error} onRetry={progress.refetch} />
+      ) : progress.loading || !progress.data ? (
+        <Loading />
+      ) : !summary ? (
+        <Empty title="Sem registros deste exercício">Quando você registrar séries dele pelo Telegram, os gráficos aparecem aqui.</Empty>
+      ) : (
+        <>
+          <div className="mt-6 grid grid-cols-3 gap-2 sm:gap-4 lg:mt-8 lg:gap-8">
+            <Stat label="Carga" value={`${fmtKg(summary.kg)} kg`} hint={summary.kg_change ? `${signed(summary.kg_change)} kg` : undefined} />
+            <Stat label="1RM" value={`${fmtKg(summary.rm)} kg`} hint={summary.rm_change ? `${signed(summary.rm_change)} kg` : undefined} />
+            <Stat
+              label="Volume"
+              value={fmtVolume(summary.volume)}
+              hint={summary.volume_change_pct !== null && summary.volume_change_pct !== 0 ? signed(summary.volume_change_pct, '%') : undefined}
+            />
+          </div>
 
-      <div className="mt-4 grid gap-4 lg:mt-8 lg:grid-cols-2 lg:gap-8">
-        <ChartCard title="Carga e 1RM" subtitle={`${exercise}, em kg`} legend={loadSeries}>
-          <MultiLine data={progress} series={loadSeries} />
-        </ChartCard>
-        <ChartCard title="Volume por semana" subtitle={`${exercise}, reps x kg`} legend={[{ name: 'Volume', color: '#1e1a24' }]}>
-          <VolumeBars data={progress} />
-        </ChartCard>
-      </div>
+          <div className="mt-4 grid gap-4 lg:mt-8 lg:grid-cols-2 lg:gap-8">
+            <ChartCard title="Carga e 1RM" subtitle={`${exercise}, em kg`} legend={loadSeries}>
+              <MultiLine data={progress.data.points} series={loadSeries} />
+            </ChartCard>
+            <ChartCard title="Volume por semana" subtitle={`${exercise}, reps x kg`} legend={[{ name: 'Volume', color: '#1e1a24' }]}>
+              <VolumeBars data={progress.data.points} />
+            </ChartCard>
+          </div>
+        </>
+      )}
     </>
   )
 }

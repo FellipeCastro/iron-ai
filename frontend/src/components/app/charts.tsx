@@ -121,7 +121,7 @@ export function MultiLine({ data, series, unit = ' kg' }: { data: object[]; seri
         <YAxis {...axis} width={40} domain={['dataMin - 5', 'dataMax + 5']} tickFormatter={(v) => String(Math.round(v))} tickCount={5} />
         <Tooltip content={<Tip unit={unit} />} cursor={cursor} />
         {series.map((s) => (
-          <Line key={s.key} type={s.step ? 'stepAfter' : 'monotone'} dataKey={s.key} name={s.name} stroke={s.color} strokeWidth={2.5} dot={dot} activeDot={{ r: 5 }} />
+          <Line key={s.key} connectNulls type={s.step ? 'stepAfter' : 'monotone'} dataKey={s.key} name={s.name} stroke={s.color} strokeWidth={2.5} dot={dot} activeDot={{ r: 5 }} />
         ))}
       </LineChart>
     </ResponsiveContainer>

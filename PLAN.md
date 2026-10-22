@@ -137,67 +137,67 @@ Stack a adicionar: react-router, Clerk (React), shadcn/ui, biblioteca de gráfic
 
 #### B0 — Fundação
 - [ ] Confirmar versões atuais via documentação: LangChain/LangGraph, Telegram Bot API, verificação de JWT do Clerk, SQLAlchemy 2.x, APScheduler 3.x.
-- [ ] `pyproject.toml`: adicionar langchain, langgraph, langchain-openai, pydantic, sqlalchemy, alembic, apscheduler, sentry-sdk, pytest e um cliente HTTP (httpx).
-- [ ] Estrutura de pastas da seção 2.1, `config.py` e `.env.example` (token do bot, username do bot, secret do webhook).
+- [x] `pyproject.toml`: adicionar langchain, langgraph, langchain-openai, pydantic, sqlalchemy, alembic, apscheduler, sentry-sdk, pytest e um cliente HTTP (httpx).
+- [x] Estrutura de pastas da seção 2.1, `config.py` e `.env.example` (token do bot, username do bot, secret do webhook).
 - [ ] Criar o bot no BotFather.
-- [ ] `docker-compose.yml` (Postgres local e backend).
-- [ ] `utils/database.py` (engine + sessão), `models/db.py` e Alembic com a migração inicial (seção 3), apontando para o Neon em produção.
-- [ ] `main.py` com FastAPI, rota de health e Sentry.
+- [x] `docker-compose.yml` (Postgres local e backend).
+- [x] `utils/database.py` (engine + sessão), `models/db.py` e Alembic com a migração inicial (seção 3), apontando para o Neon em produção.
+- [x] `main.py` com FastAPI, rota de health e Sentry.
 
 **Pronto quando:** `docker compose up` sobe tudo e `alembic upgrade head` roda.
 
 #### B1 — Domínio determinístico (antes de qualquer LLM)
-- [ ] `progression.py`: `next_target(current_target, done_reps, done_kg, increment)`. Bateu → +1 rep até 12. Com 12 reps → 8 reps e +increment. Não bateu → mantém.
-- [ ] `one_rm.py` (Epley), `volume.py` (reps × kg somados) e `sessions.py` (dia local com virada às 04:00).
-- [ ] Testes com pytest, incluindo bordas: 11→12, 12→8 com +5kg, série abaixo da meta, peso diferente da meta, virada às 03:59 e 04:00, fusos distintos.
+- [x] `progression.py`: `next_target(current_target, done_reps, done_kg, increment)`. Bateu → +1 rep até 12. Com 12 reps → 8 reps e +increment. Não bateu → mantém.
+- [x] `one_rm.py` (Epley), `volume.py` (reps × kg somados) e `sessions.py` (dia local com virada às 04:00).
+- [x] Testes com pytest, incluindo bordas: 11→12, 12→8 com +5kg, série abaixo da meta, peso diferente da meta, virada às 03:59 e 04:00, fusos distintos.
 
 **Pronto quando:** cobertura alta e todos os casos de borda passando.
 
 #### B2 — Mensageria confiável
-- [ ] `utils/messaging.py` (`MessagingGateway`) e `utils/telegram.py` (`TelegramGateway`: envio de texto e botões, parse de `message` e `callback_query`).
-- [ ] `webhook/`: `setWebhook` com `secret_token`, valida o header, grava em `inbox` com `ON CONFLICT DO NOTHING` (chave `update_id`) e responde 200.
-- [ ] `workers/`: pega `pending` com `FOR UPDATE SKIP LOCKED`, processa serial por usuário, com retry e backoff até `failed` (vai para o Sentry).
-- [ ] Chat desconhecido: `/start <código>` válido vincula; qualquer outra mensagem (inclusive `/start` sem código) responde com o link do site.
-- [ ] Vínculo: gerar e validar código (hash, expiração, uso único, limite de tentativas por `chat_id`).
-- [ ] Botões inline para confirmações (rotina, correção ambígua).
-- [ ] Modo long polling para desenvolvimento local, usando o mesmo `inbox`.
-- [ ] Limite diário: acima de ~100 msgs, aviso fixo sem LLM (`daily_usage`).
+- [x] `utils/messaging.py` (`MessagingGateway`) e `utils/telegram.py` (`TelegramGateway`: envio de texto e botões, parse de `message` e `callback_query`).
+- [x] `webhook/`: `setWebhook` com `secret_token`, valida o header, grava em `inbox` com `ON CONFLICT DO NOTHING` (chave `update_id`) e responde 200.
+- [x] `workers/`: pega `pending` com `FOR UPDATE SKIP LOCKED`, processa serial por usuário, com retry e backoff até `failed` (vai para o Sentry).
+- [x] Chat desconhecido: `/start <código>` válido vincula; qualquer outra mensagem (inclusive `/start` sem código) responde com o link do site.
+- [x] Vínculo: gerar e validar código (hash, expiração, uso único, limite de tentativas por `chat_id`).
+- [x] Botões inline para confirmações (rotina, correção ambígua).
+- [x] Modo long polling para desenvolvimento local, usando o mesmo `inbox`.
+- [x] Limite diário: acima de ~100 msgs, aviso fixo sem LLM (`daily_usage`).
 
 **Pronto quando:** updates duplicados são ignorados, a ordem por usuário é mantida e o código é consumido uma única vez.
 
 #### B3 — Agente (LangGraph)
-- [ ] `utils/llm_pick.py` e `models/schema.py` (`RouterSchema`, estados dos subagentes).
-- [ ] `agents/iron_agent.py`: roteador de intenção no padrão do `data_agent.py`. Intenções: registrar série, corrigir, criar/importar rotina, confirmar/cancelar, consultar evolução, feedback, conversa geral.
-- [ ] `utils/workout_tools.py`: tools tipadas (Pydantic) `log_set`, `correct_last_set`, `propose_routine`, `confirm_routine`, `get_progress`, `get_next_workout`, `send_feedback`. Sem SQL e sem código gerado.
-- [ ] Subagentes `workout_logger.py`, `routine_builder.py` e `progress_analyst.py`.
-- [ ] Catálogo de exercícios com aliases e normalização (ex.: "supino" → "supino reto" pede esclarecimento se ambíguo).
-- [ ] Fluxo de rotina: importar ou gerar (perguntando objetivo, dias, nível e equipamentos) → resumo → `pending_confirmations` → salva só após confirmação.
-- [ ] Após cada série, `services` atualiza `targets` via `progression.py`. O LLM só redige a resposta.
-- [ ] Testes com LLM mockado: parsing de frases reais ("supino reto 1 serie 10kg", "errei, foi 25kg") e do fluxo de confirmação.
+- [x] `utils/llm_pick.py` e `models/schema.py` (`RouterSchema`, estados dos subagentes).
+- [x] `agents/iron_agent.py`: roteador de intenção no padrão do `data_agent.py`. Intenções: registrar série, corrigir, criar/importar rotina, confirmar/cancelar, consultar evolução, feedback, conversa geral.
+- [x] `utils/workout_tools.py`: tools tipadas (Pydantic) `log_set`, `correct_last_set`, `propose_routine`, `confirm_routine`, `get_progress`, `get_next_workout`, `send_feedback`. Sem SQL e sem código gerado.
+- [x] Subagentes `workout_logger.py`, `routine_builder.py` e `progress_analyst.py`.
+- [x] Catálogo de exercícios com aliases e normalização (ex.: "supino" → "supino reto" pede esclarecimento se ambíguo).
+- [x] Fluxo de rotina: importar ou gerar (perguntando objetivo, dias, nível e equipamentos) → resumo → `pending_confirmations` → salva só após confirmação.
+- [x] Após cada série, `services` atualiza `targets` via `progression.py`. O LLM só redige a resposta.
+- [x] Testes com LLM mockado: parsing de frases reais ("supino reto 1 serie 10kg", "errei, foi 25kg") e do fluxo de confirmação.
 
 **Pronto quando:** o fluxo completo (vincular → rotina → registrar → corrigir → evolução) funciona por mensagens simuladas.
 
 #### B4 — Lembretes
-- [ ] APScheduler iniciado só na réplica única (flag `RUN_SCHEDULER`).
-- [ ] A cada minuto, busca usuários cujo `reminder_time` local chegou, hoje é dia de treino e não há série no dia.
-- [ ] Insere em `reminder_log` antes de enviar (a chave única impede duplicidade). Mensagem formatada com as metas por exercício e série.
+- [x] APScheduler iniciado só na réplica única (flag `RUN_SCHEDULER`).
+- [x] A cada minuto, busca usuários cujo `reminder_time` local chegou, hoje é dia de treino e não há série no dia.
+- [x] Insere em `reminder_log` antes de enviar (a chave única impede duplicidade). Mensagem formatada com as metas por exercício e série.
 - [ ] O Telegram não tem janela de 24h nem templates: o bot pode enviar o lembrete a qualquer momento depois que o usuário o iniciou.
 
 **Pronto quando:** reiniciar o processo no horário não gera lembrete duplicado.
 
 #### B5 — API do site
-- [ ] Verificação do JWT do Clerk (dependency do FastAPI) e criação do `users` no primeiro acesso.
-- [ ] Rotas em `api/`: `GET /me`, `POST /link-code` (devolve o código, a expiração e o `deep_link` `t.me/<bot>?start=<código>`), `GET/PUT /routine`, `GET /sessions`, `GET /progress/{exercise}`, `GET/PUT /settings`, `DELETE /me` (LGPD).
-- [ ] Schemas Pydantic de resposta e contrato OpenAPI estável (o frontend consome).
-- [ ] CORS para o domínio do frontend.
+- [x] Verificação do JWT do Clerk (dependency do FastAPI) e criação do `users` no primeiro acesso.
+- [x] Rotas em `api/`: `GET /me`, `POST /link-code` (devolve o código, a expiração e o `deep_link` `t.me/<bot>?start=<código>`), `GET/PUT /routine`, `GET /sessions`, `GET /progress/{exercise}`, `GET/PUT /settings`, `DELETE /me` (LGPD).
+- [x] Schemas Pydantic de resposta e contrato OpenAPI estável (o frontend consome).
+- [x] CORS para o domínio do frontend.
 
 **Pronto quando:** todas as rotas respondem com um JWT válido, rejeitam sem JWT e o OpenAPI está publicado.
 
 #### B6 — Entrega
-- [ ] Dockerfile do backend e deploy em host com 1 réplica e HTTPS público; registrar o webhook do Telegram em produção.
-- [ ] CI com lint, testes e build.
+- [x] Dockerfile do backend e deploy em host com 1 réplica e HTTPS público; registrar o webhook do Telegram em produção.
+- [x] CI com lint, testes e build.
 - [ ] Alertas no Sentry: falha no worker, webhook sem resposta, erro do LLM e limite de uso.
-- [ ] Exclusão de conta e dados (LGPD) e mascaramento do `chat_id` nos eventos do Sentry.
+- [x] Exclusão de conta e dados (LGPD) e mascaramento do `chat_id` nos eventos do Sentry.
 
 **Pronto quando:** deploy em produção estável com o fluxo funcionando num bot real.
 
@@ -206,8 +206,8 @@ Stack a adicionar: react-router, Clerk (React), shadcn/ui, biblioteca de gráfic
 #### F0 — Setup
 - [ ] Instalar react-router, Clerk (React), shadcn/ui, Recharts e Sentry.
 - [ ] Estrutura de pastas da seção 2.2, `.env.example` (chave pública do Clerk, URL da API).
-- [ ] `lib/api.ts`: cliente HTTP que anexa o token do Clerk e trata erros.
-- [ ] Roteamento em `App.tsx` (rotas públicas e protegidas).
+- [x] `lib/api.ts`: cliente HTTP que anexa o token do Clerk e trata erros.
+- [x] Roteamento em `App.tsx` (rotas públicas e protegidas).
 
 **Pronto quando:** o app sobe com Clerk configurado e chama `GET /me` do backend (ou um mock).
 
@@ -219,26 +219,26 @@ Stack a adicionar: react-router, Clerk (React), shadcn/ui, biblioteca de gráfic
 **Pronto quando:** a landing é a rota `/`, não cita WhatsApp e os CTAs levam ao cadastro.
 
 #### F2 — Autenticação e vínculo do Telegram
-- [ ] Páginas de login e cadastro (Clerk) e rotas protegidas.
-- [ ] Tela de vínculo: gera o código (`POST /link-code`), mostra a expiração (15 min), botão "Abrir Telegram" com o `deep_link` devolvido pela API, fallback exibindo o código para enviar ao bot e atualização do status quando a conta for vinculada.
+- [x] Páginas de login e cadastro (Clerk) e rotas protegidas.
+- [x] Tela de vínculo: gera o código (`POST /link-code`), mostra a expiração (15 min), botão "Abrir Telegram" com o `deep_link` devolvido pela API, fallback exibindo o código para enviar ao bot e atualização do status quando a conta for vinculada.
 
 **Pronto quando:** um usuário novo cria conta e vincula o Telegram.
 
 #### F3 — Dashboard, rotina e histórico
-- [ ] Dashboard: próximo treino e metas por exercício e série.
-- [ ] Rotina: visualizar a rotina ativa (A/B/C, exercícios, séries).
-- [ ] Histórico: lista de sessões e séries registradas.
+- [x] Dashboard: próximo treino e metas por exercício e série.
+- [x] Rotina: visualizar a rotina ativa (A/B/C, exercícios, séries).
+- [x] Histórico: lista de sessões e séries registradas.
 
 **Pronto quando:** o usuário vê no site os dados registrados pelo Telegram.
 
 #### F4 — Progresso e configurações
-- [ ] Gráficos por exercício: carga, 1RM e volume.
-- [ ] Configurações: horário do lembrete, incremento de carga, fuso e exclusão de conta.
+- [x] Gráficos por exercício: carga, 1RM e volume.
+- [x] Configurações: horário do lembrete, incremento de carga, fuso e exclusão de conta.
 
 **Pronto quando:** alterar uma configuração no site muda o comportamento do Iron (lembrete e incremento).
 
 #### F5 — Qualidade e entrega
-- [ ] Estados vazio, de carregamento e de erro em todas as telas; layout responsivo (mobile-first).
+- [x] Estados vazio, de carregamento e de erro em todas as telas; layout responsivo (mobile-first).
 - [ ] Testes dos fluxos principais (vínculo, dashboard).
 - [ ] Build, deploy em hospedagem estática e CI (lint + build).
 - [ ] Sentry no frontend.
