@@ -28,12 +28,19 @@ def user_by_channel(session: Session, channel: str, external_id: str) -> User | 
     ).first()
 
 
+def normalize_training_days(days: list[int]) -> list[int]:
+    if any(not 0 <= d <= 6 for d in days):
+        raise ValueError("dias de treino devem ficar entre 0 (segunda) e 6 (domingo)")
+    return sorted(set(days))
+
+
 def update_settings(
     session: Session,
     user: User,
     reminder_time: time | None,
     weight_increment_kg: Decimal,
     timezone: str,
+    training_days: list[int] | None = None,
 ) -> User:
     if timezone not in available_timezones():
         raise ValueError("fuso horário inválido")
@@ -42,6 +49,8 @@ def update_settings(
     user.reminder_time = reminder_time
     user.weight_increment_kg = weight_increment_kg
     user.timezone = timezone
+    if training_days is not None:
+        user.training_days = normalize_training_days(training_days)
     session.flush()
     return user
 
@@ -65,3 +74,10 @@ def delete_clerk_user(clerk_id: str) -> bool:
 
 def exercise_by_id(session: Session, exercise_id: int) -> Exercise | None:
     return session.get(Exercise, exercise_id)
+
+
+def set_schedule(session: Session, user: User, reminder_time: time, training_days: list[int]) -> None:
+    """Horário e dias do lembrete, informados no onboarding."""
+    user.reminder_time = reminder_time.replace(second=0, microsecond=0)
+    user.training_days = normalize_training_days(training_days)
+    session.flush()

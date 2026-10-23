@@ -156,11 +156,13 @@ class ProgressOut(BaseModel):
 
 class SettingsOut(BaseModel):
     reminder_time: time | None
+    training_days: list[int]
     weight_increment_kg: float
     timezone: str
 
 
 class SettingsIn(BaseModel):
     reminder_time: time | None
+    training_days: list[int] | None = None  # None mantém os dias atuais
     weight_increment_kg: float = Field(ge=0.5, le=20)
     timezone: str = Field(max_length=64)

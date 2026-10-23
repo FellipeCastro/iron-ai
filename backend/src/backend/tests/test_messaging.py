@@ -194,6 +194,15 @@ def test_reminder_skipped_before_time_other_weekday_or_after_training(db, make_u
     assert gw.sent == []
 
 
+def test_reminder_uses_user_training_days_over_workout_hint(db, make_user):
+    user = _setup_reminder_user(db, make_user)  # treino com dica de quinta (3)
+    user.training_days = [4]  # sexta
+    db.commit()
+    gw = FakeGateway()
+    assert reminders.send_due_reminders(gw, EVENING) == 0  # quinta: não é dia de treino
+    assert reminders.send_due_reminders(gw, EVENING + timedelta(days=1)) == 1  # sexta
+
+
 def test_reply_blocks_are_sent_as_separate_messages_with_buttons_on_last():
     from backend.services.conversation import send_reply
 
@@ -210,3 +219,40 @@ def test_reply_blocks_are_sent_as_separate_messages_with_buttons_on_last():
     gw = Gw()
     send_reply(gw, "1", "Anotado!\n\nQuantas séries no próximo?", [("Ok", "x:1")])
     assert gw.calls == [("text", "Anotado!"), ("buttons", "Quantas séries no próximo?")]
+
+
+def test_reminder_lists_goals_grouped_and_last_session(db, make_user):
+    user = _setup_reminder_user(db, make_user)
+    user.name = "Fellipe Castro"
+    workouts.log_set(db, user, "supino reto", 10, 20, now=EVENING - timedelta(days=7))
+    workouts.log_set(db, user, "supino reto", 10, 20, now=EVENING - timedelta(days=7, minutes=-3))
+    db.commit()
+    gw = FakeGateway()
+    assert reminders.send_due_reminders(gw, EVENING) == 1
+    text = gw.sent[0][1]
+    assert text.startswith("Bora treinar, Fellipe!") and "Hoje: Treino A — Peito" in text
+    assert "1. Supino reto — 3 séries" in text and "Metas: 2x 11x20kg · sem meta" in text
+    assert "Última vez: 15/10 · 2 séries, 400kg" in text
+
+
+def test_reminder_first_time_has_no_goals_and_long_break_opening():
+    summary = {
+        "letter": "A",
+        "name": "Peito",
+        "exercises": [{"name": "Supino reto", "sets": [{"set": 1, "reps": None, "kg": None}]}],
+        "last_session": None,
+        "days_since_training": 9,
+    }
+    text = reminders.format_reminder(summary, None)
+    assert text.startswith("Faz 9 dias") and "Primeira vez nesse exercício" in text
+
+
+def test_idle_session_summary_sent_once(db, make_user):
+    user = _setup_reminder_user(db, make_user)
+    workouts.log_set(db, user, "supino reto", 10, 20, now=EVENING)
+    db.commit()
+    gw = FakeGateway()
+    assert reminders.send_idle_summaries(gw, EVENING + timedelta(minutes=30)) == 0  # ainda treinando
+    assert reminders.send_idle_summaries(gw, EVENING + timedelta(minutes=50)) == 1
+    assert reminders.send_idle_summaries(gw, EVENING + timedelta(minutes=60)) == 0  # dedup
+    assert "Treino A concluído" in gw.sent[0][1]

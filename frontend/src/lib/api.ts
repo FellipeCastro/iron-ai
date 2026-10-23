@@ -55,7 +55,7 @@ export type Progress = {
   record: ExerciseRecord | null
   rm_estimate: number | null
 }
-export type Settings = { reminder_time: string | null; weight_increment_kg: number; timezone: string }
+export type Settings = { reminder_time: string | null; training_days: number[]; weight_increment_kg: number; timezone: string }
 
 function messageFrom(detail: unknown, fallback: string) {
   if (typeof detail === 'string') return detail

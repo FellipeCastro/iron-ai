@@ -94,9 +94,12 @@ function ProfileForm() {
   )
 }
 
+const DAY_LABELS = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom']
+
 function PreferencesForm({ initial }: { initial: SettingsData }) {
   const api = useApi()
   const [time, setTime] = useState(initial.reminder_time?.slice(0, 5) ?? '')
+  const [days, setDays] = useState<number[]>(initial.training_days)
   const [increment, setIncrement] = useState(String(initial.weight_increment_kg))
   const [timezone, setTimezone] = useState(initial.timezone)
   const [status, setStatus] = useState<Status>(null)
@@ -110,7 +113,7 @@ function PreferencesForm({ initial }: { initial: SettingsData }) {
     try {
       await api<SettingsData>('/settings', {
         method: 'PUT',
-        json: { reminder_time: time || null, weight_increment_kg: Number(increment.replace(',', '.')), timezone },
+        json: { reminder_time: time || null, training_days: days, weight_increment_kg: Number(increment.replace(',', '.')), timezone },
       })
       setStatus({ kind: 'saved', text: 'Salvo!' })
     } catch (err) {
@@ -123,10 +126,30 @@ function PreferencesForm({ initial }: { initial: SettingsData }) {
   return (
     <form className="grid gap-6" onSubmit={save}>
       <label className="text-sm font-semibold">
-        Horário do lembrete
+        Horário do treino
         <input type="time" value={time} onChange={(e) => setTime(e.target.value)} className={field} />
-        <span className="mt-1 block text-sm font-normal text-neutral-500">Deixe vazio para não receber lembretes.</span>
+        <span className="mt-1 block text-sm font-normal text-neutral-500">Você recebe o aviso do treino nesse horário. Deixe vazio para não receber avisos.</span>
       </label>
+      <fieldset className="text-sm font-semibold">
+        <legend>Dias de treino</legend>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {DAY_LABELS.map((label, day) => {
+            const on = days.includes(day)
+            return (
+              <button
+                key={label}
+                type="button"
+                aria-pressed={on}
+                onClick={() => setDays(on ? days.filter((d) => d !== day) : [...days, day].sort())}
+                className={`h-10 min-w-12 rounded-lg px-3 font-semibold ring-1 transition ${on ? 'bg-ink text-white ring-ink' : 'bg-white text-neutral-600 ring-neutral-200 hover:bg-gray-50'}`}
+              >
+                {label}
+              </button>
+            )
+          })}
+        </div>
+        <span className="mt-1 block text-sm font-normal text-neutral-500">O aviso do treino só é enviado nesses dias.</span>
+      </fieldset>
       <label className="text-sm font-semibold">
         Incremento de carga (kg)
         <input type="number" step="0.5" min="0.5" max="20" required value={increment} onChange={(e) => setIncrement(e.target.value)} className={field} />

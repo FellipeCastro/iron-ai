@@ -147,6 +147,7 @@ def get_progress(exercise: str, user: User = Depends(current_user), db: Session 
 def _settings_out(user: User) -> schemas.SettingsOut:
     return schemas.SettingsOut(
         reminder_time=user.reminder_time,
+        training_days=user.training_days or [],
         weight_increment_kg=float(user.weight_increment_kg),
         timezone=user.timezone,
     )
@@ -162,7 +163,7 @@ def put_settings(body: schemas.SettingsIn, user: User = Depends(current_user), d
     try:
         users.update_settings(
             db, user, body.reminder_time.replace(second=0, microsecond=0) if body.reminder_time else None,
-            Decimal(str(body.weight_increment_kg)), body.timezone,
+            Decimal(str(body.weight_increment_kg)), body.timezone, body.training_days,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

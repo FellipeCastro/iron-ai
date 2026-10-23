@@ -103,7 +103,11 @@ def test_routine_is_saved_directly_and_returns_site_link(db, make_user, script):
     script.responses = [
         call(
             "save_routine",
-            {"workouts": [{"name": "Peito", "weekday": 0, "exercises": [{"name": "supino reto", "sets": 4}]}]},
+            {
+                "workouts": [{"name": "Peito", "weekday": 0, "exercises": [{"name": "supino reto", "sets": 4}]}],
+                "training_days": [0, 2, 4],
+                "reminder_time": "18:30",
+            },
         ),
         AIMessage("Anotado! Confira em http://localhost:5173/app/treinos"),
     ]
@@ -111,6 +115,7 @@ def test_routine_is_saved_directly_and_returns_site_link(db, make_user, script):
     assert "/app/treinos" in reply.text and not reply.buttons
     db.expire_all()
     assert workouts.active_routine(db, user.id).workouts[0].exercises[0].sets_count == 4
+    assert user.training_days == [0, 2, 4] and user.reminder_time.strftime("%H:%M") == "18:30"
 
 
 def test_failure_after_write_does_not_duplicate(db, make_user, script):
@@ -174,3 +179,30 @@ def test_missing_data_asks_and_then_logs_with_answer(db, make_user, script):
     assert "repetições" in first.text and set_rows(db) == []
     second = iron_agent.respond(user.id, "8")
     assert "Anotado" in second.text and [(s.set_number, s.reps) for s in set_rows(db)] == [(1, 8)]
+
+
+def test_report_flow_uses_get_report(db, make_user, script):
+    user = make_user()
+    db.commit()
+    script.intents = ["log_set", "report"]
+    script.responses = [
+        call("log_set", {"exercise": "supino reto", "reps": 10, "kg": 20}),
+        AIMessage("Anotado!"),
+        call("get_report", {"scope": "exercise", "target": "supino reto", "period": "90d"}),
+        AIMessage("📈 Supino reto — 90 dias"),
+    ]
+    iron_agent.respond(user.id, "supino reto 10x20kg")
+    reply = iron_agent.respond(user.id, "me dá um relatório da minha evolução no supino reto")
+    assert reply.text.startswith("📈 Supino reto")
+
+
+def test_finish_node_replies_without_llm(db, make_user, script):
+    user = make_user()
+    db.commit()
+    script.intents = ["finish"]
+    assert "nenhuma série" in iron_agent.respond(user.id, "terminei").text
+    script.intents = ["log_set", "finish", "finish"]
+    script.responses = [call("log_set", {"exercise": "supino reto", "reps": 10, "kg": 20}), AIMessage("Anotado!")]
+    iron_agent.respond(user.id, "supino reto 10x20kg")
+    assert "Treino concluído" in iron_agent.respond(user.id, "terminei").text
+    assert "já foi fechado" in iron_agent.respond(user.id, "terminei de novo").text

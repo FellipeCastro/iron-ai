@@ -131,7 +131,7 @@ def test_put_routine_validation(signer):
 
 def test_settings_roundtrip_and_validation(signer):
     h = headers(signer())
-    assert client.get("/settings", headers=h).json() == {"reminder_time": "18:00:00", "weight_increment_kg": 5.0, "timezone": "America/Sao_Paulo"}
+    assert client.get("/settings", headers=h).json() == {"reminder_time": "18:00:00", "training_days": [], "weight_increment_kg": 5.0, "timezone": "America/Sao_Paulo"}
     ok = client.put("/settings", headers=h, json={"reminder_time": "07:30", "weight_increment_kg": 2.5, "timezone": "America/Manaus"})
     assert ok.status_code == 200 and ok.json()["reminder_time"] == "07:30:00"
     assert client.put("/settings", headers=h, json={"reminder_time": None, "weight_increment_kg": 2.5, "timezone": "America/Manaus"}).json()["reminder_time"] is None

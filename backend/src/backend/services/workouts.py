@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 from sqlalchemy import exists, select
@@ -257,14 +257,36 @@ def log_set(
     exercise = resolution.exercise
 
     workout_session = get_or_create_session(session, user, exercise.id, now)
+    explicit_number = set_number is not None
     if set_number is None:
         done = session.scalars(
             active_sets(user.id).where(SetLog.session_id == workout_session.id, SetLog.exercise_id == exercise.id)
         ).all()
         set_number = len(done) + 1
 
-    previous = session.get(Target, (user.id, exercise.id, set_number))
-    target_before = ProgTarget(previous.reps, previous.weight_kg) if previous else None
+    replaced = None
+    if explicit_number:
+        replaced = session.scalars(
+            active_sets(user.id).where(
+                SetLog.session_id == workout_session.id, SetLog.exercise_id == exercise.id, SetLog.set_number == set_number
+            )
+        ).first()
+    if replaced is not None and replaced.target_reps is not None:  # a meta da série substituída, não a já avançada por ela
+        target_before = ProgTarget(replaced.target_reps, replaced.target_kg)
+    elif replaced is not None:
+        target_before = None
+    else:
+        previous = session.get(Target, (user.id, exercise.id, set_number))
+        target_before = ProgTarget(previous.reps, previous.weight_kg) if previous else None
+    prior_best = session.execute(
+        active_sets(user.id)
+        .with_only_columns(SetLog.weight_kg, SetLog.reps)
+        .where(SetLog.exercise_id == exercise.id, SetLog.id != (replaced.id if replaced else -1))
+        .order_by(SetLog.weight_kg.desc(), SetLog.reps.desc())
+        .limit(1)
+    ).first()
+    # recorde = maior carga (empate: mais reps), como em stats; a 1ª vez do exercício não conta
+    is_record = prior_best is not None and (weight, reps) > (prior_best[0], prior_best[1])
     session.add(
         SetLog(
             session_id=workout_session.id,
@@ -274,6 +296,7 @@ def log_set(
             weight_kg=weight,
             target_reps=target_before.reps if target_before else None,
             target_kg=target_before.kg if target_before else None,
+            supersedes_id=replaced.id if replaced else None,
             created_at=now,
         )
     )
@@ -283,6 +306,7 @@ def log_set(
     _upsert_target(session, user.id, exercise.id, set_number, new_target)
 
     hit = bool(target_before) and reps >= target_before.reps and weight >= target_before.kg
+    progress = _exercise_progress_in_workout(session, user.id, workout_session, exercise.id)
     return {
         "status": "ok",
         "exercise": exercise.canonical_name,
@@ -292,11 +316,48 @@ def log_set(
         "one_rm": float(epley(weight, reps)),
         "target_before": _target_dict(target_before.reps, target_before.kg) if target_before else None,
         "hit_target": hit if target_before else None,
+        "is_record": is_record,
         "next_target": _target_dict(new_target.reps, new_target.kg),
         "is_new_exercise": resolution.status == "new" or target_before is None,
         "off_routine": not _in_workout(session, workout_session.workout_id, exercise.id),
         "workout": workout_session.workout.name if workout_session.workout else None,
         "session_date": workout_session.local_date.isoformat(),
+        **progress,
+    }
+
+
+def _exercise_progress_in_workout(session: Session, user_id: int, workout_session: WorkoutSession, exercise_id: int) -> dict:
+    """Séries feitas x planejadas do exercício na sessão e, ao fechar todas, o próximo exercício do treino."""
+    session.flush()
+    sets_done = len(
+        session.scalars(active_sets(user_id).where(SetLog.session_id == workout_session.id, SetLog.exercise_id == exercise_id)).all()
+    )
+    if workout_session.workout is None:
+        return {"sets_done": sets_done, "sets_planned": None, "exercise_done": False, "next_exercise": None, "workout_done": False}
+    items = workout_session.workout.exercises
+    index = next((i for i, item in enumerate(items) if item.exercise_id == exercise_id), None)
+    if index is None:
+        return {"sets_done": sets_done, "sets_planned": None, "exercise_done": False, "next_exercise": None, "workout_done": False}
+    planned = items[index].sets_count
+    done = sets_done >= planned
+    following = items[index + 1] if index + 1 < len(items) else None
+    workout_done = done and all(
+        len(
+            session.scalars(
+                active_sets(user_id).where(SetLog.session_id == workout_session.id, SetLog.exercise_id == item.exercise_id)
+            ).all()
+        )
+        >= item.sets_count
+        for item in items
+    )
+    return {
+        "sets_done": sets_done,
+        "sets_planned": planned,
+        "exercise_done": done,
+        "next_exercise": (
+            {"name": following.exercise.canonical_name, "sets": following.sets_count} if done and following else None
+        ),
+        "workout_done": workout_done,
     }
 
 
@@ -378,10 +439,36 @@ def _set_dict(row: SetLog, exercise: Exercise | None = None) -> dict:
     }
 
 
-def next_workout_summary(session: Session, user: User) -> dict:
+def _last_session_info(session: Session, user: User, workout_id: int, today: date) -> dict:
+    """Última vez que o treino foi feito e há quantos dias o usuário não treina (qualquer treino)."""
+    last_day = session.scalars(
+        select(WorkoutSession.local_date)
+        .where(WorkoutSession.user_id == user.id)
+        .order_by(WorkoutSession.local_date.desc())
+        .limit(1)
+    ).first()
+    previous = session.scalars(
+        select(WorkoutSession)
+        .where(WorkoutSession.user_id == user.id, WorkoutSession.workout_id == workout_id)
+        .order_by(WorkoutSession.local_date.desc())
+        .limit(1)
+    ).first()
+    last = None
+    if previous is not None:
+        logs = session.scalars(active_sets(user.id).where(SetLog.session_id == previous.id)).all()
+        last = {
+            "date": previous.local_date.isoformat(),
+            "sets": len(logs),
+            "volume": float(volume([(s.reps, s.weight_kg) for s in logs])),
+        }
+    return {"last_session": last, "days_since_training": (today - last_day).days if last_day else None}
+
+
+def next_workout_summary(session: Session, user: User, now: datetime | None = None) -> dict:
     workout = next_workout(session, user.id)
     if workout is None:
         return {"status": "no_routine"}
+    today = local_session_date(now or datetime.now(UTC), user.timezone)
     targets = current_targets(session, user.id)
     exercises = []
     for item in workout.exercises:
@@ -391,7 +478,13 @@ def next_workout_summary(session: Session, user: User) -> dict:
             sets.append({"set": number, "reps": t.reps if t else None, "kg": float(t.weight_kg) if t else None})
         exercises.append({"name": item.exercise.canonical_name, "sets": sets})
     letter = workout_letter(workout.position)
-    return {"status": "ok", "letter": letter, "name": workout.name, "exercises": exercises}
+    return {
+        "status": "ok",
+        "letter": letter,
+        "name": workout.name,
+        "exercises": exercises,
+        **_last_session_info(session, user, workout.id, today),
+    }
 
 
 # --- consultas -------------------------------------------------------------------------------

@@ -5,8 +5,9 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
 
 from backend.agents import subagents
+from backend.models.db import User
 from backend.models.schema import AgentContext, AgentReply, IronState, RouterSchema
-from backend.services import chat
+from backend.services import chat, reports
 from backend.utils import llm_pick
 from backend.utils.database import SessionLocal
 from backend.utils.workout_tools import make_tools
@@ -16,22 +17,26 @@ ROUTER_PROMPT = (
     "Use o histórico para entender respostas curtas (ex.: 'reto' respondendo a uma pergunta sobre o exercício, "
     "'sim'). Se o assistente acabou de pedir o treino do usuário, a resposta é routine. "
     "Se o assistente acabou de perguntar um dado de uma série (repetições, série, exercício ou kg), "
-    "a resposta é log_set."
+    "a resposta é log_set. Se o usuário diz que errou/mandou errado e reenvia valores de séries, é correct_set. Se o assistente acabou de perguntar de qual exercício ou grupo muscular é o "
+    "relatório, a resposta é report."
 )
 
 GENERAL_PROMPT = (
     subagents.STYLE
     + "\n\nVocê conversa de forma geral. Explique o que o Iron faz quando perguntarem: registra séries pelo "
     "Telegram, sugere a meta da próxima sessão (sobe 1 rep até 12, depois volta para 8 reps com mais carga), "
-    "guarda a rotina e mostra a evolução. Responda em poucas palavras. Não tem acesso a dados nesta resposta; se o usuário pedir dados, "
+    "guarda a rotina, manda lembrete do treino do dia, resumo ao fechar o treino (é só avisar \"terminei\") "
+    "e relatórios de evolução por exercício ou grupo muscular. Responda em poucas palavras. Não tem acesso a dados nesta resposta; se o usuário pedir dados, "
     "peça que reformule o pedido."
 )
 
 NODES = {
     "log_set": "logger",
     "correct_set": "logger",
+    "finish": "finish",
     "routine": "routine",
     "progress": "progress",
+    "report": "report",
     "feedback": "feedback",
     "general": "general",
 }
@@ -63,6 +68,22 @@ def progress_node(state: IronState, config: RunnableConfig) -> dict:
     return {"reply": subagents.progress_analyst(_ctx(config), state.messages)}
 
 
+def report_node(state: IronState, config: RunnableConfig) -> dict:
+    return {"reply": subagents.report_analyst(_ctx(config), state.messages)}
+
+
+def finish_node(state: IronState, config: RunnableConfig) -> dict:
+    """Resumo pós-treino determinístico: os números vêm do service, sem LLM."""
+    ctx = _ctx(config)
+    with SessionLocal.begin() as session:
+        result = reports.finish_today(session, session.get(User, ctx.user_id))
+        if result["status"] == "ok":
+            return {"reply": reports.format_session_summary(result)}
+    if result["status"] == "already_sent":
+        return {"reply": "Esse treino já foi fechado! Descansa e volta no próximo. 💪"}
+    return {"reply": "Ainda não tem nenhuma série registrada hoje. Me manda a primeira!"}
+
+
 def feedback_node(state: IronState, config: RunnableConfig) -> dict:
     text = str(state.messages[-1].content)
     make_tools(_ctx(config))["send_feedback"].invoke({"text": text})
@@ -80,6 +101,8 @@ def build_graph():
     graph.add_node("logger", logger_node)
     graph.add_node("routine", routine_node)
     graph.add_node("progress", progress_node)
+    graph.add_node("report", report_node)
+    graph.add_node("finish", finish_node)
     graph.add_node("feedback", feedback_node)
     graph.add_node("general", general_node)
     graph.add_edge(START, "router_node")
@@ -102,6 +125,13 @@ def _history(user_id: int, text: str) -> list[BaseMessage]:
 FALLBACK_AFTER_WRITE = "Anotei! Só não consegui montar a resposta completa agora. Confira o registro no site."
 
 
+def _auto_finish(user_id: int) -> str:
+    """Todos os exercícios fechados: manda o resumo pós-treino sem o usuário precisar avisar."""
+    with SessionLocal.begin() as session:
+        result = reports.finish_today(session, session.get(User, user_id))
+        return reports.format_session_summary(result) if result["status"] == "ok" else ""
+
+
 def respond(user_id: int, text: str) -> AgentReply:
     global _graph
     _graph = _graph or build_graph()
@@ -110,9 +140,12 @@ def respond(user_id: int, text: str) -> AgentReply:
         state = _graph.invoke({"messages": _history(user_id, text)}, {"configurable": {"ctx": ctx}})
     except Exception:
         if ctx.mutated:  # tentar de novo duplicaria o que já foi gravado
-            return AgentReply(FALLBACK_AFTER_WRITE)
+            extra = _auto_finish(user_id) if ctx.workout_done else ""
+            return AgentReply(f"{FALLBACK_AFTER_WRITE}\n\n{extra}".strip())
         raise
     reply = (state["reply"] if isinstance(state, dict) else state.reply).strip()
+    if ctx.workout_done:
+        reply = f"{reply}\n\n{_auto_finish(user_id)}".strip()
     return AgentReply(reply or "Não entendi, pode repetir?", ctx.buttons)
 
 

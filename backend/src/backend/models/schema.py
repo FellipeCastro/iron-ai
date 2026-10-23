@@ -5,7 +5,7 @@ from typing import Annotated, Literal
 from langchain_core.messages import BaseMessage
 from pydantic import BaseModel, Field
 
-Intent = Literal["log_set", "correct_set", "routine", "progress", "feedback", "general"]
+Intent = Literal["log_set", "correct_set", "finish", "routine", "progress", "report", "feedback", "general"]
 
 
 class RouterSchema(BaseModel):
@@ -18,7 +18,10 @@ class RouterSchema(BaseModel):
             "correct_set: corrigir a última série registrada. "
             "routine: cadastrar, ver ou alterar o treino/rotina (inclui responder à pergunta sobre o treino atual); "
             "perguntar qual é o próximo treino. "
-            "progress: consultar evolução, cargas, recordes ou histórico de um exercício. "
+            "finish: avisar que terminou o treino de hoje ('terminei', 'acabei o treino', 'fechei'). "
+            "progress: pergunta rápida sobre cargas, recordes ou histórico recente de um exercício. "
+            "report: pedir um relatório ou balanço de evolução de um exercício ou grupo muscular, "
+            "ex.: 'me dá um relatório da minha evolução no supino', 'relatório dos meus treinos de peito'. "
             "feedback: sugestão, elogio ou reclamação sobre o Iron. "
             "general: cumprimento ou conversa que não se encaixa nas demais."
         )
@@ -31,6 +34,7 @@ class AgentContext:
 
     user_id: int
     buttons: list[tuple[str, str]] = field(default_factory=list)
+    workout_done: bool = False  # a última série registrada fechou todos os exercícios do treino
     mutated: bool = False  # alguma tool já gravou algo; repetir a execução duplicaria dados
 
 

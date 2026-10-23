@@ -3,7 +3,7 @@ from decimal import Decimal
 
 import pytest
 
-from backend.models.db import ChannelLink, Target
+from backend.models.db import ChannelLink, Exercise, SetLog, Target
 from backend.services import confirmations, linking, workouts
 from backend.services.catalog import resolve_exercise
 from backend.services.stats import list_sessions
@@ -254,3 +254,113 @@ def test_chat_cannot_link_two_users_and_relink_replaces(db, make_user):
 def test_extract_code():
     assert linking.extract_code("/start IRON-7k3q9b") == "IRON-7K3Q9B"
     assert linking.extract_code("oi") is None
+
+
+# --- retorno rico do log_set ---------------------------------------------------------------------
+
+
+def test_log_set_reports_progress_in_workout_and_next_exercise(db, make_user):
+    u = make_user()
+    routine(db, u, {"name": "Peito", "exercises": [{"name": "Supino reto", "sets": 2}, {"name": "Crucifixo", "sets": 3}]})
+    first = workouts.log_set(db, u, "supino reto", 10, 20, now=NOON)
+    assert (first["sets_done"], first["sets_planned"], first["exercise_done"]) == (1, 2, False)
+    assert first["next_exercise"] is None
+    second = workouts.log_set(db, u, "supino reto", 10, 20, now=NOON + timedelta(minutes=3))
+    assert second["exercise_done"] is True and second["next_exercise"] == {"name": "Crucifixo", "sets": 3}
+
+
+def test_log_set_flags_record_only_after_first_history(db, make_user):
+    u = make_user()
+    assert workouts.log_set(db, u, "supino reto", 10, 20, now=NOON)["is_record"] is False
+    assert workouts.log_set(db, u, "supino reto", 10, 20, now=NOON + timedelta(minutes=3))["is_record"] is False
+    assert workouts.log_set(db, u, "supino reto", 8, 25, now=NOON + timedelta(minutes=6))["is_record"] is True
+
+
+# --- relatórios ---------------------------------------------------------------------------------
+
+
+def _train(db, user, day_offset, exercise, sets):
+    now = NOON + timedelta(days=day_offset)
+    for i, (reps, kg) in enumerate(sets):
+        workouts.log_set(db, user, exercise, reps, kg, now=now + timedelta(minutes=3 * i))
+    db.flush()
+
+
+def test_session_summary_counts_records_targets_and_volume_change(db, make_user):
+    from backend.models.db import WorkoutSession
+    from backend.services import reports
+
+    u = make_user()
+    routine(db, u, {"name": "Peito", "exercises": [{"name": "Supino reto", "sets": 2}]})
+    _train(db, u, 0, "supino reto", [(10, 20), (10, 20)])
+    _train(db, u, 2, "supino reto", [(11, 20), (8, 30)])  # 1ª bate a meta 11x20; 2ª passa a carga mas falha as reps
+    last = db.query(WorkoutSession).order_by(WorkoutSession.local_date.desc()).first()
+    s = reports.session_summary(db, u, last.id)
+    assert s["status"] == "ok" and s["sets"] == 2 and s["letter"] == "A"
+    assert s["records"] == [{"exercise": "Supino reto", "kg": 30.0, "reps": 8}]
+    assert (s["targets_hit"], s["targets_total"]) == (1, 2)
+    assert s["volume"] == 460.0 and s["volume_change_pct"] == 15  # 400 -> 460
+    assert s["missed"] == [{"exercise": "Supino reto", "reps": 10, "kg": 20.0}]
+    text = reports.format_session_summary(s)
+    assert "Treino A concluído" in text and "Metas batidas: 1/2" in text and "Recorde: Supino reto 8x30kg" in text
+
+
+def test_finish_today_sends_summary_once(db, make_user):
+    from backend.services import reports
+
+    u = make_user()
+    assert reports.finish_today(db, u, NOON)["status"] == "no_session"
+    _train(db, u, 0, "supino reto", [(10, 20)])
+    assert reports.finish_today(db, u, NOON)["status"] == "ok"
+    assert reports.finish_today(db, u, NOON)["status"] == "already_sent"
+
+
+def test_exercise_report_numbers(db, make_user):
+    from backend.services import reports
+
+    u = make_user()
+    _train(db, u, 0, "supino reto", [(10, 20)])
+    _train(db, u, 7, "supino reto", [(10, 30)])
+    _train(db, u, 14, "supino reto", [(8, 40)])
+    r = reports.exercise_report(db, u, "supino reto", "90d", NOON + timedelta(days=15))
+    assert r["status"] == "ok" and r["first_kg"] == 20.0 and r["last_kg"] == 40.0 and r["change_pct"] == 100
+    assert r["record"]["kg"] == 40.0 and r["sessions"] == 3 and r["sessions_per_week"] == 1.0
+    assert r["stagnant_weeks"] == 0
+
+
+def test_exercise_report_stagnation_and_no_data(db, make_user):
+    from backend.services import reports
+
+    u = make_user()
+    for week in range(3):
+        _train(db, u, week * 7, "supino reto", [(10, 30)])
+    r = reports.exercise_report(db, u, "supino reto", "90d", NOON + timedelta(days=15))
+    assert r["stagnant_weeks"] == 2
+    assert reports.exercise_report(db, u, "remada curvada", "90d", NOON)["status"] == "no_data"
+    assert reports.exercise_report(db, u, "supino", "90d", NOON)["status"] == "ambiguous"
+
+
+def test_muscle_group_report(db, make_user):
+    from backend.services import reports
+
+    u = make_user()
+    _train(db, u, 0, "supino reto", [(10, 20), (10, 20)])
+    _train(db, u, 0, "crucifixo", [(12, 10)])
+    _train(db, u, 7, "supino reto", [(10, 30)])
+    _train(db, u, 7, "agachamento livre", [(10, 50)])
+    group = db.query(Exercise).filter_by(canonical_name="Supino reto").one().muscle_group
+    r = reports.muscle_group_report(db, u, group.lower(), "30d", NOON + timedelta(days=8))
+    assert r["status"] == "ok" and r["group"] == group and r["sessions"] == 2 and r["sets"] == 4
+    assert r["exercises"][0]["exercise"] == "Supino reto" and r["exercises"][0]["change_kg"] == 10.0
+    assert 0 < r["volume_share_pct"] < 100 and r["least_trained"] == "Crucifixo"
+    assert reports.muscle_group_report(db, u, "pescoço", "30d", NOON)["status"] == "unknown_group"
+
+
+def test_log_set_with_existing_number_replaces_it(db, make_user):
+    user = make_user()
+    for reps, kg in [(10, 20), (10, 20), (8, 30)]:
+        workouts.log_set(db, user, "elevação lateral", reps, kg)
+    for number, (reps, kg) in enumerate([(10, 10), (10, 10), (8, 15)], 1):
+        workouts.log_set(db, user, "elevação lateral", reps, kg, number)
+    rows = db.scalars(workouts.active_sets(user.id).order_by(SetLog.set_number)).all()
+    assert [(r.set_number, r.reps, float(r.weight_kg)) for r in rows] == [(1, 10, 10.0), (2, 10, 10.0), (3, 8, 15.0)]

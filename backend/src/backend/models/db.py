@@ -17,7 +17,7 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -34,6 +34,7 @@ class User(Base):
     name: Mapped[str | None] = mapped_column(String)
     timezone: Mapped[str] = mapped_column(String, default="America/Sao_Paulo")
     reminder_time: Mapped[time | None] = mapped_column(Time, default=time(18, 0), server_default="18:00:00")
+    training_days: Mapped[list[int] | None] = mapped_column(ARRAY(SmallInteger))  # 0 = segunda ... 6 = domingo
     weight_increment_kg: Mapped[Decimal] = mapped_column(Numeric(4, 1), default=Decimal("5.0"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -137,6 +138,7 @@ class WorkoutSession(Base):
     workout_id: Mapped[int | None] = mapped_column(ForeignKey("workouts.id", ondelete="SET NULL"))
     local_date: Mapped[date] = mapped_column(Date)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    summary_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # resumo pós-treino já enviado
 
     workout: Mapped[Workout | None] = relationship()
 
