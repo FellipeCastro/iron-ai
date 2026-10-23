@@ -1,10 +1,10 @@
 import type { ReactNode } from 'react'
-import { Area, AreaChart, Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { Pie, PieChart, Bar, BarChart, CartesianGrid, Cell, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { musclePalette } from './palette'
 import { Card } from './ui'
 
 const axis = { stroke: '#9ca3af', fontSize: 12, tickLine: false, axisLine: false } as const
 const grid = <CartesianGrid stroke="#eef0f2" vertical={false} />
-const fmt = (v: number) => (v >= 1000 ? `${+(v / 1000).toFixed(1)}k` : String(v))
 
 type TipProps = { active?: boolean; payload?: { name: string; value: number; color: string; payload?: { range?: string } }[]; label?: string; unit?: string }
 
@@ -66,46 +66,64 @@ const xProps = { ...axis, dataKey: 'week', interval: 'preserveStartEnd' as const
 const cursor = { stroke: '#d1d5db' }
 const dot = { r: 3, fill: '#fff', strokeWidth: 2 }
 
-export function VolumeArea({ data }: { data: { week: string; volume: number }[] }) {
-  return (
-    <ResponsiveContainer>
-      <AreaChart data={data} margin={margin}>
-        <defs>
-          <linearGradient id="vol" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#1e1a24" stopOpacity={0.25} />
-            <stop offset="100%" stopColor="#1e1a24" stopOpacity={0} />
-          </linearGradient>
-        </defs>
-        {grid}
-        <XAxis {...xProps} />
-        <YAxis {...axis} width={44} tickFormatter={fmt} domain={[0, (max: number) => Math.ceil(max / 5000) * 5000]} tickCount={6} />
-        <Tooltip content={<Tip unit=" kg" />} cursor={cursor} />
-        <Area type="monotone" dataKey="volume" name="Volume" stroke="#1e1a24" strokeWidth={2.5} fill="url(#vol)" dot={dot} activeDot={{ r: 5 }} />
-      </AreaChart>
-    </ResponsiveContainer>
-  )
-}
-
-export function VolumeBars({
-  data,
-  dataKey = 'volume',
-  name = 'Volume',
-  unit = ' kg',
-}: {
-  data: object[]
-  dataKey?: string
-  name?: string
-  unit?: string
-}) {
+/** Quantidade de treinos por treino da rotina: uma barra vertical para cada. */
+export function WorkoutBars({ data }: { data: { name: string; treinos: number }[] }) {
   return (
     <ResponsiveContainer>
       <BarChart data={data} margin={margin}>
         {grid}
-        <XAxis {...xProps} />
-        <YAxis {...axis} width={44} tickFormatter={fmt} tickCount={5} allowDecimals={false} />
-        <Tooltip content={<Tip unit={unit} />} cursor={{ fill: 'rgba(0,0,0,0.04)' }} />
-        <Bar dataKey={dataKey} name={name} fill="#1e1a24" radius={[8, 8, 0, 0]} maxBarSize={40} />
+        <XAxis {...axis} dataKey="name" interval={0} />
+        <YAxis {...axis} width={32} allowDecimals={false} />
+        <Tooltip content={<Tip />} cursor={{ fill: 'rgba(0,0,0,0.04)' }} />
+        <Bar dataKey="treinos" name="Treinos" radius={[8, 8, 0, 0]} maxBarSize={48}>
+          {data.map((w, i) => (
+            <Cell key={w.name} fill={musclePalette[i % musclePalette.length]} />
+          ))}
+        </Bar>
       </BarChart>
+    </ResponsiveContainer>
+  )
+}
+
+export function MusclePie({ data }: { data: { name: string; sets: number; pct: number }[] }) {
+  return (
+    <ResponsiveContainer>
+      <PieChart>
+        <Tooltip
+          content={({ active, payload }) => {
+            const m = active ? (payload?.[0]?.payload as { name: string; sets: number; pct: number } | undefined) : undefined
+            if (!m) return null
+            return (
+              <div className="rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm shadow-[0_10px_30px_rgba(0,0,0,0.08)]">
+                <p className="font-semibold">{m.name}</p>
+                <p className="text-neutral-600">
+                  {m.pct}% · {m.sets} séries
+                </p>
+              </div>
+            )
+          }}
+        />
+        <Pie data={data} dataKey="sets" nameKey="name" innerRadius="55%" outerRadius="90%" paddingAngle={2} stroke="none">
+          {data.map((m, i) => (
+            <Cell key={m.name} fill={musclePalette[i % musclePalette.length]} />
+          ))}
+        </Pie>
+      </PieChart>
+    </ResponsiveContainer>
+  )
+}
+
+/** Contagem por semana: pontos ligados por linha, eixo em inteiros a partir de zero. */
+export function CountLine({ data, dataKey, name }: { data: object[]; dataKey: string; name: string }) {
+  return (
+    <ResponsiveContainer>
+      <LineChart data={data} margin={margin}>
+        {grid}
+        <XAxis {...xProps} />
+        <YAxis {...axis} width={32} allowDecimals={false} domain={[0, (max: number) => Math.max(max, 3)]} />
+        <Tooltip content={<Tip />} cursor={cursor} />
+        <Line type="monotone" dataKey={dataKey} name={name} stroke="#1e1a24" strokeWidth={2.5} dot={dot} activeDot={{ r: 5 }} />
+      </LineChart>
     </ResponsiveContainer>
   )
 }

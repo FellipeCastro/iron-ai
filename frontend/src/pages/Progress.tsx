@@ -1,16 +1,11 @@
 import { Search } from 'lucide-react'
 import { useState } from 'react'
-import { ChartCard, MultiLine, VolumeBars } from '../components/app/charts'
-import { Empty, ErrorState, Loading, PageHeader, Stat } from '../components/app/ui'
+import { ChartCard, MultiLine } from '../components/app/charts'
+import { Card, Empty, ErrorState, Loading, PageHeader, Stat } from '../components/app/ui'
 import { useExercises, useProgress } from '../hooks/useData'
-import { fmtKg, fmtVolume, signed } from '../lib/format'
+import { fmtDate, fmtKg, norm, signed } from '../lib/format'
 
-const norm = (t: string) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
-
-const loadSeries = [
-  { key: 'rm', name: '1RM', color: '#0a0a0a' },
-  { key: 'kg', name: 'Carga', color: '#f0323c', step: true },
-]
+const loadSeries = [{ key: 'kg', name: 'Carga máxima', color: '#f0323c' }]
 
 export default function Progress() {
   const exercises = useExercises()
@@ -26,17 +21,17 @@ export default function Progress() {
   if (exercises.data.length === 0) {
     return (
       <>
-        <PageHeader title="Seu progresso" subtitle="Carga, 1RM estimado (Epley) e volume total por exercício." />
+        <PageHeader title="Seu progresso" subtitle="Carga máxima e recorde de cada exercício." />
         <Empty title="Sem dados por enquanto">Registre séries pelo Telegram e a evolução de cada exercício aparece aqui.</Empty>
       </>
     )
   }
 
   const matches = exercises.data.filter((e) => norm(e).includes(norm(query)))
-  const summary = progress.data?.summary
+  const data = progress.data
   return (
     <>
-      <PageHeader title="Seu progresso" subtitle="Carga, 1RM estimado (Epley) e volume total por exercício." />
+      <PageHeader title="Seu progresso" subtitle="Carga máxima e recorde de cada exercício." />
 
       <div className="relative mx-auto mt-8 w-full max-w-[460px]">
         <Search className="pointer-events-none absolute top-1/2 left-4 size-5 -translate-y-1/2 text-neutral-400" />
@@ -79,29 +74,39 @@ export default function Progress() {
 
       {progress.error ? (
         <ErrorState error={progress.error} onRetry={progress.refetch} />
-      ) : progress.loading || !progress.data ? (
+      ) : progress.loading || !data ? (
         <Loading />
-      ) : !summary ? (
+      ) : !data.points.length ? (
         <Empty title="Sem registros deste exercício">Quando você registrar séries dele pelo Telegram, os gráficos aparecem aqui.</Empty>
       ) : (
         <>
-          <div className="mt-6 grid grid-cols-3 gap-2 sm:gap-4 lg:mt-8 lg:gap-8">
-            <Stat label="Carga" value={`${fmtKg(summary.kg)} kg`} hint={summary.kg_change ? `${signed(summary.kg_change)} kg` : undefined} />
-            <Stat label="1RM" value={`${fmtKg(summary.rm)} kg`} hint={summary.rm_change ? `${signed(summary.rm_change)} kg` : undefined} />
+          <div className="mt-6 grid grid-cols-2 gap-2 sm:gap-4 lg:mt-8 lg:gap-8">
             <Stat
-              label="Volume"
-              value={fmtVolume(summary.volume)}
-              hint={summary.volume_change_pct !== null && summary.volume_change_pct !== 0 ? signed(summary.volume_change_pct, '%') : undefined}
+              label="Carga máxima atual"
+              value={`${fmtKg(data.points[data.points.length - 1].kg)} kg`}
+              hint={data.kg_change ? `${signed(data.kg_change)} kg no período` : undefined}
             />
+            {data.record && (
+              <Stat
+                label="Recorde"
+                value={data.record.weight_kg > 0 ? `${fmtKg(data.record.weight_kg)} kg × ${data.record.reps}` : `${data.record.reps} reps`}
+                hint={fmtDate(data.record.date)}
+              />
+            )}
           </div>
 
-          <div className="mt-4 grid gap-4 lg:mt-8 lg:grid-cols-2 lg:gap-8">
-            <ChartCard title="Carga e 1RM" subtitle={`${exercise}, em kg`} legend={loadSeries}>
-              <MultiLine data={progress.data.points} series={loadSeries} />
+          <div className="mt-4 grid gap-4 lg:mt-8 lg:grid-cols-3 lg:gap-8">
+            <ChartCard title="Carga máxima por semana" subtitle={`${exercise}, em kg`} legend={loadSeries} className="lg:col-span-2">
+              <MultiLine data={data.points} series={loadSeries} />
             </ChartCard>
-            <ChartCard title="Volume por semana" subtitle={`${exercise}, reps x kg`} legend={[{ name: 'Volume', color: '#1e1a24' }]}>
-              <VolumeBars data={progress.data.points} />
-            </ChartCard>
+            {data.rm_estimate !== null && (
+              <Card className="flex flex-col justify-center">
+                <p className="text-sm font-medium text-neutral-500">Sugestão</p>
+                <p className="mt-2 text-[15px] text-neutral-600">Com base no seu melhor desempenho, seu 1RM estimado neste exercício é de</p>
+                <p className="mt-2 text-[36px] leading-none font-semibold tracking-tight">{fmtKg(data.rm_estimate)} kg</p>
+                <p className="mt-3 text-xs text-neutral-500">Estimativa pela fórmula de Epley; use como referência, não como meta.</p>
+              </Card>
+            )}
           </div>
         </>
       )}

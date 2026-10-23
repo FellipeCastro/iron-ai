@@ -1,28 +1,39 @@
 import { Dumbbell, Flame, Send, TrendingUp } from 'lucide-react'
 import { useUser } from '@clerk/react'
 import { Link } from 'react-router-dom'
-import { ChartCard, MultiLine, VolumeArea, VolumeBars } from '../components/app/charts'
+import { useState } from 'react'
+import { ChartCard, CountLine, MusclePie, WorkoutBars } from '../components/app/charts'
+import { musclePalette } from '../components/app/palette'
+import { CalendarGrid, RecordsTable } from '../components/app/metrics'
 import { Card, Empty, ErrorState, Loading, PageHeader, Stat, btnLight } from '../components/app/ui'
-import { useDashboard, useMe, useRoutine, useSessions } from '../hooks/useData'
-import { fmtDate, fmtTime, fmtVolume, signed } from '../lib/format'
+import { useDashboard, useMe, useRecords, useRoutine, useSessions } from '../hooks/useData'
+import { fmtDate, fmtTime } from '../lib/format'
 
-const palette = ['#0a0a0a', '#f0323c', '#059669']
+const periods = [1, 2, 3, 6]
+const months = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro']
+const monthName = (month: string) => months[Number(month.split('-')[1]) - 1]
 
 export default function Dashboard() {
   const { user } = useUser()
   const me = useMe()
-  const dash = useDashboard()
+  const [months, setMonths] = useState(2)
+  const dash = useDashboard(months)
+  // mantém o período anterior na tela enquanto o novo carrega, sem piscar a página inteira
+  const [shown, setShown] = useState(dash.data)
+  if (dash.data && dash.data !== shown) setShown(dash.data)
+  const records = useRecords()
   const routine = useRoutine()
   const sessions = useSessions(3)
 
   const error = dash.error ?? routine.error ?? sessions.error
   if (error) return <ErrorState error={error} onRetry={() => { dash.refetch(); routine.refetch(); sessions.refetch() }} />
-  if (!dash.data || !routine.data || !sessions.data) return <Loading />
+  if (!shown || !routine.data || !sessions.data) return <Loading />
 
-  const { stats, weekly, one_rm } = dash.data
+  const { stats, weekly, muscles, by_workout, calendar } = shown
+  const period = months === 1 ? 'último mês' : `últimos ${months} meses`
+  const muscleLegend = muscles.map((m, i) => ({ name: `${m.name} ${m.pct}%`, color: musclePalette[i % musclePalette.length] }))
   const next = routine.data.workouts.find((w) => w.id === routine.data!.next_workout_id)
   const reminder = fmtTime(routine.data.reminder_time)
-  const oneRmSeries = one_rm.series.map((s, i) => ({ key: s.key, name: s.name, color: palette[i % palette.length] }))
 
   return (
     <>
@@ -42,39 +53,77 @@ export default function Dashboard() {
 
       <div className="mt-8 grid grid-cols-3 gap-2 sm:gap-4 lg:mt-[56px] lg:gap-8">
         <Stat
-          label="Treinos no mês"
-          value={String(stats.workouts_month)}
-          hint={stats.workouts_month_change !== 0 ? `${signed(stats.workouts_month_change)} vs mês anterior` : undefined}
+          label="Dias treinados na semana"
+          value={stats.days_planned_week ? `${stats.days_trained_week} de ${stats.days_planned_week}` : String(stats.days_trained_week)}
+          hint={stats.streak_weeks ? `${stats.streak_weeks} ${stats.streak_weeks === 1 ? 'semana seguida' : 'semanas seguidas'}` : undefined}
         />
         <Stat
-          label="Volume na semana"
-          value={fmtVolume(stats.volume_week)}
-          hint={stats.volume_week_change_pct !== null ? `${signed(stats.volume_week_change_pct, '%')} vs semana anterior` : undefined}
+          label="Recordes no mês"
+          value={String(stats.records_month)}
+          hint={stats.records_month ? 'nos últimos 30 dias' : undefined}
         />
         <Stat
-          label="Sequência"
-          value={`${stats.streak_weeks} ${stats.streak_weeks === 1 ? 'semana' : 'semanas'}`}
-          hint={`Recorde: ${stats.streak_record_weeks}`}
+          label="Músculo mais treinado"
+          value={stats.top_muscle?.name ?? '—'}
+          hint={stats.top_muscle ? `${stats.top_muscle.pct}% das séries` : undefined}
         />
       </div>
 
-      <div className="mt-4 grid gap-4 lg:mt-8 lg:grid-cols-3 lg:gap-8">
-        <ChartCard title="Volume semanal" subtitle="Total levantado em kg (reps x carga)" legend={[{ name: 'Volume', color: '#1e1a24' }]} className="lg:col-span-2">
-          <VolumeArea data={weekly} />
-        </ChartCard>
-        <ChartCard title="Treinos por semana" subtitle="Frequência" legend={[{ name: 'Treinos', color: '#1e1a24' }]}>
-          <VolumeBars data={weekly} dataKey="treinos" name="Treinos" unit="" />
-        </ChartCard>
+      <div role="group" aria-label="Período" className="mt-8 flex justify-center gap-2 lg:mt-12">
+        {periods.map((w) => (
+          <button
+            key={w}
+            type="button"
+            aria-pressed={w === months}
+            onClick={() => setMonths(w)}
+            className={`h-10 rounded-lg px-4 text-sm font-semibold ring-1 transition ${w === months ? 'bg-ink text-white ring-black' : 'bg-white text-ink ring-neutral-300 hover:bg-gray-100'}`}
+          >
+            {w === 1 ? '1 mês' : `${w} meses`}
+          </button>
+        ))}
       </div>
-      <div className="mt-4 lg:mt-8">
-        <ChartCard title="Evolução do 1RM" subtitle="Estimado pela fórmula de Epley, em kg" legend={oneRmSeries}>
-          {oneRmSeries.length ? (
-            <MultiLine data={one_rm.data} series={oneRmSeries} />
+
+      <div className={`mt-4 grid gap-4 transition-opacity lg:grid-cols-3 lg:gap-8 ${dash.loading ? 'opacity-60' : ''}`}>
+        <ChartCard title="Músculos mais trabalhados" subtitle={`Divisão das séries por grupo muscular, ${period}`} legend={muscleLegend} className="lg:col-span-2">
+          {muscles.length ? (
+            <MusclePie data={muscles} />
           ) : (
-            <p className="grid h-full place-items-center text-center text-sm text-neutral-500">Registre séries pelo Telegram para ver a evolução do 1RM.</p>
+            <p className="grid h-full place-items-center text-center text-sm text-neutral-500">Registre séries pelo Telegram para ver os músculos mais trabalhados.</p>
           )}
         </ChartCard>
+        <ChartCard title="Treinos por semana" subtitle={`Frequência, ${period}`}>
+          <CountLine data={weekly} dataKey="treinos" name="Treinos" />
+        </ChartCard>
       </div>
+
+      <div className="mt-4 grid gap-4 lg:mt-8 lg:grid-cols-2 lg:gap-8">
+        <ChartCard title="Treinos feitos" subtitle={`Quantas vezes você fez cada treino, ${period}`}>
+          {by_workout.length ? (
+            <WorkoutBars data={by_workout} />
+          ) : (
+            <p className="grid h-full place-items-center text-center text-sm text-neutral-500">Sem treinos no período.</p>
+          )}
+        </ChartCard>
+        <ChartCard title="Calendário" subtitle={`Dias treinados em ${monthName(calendar.month)}`}>
+          <CalendarGrid month={calendar.month} days={calendar.days} />
+        </ChartCard>
+      </div>
+
+      <Card className="mt-4 lg:mt-8">
+        <h3 className="text-lg font-semibold sm:text-xl">Recordes</h3>
+        <p className="text-sm text-neutral-500">Maior carga de cada exercício; em empate, vale quem fez mais reps.</p>
+        {records.error ? (
+          <p className="mt-4 text-sm text-neutral-500">{records.error.message}</p>
+        ) : !records.data ? (
+          <Loading />
+        ) : records.data.length ? (
+          <div className="mt-4">
+            <RecordsTable records={records.data} />
+          </div>
+        ) : (
+          <p className="mt-4 text-sm text-neutral-500">Registre séries pelo Telegram para ver seus recordes.</p>
+        )}
+      </Card>
 
       <section className="mt-16 lg:mt-[96px]">
         <h2 className="text-center text-[28px] leading-[1.2] font-medium tracking-tight lg:text-[40px]">Próximo treino</h2>
@@ -130,7 +179,6 @@ export default function Dashboard() {
                   <p className="mt-1 text-[15px] text-neutral-500">
                     {fmtDate(s.date)} · {s.sets.length} séries
                   </p>
-                  <p className="mt-3 text-[15px] text-neutral-500">Volume total de {s.volume.toLocaleString('pt-BR')} kg.</p>
                 </Card>
               ))}
             </div>

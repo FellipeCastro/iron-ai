@@ -38,7 +38,7 @@ export default function History() {
                       {s.workout} {s.focus && <span className="font-normal text-neutral-500">· {s.focus}</span>}
                     </h3>
                     <p className="mt-1 text-base text-neutral-500">
-                      {fmtDate(s.date)} · {s.sets.length} séries · {s.volume.toLocaleString('pt-BR')} kg de volume
+                      {fmtDate(s.date)} · {s.sets.length} séries
                     </p>
                   </div>
                   <ChevronDown className={`size-5 shrink-0 transition ${isOpen ? 'rotate-180' : ''}`} />

@@ -12,7 +12,7 @@ from backend.models.db import Exercise, ExerciseAlias, SetLog, User, Workout, Wo
 from backend.services.catalog import normalize
 from backend.services.workouts import active_routine, active_sets, workout_focus, workout_letter
 
-WEEKS_SHOWN = 6
+MONTHS_SHOWN = 2
 
 
 def _week_start(day: date) -> date:
@@ -29,7 +29,15 @@ def _today(user: User, now: datetime | None) -> date:
     return local_session_date(now or datetime.now(UTC), user.timezone)
 
 
-def recent_week_starts(today: date, count: int = WEEKS_SHOWN) -> list[date]:
+def months_ago(today: date, months: int) -> date:
+    index = today.year * 12 + today.month - 1 - months
+    year, month = divmod(index, 12)
+    first_next = date(year + (month + 1) // 12, (month + 1) % 12 + 1, 1)
+    last_day = (first_next - timedelta(days=1)).day
+    return date(year, month + 1, min(today.day, last_day))
+
+
+def recent_week_starts(today: date, count: int) -> list[date]:
     current = _week_start(today)
     return [current - timedelta(weeks=i) for i in range(count - 1, -1, -1)]
 
@@ -85,11 +93,49 @@ def list_sessions(session: Session, user: User, limit: int = 20, offset: int = 0
 def _weekly_rows(session: Session, user: User, since: date):
     return session.execute(
         active_sets(user.id)
-        .with_only_columns(
-            SetLog.exercise_id, SetLog.reps, SetLog.weight_kg, WorkoutSession.local_date, WorkoutSession.id
-        )
+        .with_only_columns(SetLog.exercise_id, WorkoutSession.local_date, WorkoutSession.id)
         .where(WorkoutSession.local_date >= since)
     ).all()
+
+
+def _update_record(best: dict, key: int, reps: int, kg: Decimal, day: date) -> None:
+    """Recorde = maior carga; em empate, mais reps. Só uma série melhor substitui, então vale a 1ª vez que foi feito."""
+    current = best.get(key)
+    if current is None:
+        best[key] = {"kg": kg, "reps": reps, "date": day, "first": day}
+    elif (kg, reps) > (current["kg"], current["reps"]):
+        current.update(kg=kg, reps=reps, date=day)
+
+
+def _exercise_records(session: Session, user: User) -> dict[int, dict]:
+    rows = session.execute(
+        active_sets(user.id)
+        .with_only_columns(SetLog.exercise_id, SetLog.reps, SetLog.weight_kg, WorkoutSession.local_date)
+        .order_by(WorkoutSession.local_date, SetLog.id)
+    )
+    best: dict[int, dict] = {}
+    for exercise_id, reps, kg, day in rows:
+        _update_record(best, exercise_id, reps, kg, day)
+    return best
+
+
+def records(session: Session, user: User) -> list[dict]:
+    best = _exercise_records(session, user)
+    if not best:
+        return []
+    exercises = {e.id: e for e in session.scalars(select(Exercise).where(Exercise.id.in_(best)))}
+    out = [
+        {
+            "exercise": exercises[eid].canonical_name,
+            "group": exercises[eid].muscle_group,
+            "weight_kg": float(r["kg"]),
+            "reps": r["reps"],
+            "date": r["date"].isoformat(),
+        }
+        for eid, r in best.items()
+    ]
+    out.sort(key=lambda r: r["exercise"])
+    return sorted(out, key=lambda r: r["date"], reverse=True)
 
 
 def _streak_weeks(days: set[date], today: date) -> tuple[int, int]:
@@ -113,63 +159,71 @@ def _streak_weeks(days: set[date], today: date) -> tuple[int, int]:
     return current, best
 
 
-def dashboard(session: Session, user: User, now: datetime | None = None) -> dict:
-    today = _today(user, now)
-    starts = recent_week_starts(today)
-    rows = _weekly_rows(session, user, starts[0])
+def _sessions_by_workout(session: Session, user: User, since: date) -> list[dict]:
+    """Quantas vezes cada treino da rotina foi feito no período; sessões sem treino viram "Treino avulso"."""
+    rows = session.execute(
+        select(Workout.name, Workout.position)
+        .select_from(WorkoutSession)
+        .outerjoin(Workout, Workout.id == WorkoutSession.workout_id)
+        .where(WorkoutSession.user_id == user.id, WorkoutSession.local_date >= since)
+    ).all()
+    counts: dict[str, int] = defaultdict(int)
+    order: dict[str, int] = {}
+    for name, position in rows:
+        label = f"{workout_letter(position)} · {name}" if name is not None else "Avulso"
+        counts[label] += 1
+        order[label] = position if position is not None else 99
+    return [{"name": label, "treinos": counts[label]} for label in sorted(counts, key=lambda k: (order[k], k))]
 
-    weekly = {s: {"volume": Decimal(0), "sessions": set()} for s in starts}
-    per_exercise: dict[int, dict[date, Decimal]] = defaultdict(dict)
-    for exercise_id, reps, kg, day, session_id in rows:
+
+def dashboard(session: Session, user: User, now: datetime | None = None, months: int = MONTHS_SHOWN) -> dict:
+    today = _today(user, now)
+    since = months_ago(today, months)
+    starts = recent_week_starts(today, (_week_start(today) - _week_start(since)).days // 7 + 1)
+    rows = _weekly_rows(session, user, since)
+
+    groups = {e.id: e.muscle_group or "Outros" for e in session.scalars(select(Exercise))}
+    weekly: dict[date, set[int]] = {s: set() for s in starts}
+    per_group: dict[str, int] = defaultdict(int)
+    for exercise_id, day, session_id in rows:
         start = _week_start(day)
         if start not in weekly:
             continue
-        weekly[start]["volume"] += Decimal(reps) * kg
-        weekly[start]["sessions"].add(session_id)
-        one_rm = epley(kg, reps)
-        if one_rm > per_exercise[exercise_id].get(start, Decimal(0)):
-            per_exercise[exercise_id][start] = one_rm
+        weekly[start].add(session_id)
+        per_group[groups.get(exercise_id, "Outros")] += 1
 
-    weekly_out = [
-        {**_week_label(s), "volume": float(weekly[s]["volume"]), "treinos": len(weekly[s]["sessions"])} for s in starts
-    ]
+    weekly_out = [{**_week_label(s), "treinos": len(weekly[s])} for s in starts]
 
-    month_start = today.replace(day=1)
-    prev_month_start = (month_start - timedelta(days=1)).replace(day=1)
-    all_days = set(
-        session.scalars(select(WorkoutSession.local_date).where(WorkoutSession.user_id == user.id))
+    total = sum(per_group.values())
+    muscles = sorted(
+        ({"name": name, "sets": n, "pct": round(n / total * 100)} for name, n in per_group.items()),
+        key=lambda m: m["sets"],
+        reverse=True,
     )
-    in_month = sum(1 for d in all_days if d >= month_start)
-    in_prev_month = sum(1 for d in all_days if prev_month_start <= d < month_start)
+
+    by_workout = _sessions_by_workout(session, user, since)
+
+    all_days = set(session.scalars(select(WorkoutSession.local_date).where(WorkoutSession.user_id == user.id)))
+    month_start = today.replace(day=1)
     streak, record = _streak_weeks(all_days, today)
+    routine = active_routine(session, user.id)
 
-    current_volume = weekly_out[-1]["volume"]
-    previous_volume = weekly_out[-2]["volume"]
-    volume_change = round((current_volume - previous_volume) / previous_volume * 100) if previous_volume else None
-
-    # os 3 exercícios mais frequentes no período entram no gráfico de 1RM
-    top = sorted(per_exercise, key=lambda e: len(per_exercise[e]), reverse=True)[:3]
-    names = {e.id: e.canonical_name for e in session.scalars(select(Exercise).where(Exercise.id.in_(top)))} if top else {}
-    series = [{"key": f"e{i}", "name": names[eid]} for i, eid in enumerate(top)]
-    one_rm_data = []
-    for start in starts:
-        point = _week_label(start)
-        for i, eid in enumerate(top):
-            value = per_exercise[eid].get(start)
-            point[f"e{i}"] = float(value) if value is not None else None
-        one_rm_data.append(point)
+    last_30 = today - timedelta(days=30)
+    records_month = sum(1 for r in _exercise_records(session, user).values() if r["date"] >= last_30 and r["date"] > r["first"])
 
     return {
         "stats": {
-            "workouts_month": in_month,
-            "workouts_month_change": in_month - in_prev_month,
-            "volume_week": current_volume,
-            "volume_week_change_pct": volume_change,
+            "days_trained_week": sum(1 for d in all_days if _week_start(today) <= d <= today),
+            "days_planned_week": len(routine.workouts) if routine else 0,
+            "records_month": records_month,
+            "top_muscle": muscles[0] if muscles else None,
             "streak_weeks": streak,
             "streak_record_weeks": record,
         },
         "weekly": weekly_out,
-        "one_rm": {"series": series, "data": one_rm_data},
+        "muscles": muscles,
+        "by_workout": by_workout,
+        "calendar": {"month": month_start.strftime("%Y-%m"), "days": sorted(d.isoformat() for d in all_days if d >= month_start)},
     }
 
 
@@ -202,27 +256,24 @@ def exercise_progress(session: Session, user: User, exercise_name: str, weeks: i
     rows = session.execute(
         active_sets(user.id)
         .with_only_columns(SetLog.reps, SetLog.weight_kg, WorkoutSession.local_date)
-        .where(SetLog.exercise_id == exercise.id, WorkoutSession.local_date >= since)
+        .where(SetLog.exercise_id == exercise.id)
+        .order_by(WorkoutSession.local_date, SetLog.id)
     ).all()
-    buckets: dict[date, dict] = {}
+    best: dict[int, dict] = {}
+    rm = Decimal(0)
+    buckets: dict[date, Decimal] = {}
     for reps, kg, day in rows:
-        b = buckets.setdefault(_week_start(day), {"kg": Decimal(0), "rm": Decimal(0), "volume": Decimal(0)})
-        b["kg"] = max(b["kg"], kg)
-        b["rm"] = max(b["rm"], epley(kg, reps))
-        b["volume"] += Decimal(reps) * kg
-    points = [
-        {**_week_label(start), "kg": float(b["kg"]), "rm": float(b["rm"]), "volume": float(b["volume"])}
-        for start, b in sorted(buckets.items())
-    ]
-    summary = None
-    if points:
-        first, last = points[0], points[-1]
-        summary = {
-            "kg": last["kg"],
-            "rm": last["rm"],
-            "volume": last["volume"],
-            "kg_change": round(last["kg"] - first["kg"], 1),
-            "rm_change": round(last["rm"] - first["rm"], 1),
-            "volume_change_pct": round((last["volume"] - first["volume"]) / first["volume"] * 100) if first["volume"] else None,
-        }
-    return {"exercise": exercise.canonical_name, "points": points, "summary": summary}
+        _update_record(best, exercise.id, reps, kg, day)
+        rm = max(rm, epley(kg, reps))
+        if day >= since:
+            start = _week_start(day)
+            buckets[start] = max(buckets.get(start, Decimal(0)), kg)
+    points = [{**_week_label(start), "kg": float(kg)} for start, kg in sorted(buckets.items())]
+    record = best.get(exercise.id)
+    return {
+        "exercise": exercise.canonical_name,
+        "points": points,
+        "kg_change": round(points[-1]["kg"] - points[0]["kg"], 1) if points else None,
+        "record": {"weight_kg": float(record["kg"]), "reps": record["reps"], "date": record["date"].isoformat()} if record else None,
+        "rm_estimate": float(rm) if rows else None,
+    }

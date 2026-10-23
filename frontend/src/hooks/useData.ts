@@ -1,4 +1,4 @@
-import { type Dashboard, type Me, type Progress, type Routine, type Session, type Settings, useApi } from '../lib/api'
+import { type Dashboard, type Me, type Progress, type RecordItem, type Routine, type Session, type Settings, useApi } from '../lib/api'
 import { useQuery } from './useQuery'
 
 export const useMe = () => {
@@ -16,9 +16,14 @@ export const useSessions = (limit = 20) => {
   return useQuery(`sessions-${limit}`, () => api<Session[]>(`/sessions?limit=${limit}`))
 }
 
-export const useDashboard = () => {
+export const useDashboard = (months: number) => {
   const api = useApi()
-  return useQuery('dashboard', () => api<Dashboard>('/dashboard'))
+  return useQuery(`dashboard-${months}`, () => api<Dashboard>(`/dashboard?months=${months}`))
+}
+
+export const useRecords = () => {
+  const api = useApi()
+  return useQuery('records', () => api<RecordItem[]>('/records'))
 }
 
 export const useExercises = () => {

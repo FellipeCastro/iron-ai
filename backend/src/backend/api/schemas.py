@@ -91,55 +91,67 @@ class WeekPoint(BaseModel):
     week_start: str
 
 
+class MuscleShare(BaseModel):
+    name: str
+    sets: int
+    pct: int
+
+
 class DashboardStats(BaseModel):
-    workouts_month: int
-    workouts_month_change: int
-    volume_week: float
-    volume_week_change_pct: int | None
+    days_trained_week: int
+    days_planned_week: int
+    records_month: int
+    top_muscle: MuscleShare | None
     streak_weeks: int
     streak_record_weeks: int
 
 
 class WeeklyOut(WeekPoint):
-    volume: float
     treinos: int
 
 
-class OneRmSeries(BaseModel):
-    key: str
+class WorkoutCount(BaseModel):
     name: str
+    treinos: int
 
 
-class OneRmOut(BaseModel):
-    series: list[OneRmSeries]
-    data: list[dict]  # {week, range, week_start, e0: float|null, e1: ...}
+class CalendarOut(BaseModel):
+    month: str  # YYYY-MM
+    days: list[str]  # datas ISO com treino
 
 
 class DashboardOut(BaseModel):
     stats: DashboardStats
     weekly: list[WeeklyOut]
-    one_rm: OneRmOut
+    muscles: list[MuscleShare]
+    by_workout: list[WorkoutCount]
+    calendar: CalendarOut
+
+
+class RecordOut(BaseModel):
+    exercise: str
+    group: str | None
+    weight_kg: float
+    reps: int
+    date: str
+
+
+class ExerciseRecord(BaseModel):
+    weight_kg: float
+    reps: int
+    date: str
 
 
 class ProgressPoint(WeekPoint):
     kg: float
-    rm: float
-    volume: float
-
-
-class ProgressSummary(BaseModel):
-    kg: float
-    rm: float
-    volume: float
-    kg_change: float
-    rm_change: float
-    volume_change_pct: int | None
 
 
 class ProgressOut(BaseModel):
     exercise: str
     points: list[ProgressPoint]
-    summary: ProgressSummary | None
+    kg_change: float | None
+    record: ExerciseRecord | None
+    rm_estimate: float | None
 
 
 class SettingsOut(BaseModel):

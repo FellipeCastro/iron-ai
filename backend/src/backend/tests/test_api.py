@@ -105,12 +105,20 @@ def test_routine_sessions_dashboard_and_progress(signer):
     assert sessions[0]["sets"][0]["exercise"] == "Supino reto"
 
     dash = client.get("/dashboard", headers=h).json()
-    assert dash["stats"]["workouts_month"] >= 1 and len(dash["weekly"]) == 6
-    assert dash["one_rm"]["series"][0]["name"] == "Supino reto"
+    assert len(dash["weekly"]) >= 8 and dash["stats"]["days_planned_week"] == 2
+    assert dash["stats"]["days_trained_week"] >= 1
+    assert dash["muscles"][0]["name"] == "Peito" and dash["stats"]["top_muscle"]["name"] == "Peito"
+    assert dash["by_workout"] == [{"name": "A · Peito", "treinos": 3}]
+    assert len(client.get("/dashboard?months=1", headers=h).json()["weekly"]) < len(dash["weekly"])
+    assert client.get("/dashboard?months=5", headers=h).status_code == 422
+
+    recs = client.get("/records", headers=h).json()
+    assert len(recs) == 1 and recs[0]["exercise"] == "Supino reto"
+    assert recs[0]["weight_kg"] == 30 and recs[0]["reps"] == 12  # empate em 30 kg: vence quem tem mais reps
 
     assert client.get("/exercises", headers=h).json()[:1] == ["Puxada frontal"]
     prog = client.get("/progress/Supino reto", headers=h).json()
-    assert prog["exercise"] == "Supino reto" and len(prog["points"]) >= 2 and prog["summary"]["kg"] > 0
+    assert prog["exercise"] == "Supino reto" and len(prog["points"]) >= 2 and prog["record"]["weight_kg"] == 30 and prog["rm_estimate"] > 30 and "volume" not in prog["points"][0]
     assert client.get("/progress/inexistente", headers=h).status_code == 404
 
 

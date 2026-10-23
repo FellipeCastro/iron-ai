@@ -7,6 +7,9 @@ export function fmtDate(iso: string) {
   return `${d} ${months[m - 1]} ${y}`
 }
 
+/** Minúsculas e sem acento, para buscas. */
+export const norm = (t: string) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+
 export const fmtTime = (t: string | null) => (t ? t.slice(0, 5) : null)
 
 export const fmtKg = (v: number) => v.toLocaleString('pt-BR', { maximumFractionDigits: 1 })

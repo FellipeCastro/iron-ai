@@ -101,6 +101,17 @@ O webhook do Clerk aponta para `https://embassy-ambition-wager.ngrok-free.dev/we
 
 Use `TELEGRAM_MODE=polling` no `backend/.env`. O backend busca as mensagens no Telegram e grava no mesmo inbox do webhook, então só precisa de 2 terminais (backend e frontend). Sem o ngrok, o webhook do Clerk não chega: o usuário é criado na primeira chamada autenticada à API.
 
+**Usuário de teste com dados prontos.** Para já ter rotina (Peito/Costas/Pernas), 4 semanas de histórico e metas, rode o seed com o `clerk_id` da conta com que você faz login (Clerk Dashboard > Users, formato `user_...`):
+
+```powershell
+cd backend
+uv run python scripts/seed_test_user.py --clerk-id user_xxx                          # cria
+uv run python scripts/seed_test_user.py --clerk-id user_xxx --telegram-id 123456789  # já vinculado ao Telegram
+uv run python scripts/seed_test_user.py --clerk-id user_xxx --reset                  # apaga e recria
+```
+
+Sem `--clerk-id`, cria o usuário fictício `user_teste_local` (útil só para inspecionar o banco, já que não dá para logar nele).
+
 ### Banco local (opcional)
 
 Para desenvolver sem tocar no Neon, suba o Postgres do compose e aponte o `DATABASE_URL` para ele:

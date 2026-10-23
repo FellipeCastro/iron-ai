@@ -31,22 +31,29 @@ export type RoutineInput = { workouts: { name: string; weekday: number | null; e
 export type SessionSet = { exercise: string; set_number: number; reps: number; kg: number }
 export type Session = { id: number; date: string; workout: string; letter: string | null; focus: string; volume: number; sets: SessionSet[] }
 export type WeekPoint = { week: string; range: string; week_start: string }
+export type MuscleShare = { name: string; sets: number; pct: number }
 export type Dashboard = {
   stats: {
-    workouts_month: number
-    workouts_month_change: number
-    volume_week: number
-    volume_week_change_pct: number | null
+    days_trained_week: number
+    days_planned_week: number
+    records_month: number
+    top_muscle: MuscleShare | null
     streak_weeks: number
     streak_record_weeks: number
   }
-  weekly: (WeekPoint & { volume: number; treinos: number })[]
-  one_rm: { series: { key: string; name: string }[]; data: (WeekPoint & Record<string, number | string | null>)[] }
+  weekly: (WeekPoint & { treinos: number })[]
+  muscles: MuscleShare[]
+  by_workout: { name: string; treinos: number }[]
+  calendar: { month: string; days: string[] }
 }
+export type ExerciseRecord = { weight_kg: number; reps: number; date: string }
+export type RecordItem = ExerciseRecord & { exercise: string; group: string | null }
 export type Progress = {
   exercise: string
-  points: (WeekPoint & { kg: number; rm: number; volume: number })[]
-  summary: { kg: number; rm: number; volume: number; kg_change: number; rm_change: number; volume_change_pct: number | null } | null
+  points: (WeekPoint & { kg: number })[]
+  kg_change: number | null
+  record: ExerciseRecord | null
+  rm_estimate: number | null
 }
 export type Settings = { reminder_time: string | null; weight_increment_kg: number; timezone: string }
 

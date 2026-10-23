@@ -116,8 +116,19 @@ def get_sessions(
 
 
 @router.get("/dashboard", response_model=schemas.DashboardOut)
-def get_dashboard(user: User = Depends(current_user), db: Session = Depends(get_db)):
-    return stats.dashboard(db, user)
+def get_dashboard(
+    months: int = Query(2),
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+):
+    if months not in (1, 2, 3, 6):
+        raise HTTPException(status_code=422, detail="months deve ser 1, 2, 3 ou 6")
+    return stats.dashboard(db, user, months=months)
+
+
+@router.get("/records", response_model=list[schemas.RecordOut])
+def get_records(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    return stats.records(db, user)
 
 
 @router.get("/exercises", response_model=list[str])
