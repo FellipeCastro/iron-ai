@@ -1,5 +1,8 @@
 import Image from "next/image";
 import Link from "next/link";
+import { Chip } from "@/components/brand/chip";
+import { HeaderAuth } from "@/components/brand/header-auth";
+import { Logo } from "@/components/brand/logo";
 import { CtaBadges, SIGN_IN_URL } from "@/components/landing/cta-badges";
 import { FeatureShowcase } from "@/components/landing/feature-showcase";
 import {
@@ -20,7 +23,6 @@ const navLinks = [
   { label: "Como funciona", href: "#como-funciona" },
   { label: "Recursos", href: "#recursos" },
   { label: "FAQ", href: "#faq" },
-  { label: "Entrar", href: SIGN_IN_URL },
 ];
 
 const chatCards = [
@@ -147,27 +149,6 @@ const footerColumns = [
   },
 ];
 
-function Logo({ className = "" }: { className?: string }) {
-  return (
-    <Link href="/" className={`flex items-center gap-[3px] ${className}`} aria-label="Iron AI">
-      <Image src="/assets/logo-icon-black.png" alt="" width={337} height={325} className="h-[30px] w-auto" />
-      <Image src="/assets/logo-text-black.png" alt="Iron AI" width={448} height={124} className="h-[23px] w-auto" />
-    </Link>
-  );
-}
-
-function Chip({ title, value, className }: { title: string; value: string; className: string }) {
-  return (
-    <div
-      className={`absolute z-10 rounded-[14px] bg-white px-3 py-2 text-center text-[12px] leading-[15px] font-semibold text-[#111] shadow-[0_6px_20px_rgba(0,0,0,0.12)] ${className}`}
-    >
-      {title}
-      <br />
-      {value}
-    </div>
-  );
-}
-
 export default function Home() {
   return (
     <div className="bg-[linear-gradient(180deg,#ffffff_0px,#fffffc_400px,#fffff6_1500px,#fffff1_2500px,#fdfef2_3000px,#f7fbf7_4000px,#f1f8fd_5000px)] text-[#111]">
@@ -181,7 +162,7 @@ export default function Home() {
             </Link>
           ))}
         </nav>
-        <CtaBadges size="sm" className="hidden md:flex" />
+        <HeaderAuth />
       </header>
 
       {/* Hero */}

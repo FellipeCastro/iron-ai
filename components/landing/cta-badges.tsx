@@ -1,8 +1,8 @@
 import Link from "next/link";
+import { SIGN_IN_URL, SIGN_UP_URL } from "@/lib/routes";
 import { MonitorIcon, TelegramColorIcon } from "./icons";
 
-export const SIGN_UP_URL = "/sign-up";
-export const SIGN_IN_URL = "/sign-in";
+export { SIGN_IN_URL, SIGN_UP_URL } from "@/lib/routes";
 
 type BadgeSize = "sm" | "lg";
 
