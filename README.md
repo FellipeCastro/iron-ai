@@ -1,36 +1,67 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Iron AI
 
-## Getting Started
+Assistente de treino no Telegram + site Next.js (painel, rotina, histórico). Stack: Next.js 16, Clerk, Drizzle + Neon, Trigger.dev.
 
-First, run the development server:
+## Rodando o projeto localmente
+
+Abra **3 terminais** na raiz do projeto, um para cada processo:
 
 ```bash
+# Terminal 1 — site Next.js (http://localhost:3000)
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+
+# Terminal 2 — worker do Trigger.dev (executa as tasks em ./trigger)
+npx trigger.dev@4.8.1 dev
+
+## Ou 
+ngrok http --url=embassy-ambition-wager.ngrok-free.dev 3000
+
+# Terminal 3 — túnel público para os webhooks do Clerk
+ngrok http 3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+A versão do CLI (`trigger.dev@4.8.1`) deve ser a mesma de `@trigger.dev/sdk` no `package.json`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Se a URL do ngrok mudou (plano gratuito sem domínio fixo), atualize o endpoint no Clerk Dashboard → Webhooks para:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```
+https://<url-do-ngrok>/api/webhooks/clerk
+```
 
-## Learn More
+Eventos assinados: `user.created`, `user.updated`, `user.deleted`.
 
-To learn more about Next.js, take a look at the following resources:
+## Primeira vez em uma máquina nova
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+npm install
+npx trigger.dev@4.8.1 login   # abre o navegador para autorizar o CLI
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Crie o `.env` na raiz com:
 
-## Deploy on Vercel
+```bash
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=   # Clerk Dashboard → API Keys
+CLERK_SECRET_KEY=                    # Clerk Dashboard → API Keys
+CLERK_WEBHOOK_SIGNING_SECRET=        # Clerk Dashboard → Webhooks → endpoint → Signing Secret
+DATABASE_URL=                        # Neon → Connection string
+TRIGGER_SECRET_KEY=                  # Trigger.dev → API Keys → Development (tr_dev_...)
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Se o banco estiver vazio, aplique as migrações e o catálogo de exercícios:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+npm run db:setup
+```
+
+## Banco de dados (Drizzle)
+
+```bash
+npm run db:generate   # gera migração a partir de db/schema.ts
+npm run db:migrate    # aplica migrações pendentes
+npm run db:seed       # (re)popula o catálogo de exercícios
+npm run db:studio     # abre o Drizzle Studio
+```
+
+## Como os webhooks funcionam
+
+Clerk → `POST /api/webhooks/clerk` ([app/api/webhooks/clerk/route.ts](app/api/webhooks/clerk/route.ts)) valida a assinatura e dispara uma task do Trigger.dev ([trigger/clerk-users.ts](trigger/clerk-users.ts)), que cria, atualiza ou apaga o usuário no Neon. Os runs aparecem em [cloud.trigger.dev](https://cloud.trigger.dev/projects/v3/proj_plpwgmrshwngodbkqrdd/runs?envSlug=dev).
