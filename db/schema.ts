@@ -69,6 +69,9 @@ export const telegramLinks = pgTable("telegram_links", {
     .primaryKey()
     .references(() => users.id, { onDelete: "cascade" }),
   chatId: bigint("chat_id", { mode: "number" }).notNull().unique(),
+  username: text("username"),
+  // Conversation state between messages (pending confirmations, routine draft). See lib/telegram/state.ts.
+  chatState: jsonb("chat_state"),
   linkedAt: timestamp("linked_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -131,6 +134,7 @@ export const routineDays = pgTable(
       .notNull()
       .references(() => routines.id, { onDelete: "cascade" }),
     letter: text("letter").notNull(),
+    title: text("title").notNull().default(""),
     position: smallint("position").notNull(),
   },
   (t) => [
@@ -268,6 +272,16 @@ export const usageCounters = pgTable(
   (t) => [primaryKey({ columns: [t.userId, t.date] })],
 );
 
+// Global (all users) OpenAI usage per UTC day, for the spend ceiling.
+export const aiUsage = pgTable("ai_usage", {
+  date: date("date").primaryKey(),
+  requests: integer("requests").notNull().default(0),
+  inputTokens: bigint("input_tokens", { mode: "number" }).notNull().default(0),
+  outputTokens: bigint("output_tokens", { mode: "number" }).notNull().default(0),
+  costUsd: numeric("cost_usd", { precision: 10, scale: 4, mode: "number" }).notNull().default(0),
+  alertedAt: timestamp("alerted_at", { withTimezone: true }),
+});
+
 // ---------- Relations (for db.query.*) ----------
 
 export const usersRelations = relations(users, ({ one, many }) => ({
@@ -312,6 +326,7 @@ export const setEntriesRelations = relations(setEntries, ({ one }) => ({
 }));
 
 export type User = typeof users.$inferSelect;
+export type TelegramLink = typeof telegramLinks.$inferSelect;
 export type Exercise = typeof exercises.$inferSelect;
 export type Session = typeof sessions.$inferSelect;
 export type SetEntry = typeof setEntries.$inferSelect;

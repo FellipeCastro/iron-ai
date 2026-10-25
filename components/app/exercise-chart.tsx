@@ -1,0 +1,84 @@
+"use client";
+
+import { useState } from "react";
+import { LineChart } from "@/components/charts/line-chart";
+import { Card } from "./ui";
+
+export type ExerciseChartPoint = { t: number; label: string; maxWeight: number; bestE1rm: number; volume: number };
+
+const metrics = {
+  maxWeight: { label: "Carga máxima", unit: "kg", help: "A maior carga usada em cada treino." },
+  bestE1rm: { label: "1RM estimado", unit: "kg", help: "Quanto você levantaria em 1 repetição, estimado pela melhor série." },
+  volume: { label: "Volume", unit: "kg", help: "Carga × repetições somadas de todas as séries do treino." },
+} as const;
+
+const periods = [
+  { label: "30 dias", days: 30 },
+  { label: "90 dias", days: 90 },
+  { label: "Tudo", days: null },
+] as const;
+
+type Metric = keyof typeof metrics;
+
+export function ExerciseChart({ points, now }: { points: ExerciseChartPoint[]; now: number }) {
+  const [metric, setMetric] = useState<Metric>("maxWeight");
+  const [period, setPeriod] = useState<(typeof periods)[number]["label"]>("90 dias");
+
+  const days = periods.find((p) => p.label === period)!.days;
+  const visible = days === null ? points : points.filter((p) => p.t >= now - days * 86_400_000);
+  const m = metrics[metric];
+
+  return (
+    <Card>
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <Segmented options={Object.keys(metrics) as Metric[]} value={metric} onChange={setMetric} label={(k) => metrics[k].label} />
+        <Segmented options={periods.map((p) => p.label)} value={period} onChange={setPeriod} label={(k) => k} />
+      </div>
+      <p className="mt-4 text-[14px] text-[#5b5b66]">{m.help}</p>
+      <div className="mt-4">
+        {visible.length >= 2 ? (
+          <LineChart
+            label={`${m.label} por treino`}
+            unit={m.unit}
+            points={visible.map((p) => ({ label: p.label, value: p[metric] }))}
+          />
+        ) : (
+          <p className="flex h-[260px] items-center justify-center rounded-[20px] bg-[#f9f9fb] text-[14px] text-[#5b5b66]">
+            Poucos treinos neste período. Escolha um período maior.
+          </p>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+function Segmented<T extends string>({
+  options,
+  value,
+  onChange,
+  label,
+}: {
+  options: readonly T[];
+  value: T;
+  onChange: (v: T) => void;
+  label: (v: T) => string;
+}) {
+  return (
+    <div className="flex flex-wrap gap-1 rounded-full bg-[#f5f5f8] p-1" role="radiogroup">
+      {options.map((o) => (
+        <button
+          key={o}
+          type="button"
+          role="radio"
+          aria-checked={o === value}
+          onClick={() => onChange(o)}
+          className={`rounded-full px-4 py-1.5 text-[14px] font-medium transition-colors ${
+            o === value ? "bg-white text-[#111] shadow-[0_2px_8px_rgba(0,0,0,0.08)]" : "text-[#5b5b66] hover:text-[#111]"
+          }`}
+        >
+          {label(o)}
+        </button>
+      ))}
+    </div>
+  );
+}
