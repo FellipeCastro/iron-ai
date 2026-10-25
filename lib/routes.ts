@@ -5,6 +5,8 @@ export const ROUTINE_URL = "/routine";
 export const HISTORY_URL = "/history";
 export const EXERCISES_URL = "/exercises";
 export const SETTINGS_URL = "/settings";
+export const TERMS_URL = "/termos";
+export const PRIVACY_URL = "/privacidade";
 
 export const exerciseUrl = (id: string) => `${EXERCISES_URL}/${id}`;
 

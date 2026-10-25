@@ -1,10 +1,12 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { createTelegramLinkAction, deleteAccountAction, disconnectTelegramAction, saveSettingsAction } from "@/app/(app)/actions";
 import type { Settings } from "@/lib/data/types";
 import { WEEKDAYS } from "@/lib/format";
+import { PRIVACY_URL, TERMS_URL } from "@/lib/routes";
 import { TelegramColorIcon } from "@/components/landing/icons";
 import { FeedbackButton } from "./feedback-button";
 import { CopyIcon } from "./icons";
@@ -233,6 +235,18 @@ export function SettingsForm({ initial, linkedSince }: { initial: Settings; link
         <CardTitle title="Feedback" subtitle="Encontrou um problema ou tem uma ideia? Conte pra gente, cada mensagem é lida." />
         <div className="mt-6">
           <FeedbackButton />
+        </div>
+      </Card>
+
+      <Card>
+        <CardTitle title="Privacidade e termos" subtitle="Como tratamos seus dados e as regras de uso do Iron AI." />
+        <div className="mt-6 flex flex-wrap gap-3">
+          <Link href={PRIVACY_URL} className={buttonSecondary}>
+            Política de privacidade
+          </Link>
+          <Link href={TERMS_URL} className={buttonSecondary}>
+            Termos de serviço
+          </Link>
         </div>
       </Card>
 

@@ -18,6 +18,7 @@ import {
   TelegramIcon,
   TimerIcon,
 } from "@/components/landing/icons";
+import { PRIVACY_URL, TERMS_URL } from "@/lib/routes";
 
 const navLinks = [
   { label: "Como funciona", href: "#como-funciona" },
@@ -132,10 +133,10 @@ const footerColumns = [
   {
     title: "Legal",
     links: [
-      { label: "Política de privacidade", href: "#" },
-      { label: "Termos de uso", href: "#" },
-      { label: "Exclusão de dados", href: "#" },
-      { label: "Como usamos IA nos seus dados", href: "#" },
+      { label: "Política de privacidade", href: PRIVACY_URL },
+      { label: "Termos de serviço", href: TERMS_URL },
+      { label: "Exclusão de dados", href: `${PRIVACY_URL}#exclusao` },
+      { label: "Como usamos IA nos seus dados", href: `${PRIVACY_URL}#ia` },
     ],
   },
   {
