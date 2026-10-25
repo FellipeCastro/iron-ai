@@ -6,6 +6,7 @@ import { createTelegramLinkAction, deleteAccountAction, disconnectTelegramAction
 import type { Settings } from "@/lib/data/types";
 import { WEEKDAYS } from "@/lib/format";
 import { TelegramColorIcon } from "@/components/landing/icons";
+import { FeedbackButton } from "./feedback-button";
 import { CopyIcon } from "./icons";
 import { useToast } from "./toast";
 import { Badge, Card, CardTitle, buttonDanger, buttonPrimary, buttonSecondary, inputBase } from "./ui";
@@ -225,6 +226,13 @@ export function SettingsForm({ initial, linkedSince }: { initial: Settings; link
               Descartar
             </button>
           )}
+        </div>
+      </Card>
+
+      <Card>
+        <CardTitle title="Feedback" subtitle="Encontrou um problema ou tem uma ideia? Conte pra gente, cada mensagem é lida." />
+        <div className="mt-6">
+          <FeedbackButton />
         </div>
       </Card>
 

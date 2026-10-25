@@ -1,6 +1,8 @@
 import { verifyWebhook } from "@clerk/nextjs/webhooks";
+import * as Sentry from "@sentry/nextjs";
 import { idempotencyKeys, tasks } from "@trigger.dev/sdk";
 import type { NextRequest } from "next/server";
+import { enqueue } from "@/lib/trace";
 import type { clerkUserCreated, clerkUserDeleted, clerkUserUpdated } from "@/trigger/clerk-users";
 
 // Public route: no session on Clerk deliveries, `verifyWebhook` (CLERK_WEBHOOK_SIGNING_SECRET) is the only check.
@@ -10,7 +12,8 @@ export async function POST(req: NextRequest) {
   try {
     evt = await verifyWebhook(req);
   } catch (err) {
-    console.error("Clerk webhook verification failed:", err);
+    // Bad signing secret or a forged request; with a bad secret, user sync stops silently.
+    Sentry.logger.warn("Clerk webhook verification failed", { error_type: err instanceof Error ? err.name : typeof err });
     return new Response("Verification failed", { status: 400 });
   }
 
@@ -27,13 +30,19 @@ export async function POST(req: NextRequest) {
 
   switch (evt.type) {
     case "user.created":
-      await tasks.trigger<typeof clerkUserCreated>("clerk-user-created", { clerkId }, options);
+      await enqueue("clerk-user-created", ({ metadata }) =>
+        tasks.trigger<typeof clerkUserCreated>("clerk-user-created", { clerkId }, { ...options, metadata }),
+      );
       break;
     case "user.updated":
-      await tasks.trigger<typeof clerkUserUpdated>("clerk-user-updated", { clerkId }, options);
+      await enqueue("clerk-user-updated", ({ metadata }) =>
+        tasks.trigger<typeof clerkUserUpdated>("clerk-user-updated", { clerkId }, { ...options, metadata }),
+      );
       break;
     case "user.deleted":
-      await tasks.trigger<typeof clerkUserDeleted>("clerk-user-deleted", { clerkId }, options);
+      await enqueue("clerk-user-deleted", ({ metadata }) =>
+        tasks.trigger<typeof clerkUserDeleted>("clerk-user-deleted", { clerkId }, { ...options, metadata }),
+      );
       break;
   }
 

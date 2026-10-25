@@ -64,10 +64,12 @@ OPENAI_FALLBACK_MODEL=gpt-5.5        # usado se o principal estiver fora do ar
 OPENAI_DAILY_BUDGET_USD=5            # teto global de gasto/dia; acima disso o bot pausa a leitura
 OPENAI_PRICE_INPUT_USD_PER_MTOK=1    # preços do modelo configurado, para estimar o gasto
 OPENAI_PRICE_OUTPUT_USD_PER_MTOK=6
-NEXT_PUBLIC_SENTRY_DSN=              # Sentry (sem PII); vazio = desligado
+NEXT_PUBLIC_SENTRY_DSN=              # Sentry (sem PII); vazio = desligado. Sentry → Project Settings → Client Keys (DSN)
+NEXT_PUBLIC_SENTRY_ENVIRONMENT=      # ex.: production / preview; padrão = NODE_ENV
+SENTRY_AUTH_TOKEN=                   # só no build (Vercel/CI) para enviar source maps; Sentry → Settings → Auth Tokens
 ```
 
-No Trigger.dev Cloud (ambiente **prod**), cadastre as mesmas variáveis usadas pelas tasks: `DATABASE_URL`, `OPENAI_API_KEY`, `TELEGRAM_BOT_TOKEN`, `NEXT_PUBLIC_SITE_URL` e as opcionais da OpenAI. Em dev, o `trigger.dev dev` lê o `.env` local.
+No Trigger.dev Cloud (ambiente **prod**), cadastre as mesmas variáveis usadas pelas tasks: `DATABASE_URL`, `OPENAI_API_KEY`, `TELEGRAM_BOT_TOKEN`, `NEXT_PUBLIC_SITE_URL`, as opcionais da OpenAI e `NEXT_PUBLIC_SENTRY_DSN` / `NEXT_PUBLIC_SENTRY_ENVIRONMENT` (erros e logs das tasks vão para o mesmo projeto do Sentry, via `trigger/init.ts`). Em dev, o `trigger.dev dev` lê o `.env` local.
 
 Se o banco estiver vazio, aplique as migrações e o catálogo de exercícios:
 

@@ -1,4 +1,4 @@
-import { idempotencyKeys, logger, schedules } from "@trigger.dev/sdk";
+import { idempotencyKeys, schedules } from "@trigger.dev/sdk";
 import { and, eq, gte, isNotNull, isNull, lt, sql } from "drizzle-orm";
 import { db, reminderLog, sessions, telegramLinks, users } from "@/db";
 import { isReminderDue, localTime } from "@/lib/engine/reminders";
@@ -8,7 +8,9 @@ import { loadRoutine } from "@/lib/services/routine";
 import { findOpenSession, nextRoutineDay } from "@/lib/services/workout";
 import { sendMessage, TelegramError } from "@/lib/telegram/client";
 import * as render from "@/lib/telegram/render";
+import { enqueue } from "@/lib/trace";
 import { closeInactiveSession } from "./close-session";
+import { errorAttrs, log } from "./log";
 
 /**
  * Global 5-minute tick: closes idle sessions and sends training-day reminders. Safe to run twice:
@@ -22,7 +24,15 @@ export const tick = schedules.task({
     const now = payload.timestamp;
     const closes = await closeIdleSessions(now);
     const reminders = await sendReminders(now);
-    logger.info("Tick done", { closes, reminders });
+    // Runs every 5 minutes: only ticks that did something are worth a log.
+    if (closes || reminders.sent || reminders.failed || reminders.blocked) {
+      log.info("Tick done", {
+        sessions_closed: closes,
+        reminders_sent: reminders.sent,
+        reminders_failed: reminders.failed,
+        reminders_blocked: reminders.blocked,
+      });
+    }
     return { closes, reminders };
   },
 });
@@ -35,17 +45,18 @@ async function closeIdleSessions(now: Date) {
     .where(and(isNull(sessions.endedAt), lt(sql`coalesce(${sessions.lastSetAt}, ${sessions.startedAt})`, cutoff)));
   if (idle.length === 0) return 0;
 
-  await closeInactiveSession.batchTrigger(
-    await Promise.all(
-      idle.map(async (s) => ({
-        payload: { sessionId: s.id },
-        options: {
-          idempotencyKey: await idempotencyKeys.create(`close-${s.id}`, { scope: "global" }),
-          concurrencyKey: s.userId,
-          tags: [`user_${s.userId}`],
-        },
-      })),
-    ),
+  const items = await Promise.all(
+    idle.map(async (s) => ({
+      payload: { sessionId: s.id },
+      options: {
+        idempotencyKey: await idempotencyKeys.create(`close-${s.id}`, { scope: "global" }),
+        concurrencyKey: s.userId,
+        tags: [`user_${s.userId}`],
+      },
+    })),
+  );
+  await enqueue("close-inactive-session", ({ metadata }) =>
+    closeInactiveSession.batchTrigger(items.map((item) => ({ ...item, options: { ...item.options, metadata } }))),
   );
   return idle.length;
 }
@@ -58,6 +69,8 @@ async function sendReminders(now: Date) {
     .where(and(isNotNull(users.reminderTime), sql`cardinality(${users.trainingDays}) > 0`));
 
   let sent = 0;
+  let failed = 0;
+  let blocked = 0;
   for (const { user, chatId } of candidates) {
     const local = localTime(now, user.timezone);
     if (!isReminderDue(local, user.reminderTime!, user.trainingDays)) continue;
@@ -80,11 +93,15 @@ async function sendReminders(now: Date) {
       await sendMessage(chatId, render.reminder(await planView(user.id, await nextRoutineDay(user.id, routine))));
       sent++;
     } catch (err) {
-      if (err instanceof TelegramError && err.isBlocked) continue; // keep the row: do not retry a blocked chat today
+      if (err instanceof TelegramError && err.isBlocked) {
+        blocked++;
+        continue; // keep the row: do not retry a blocked chat today
+      }
       // Release the slot so the next tick retries.
       await db.delete(reminderLog).where(and(eq(reminderLog.userId, user.id), eq(reminderLog.date, local.date)));
-      logger.error("Reminder failed", { userId: user.id, error: String(err) });
+      failed++;
+      log.warn("Reminder failed, will retry next tick", { user_id: user.id, ...errorAttrs(err) });
     }
   }
-  return sent;
+  return { sent, failed, blocked };
 }

@@ -1,7 +1,9 @@
-import { AbortTaskRunError, concurrencyLimit, logger, schemaTask } from "@trigger.dev/sdk";
+import * as Sentry from "@sentry/node";
+import { AbortTaskRunError, concurrencyLimit, schemaTask } from "@trigger.dev/sdk";
 import { z } from "zod";
 import { handleUpdate } from "@/lib/bot/handle-update";
 import type { TgUpdate } from "@/lib/telegram/client";
+import { log } from "./log";
 
 // One run at a time per user (concurrencyKey = user id, or chat id before linking) across every task
 // that touches a user's workout, so messages, button taps and the inactivity close never interleave.
@@ -21,11 +23,28 @@ export const handleTelegramUpdate = schemaTask({
     const missing = REQUIRED_ENV.filter((name) => !process.env[name]);
     if (missing.length) throw new AbortTaskRunError(`Missing env in the Trigger.dev worker: ${missing.join(", ")} (restart \`trigger.dev dev\`)`);
 
+    const startedAt = Date.now();
     const result = await handleUpdate(update, {
       isLastAttempt: ctx.attempt.number >= MAX_ATTEMPTS,
-      log: (message, data) => logger.error(message, data),
+      log: (level, message, data) => log[level](message, { update_id: update.update_id, ...data }),
+      report: (err) => Sentry.captureException(err),
     });
-    logger.info("Update handled", { updateId: update.update_id, ...result });
+    // One wide event per update: what came in, what the parser made of it and what it cost.
+    log.info("Telegram update handled", {
+      update_id: update.update_id,
+      user_id: result.userId,
+      status: result.status,
+      kind: result.kind,
+      command: result.command,
+      link_error: result.linkError,
+      intent: result.intent,
+      confidence: result.confidence,
+      ai_model: result.model,
+      ai_fallback: result.fallback,
+      ai_input_tokens: result.inputTokens,
+      ai_output_tokens: result.outputTokens,
+      duration_ms: Date.now() - startedAt,
+    });
     return result;
   },
 });

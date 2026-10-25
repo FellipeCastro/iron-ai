@@ -1,6 +1,7 @@
-import { logger, schedules } from "@trigger.dev/sdk";
+import { schedules } from "@trigger.dev/sdk";
 import { lt, or, isNotNull } from "drizzle-orm";
 import { db, linkTokens, messages, reminderLog, usageCounters } from "@/db";
+import { log } from "./log";
 
 const DAY = 86_400_000;
 const RAW_TEXT_DAYS = 30;
@@ -28,7 +29,13 @@ export const purge = schedules.task({
     ]);
 
     const result = { messages: msgs.length, linkTokens: tokens.length, usageCounters: counters.length, reminderLog: reminders.length };
-    logger.info("Purge done", result);
+    // Retention audit: proves the 30-day raw-text deletion ran and how much it removed.
+    log.info("Purge done", {
+      messages_deleted: result.messages,
+      link_tokens_deleted: result.linkTokens,
+      usage_counters_deleted: result.usageCounters,
+      reminder_log_deleted: result.reminderLog,
+    });
     return result;
   },
 });

@@ -1,4 +1,4 @@
-import { logger, retry, task } from "@trigger.dev/sdk";
+import { retry, task } from "@trigger.dev/sdk";
 import { eq } from "drizzle-orm";
 import { db, sessions } from "@/db";
 import { isInactive } from "@/lib/engine/session";
@@ -7,6 +7,7 @@ import { closeSession, markSummarySent } from "@/lib/services/workout";
 import { sendMessage, TelegramError } from "@/lib/telegram/client";
 import * as render from "@/lib/telegram/render";
 import { userChat } from "./handle-message";
+import { errorAttrs, log } from "./log";
 
 export type CloseSessionPayload = { sessionId: string };
 
@@ -26,18 +27,23 @@ export const closeInactiveSession = task({
 
     const closed = await closeSession(session.user, sessionId, "inactive", await loadRoutine(session.userId));
     const chatId = session.user.telegramLink?.chatId;
-    if (!closed || !chatId) return { closed: Boolean(closed), notified: false };
+    if (!closed || !chatId) {
+      log.info("Session closed for inactivity", { session_id: sessionId, user_id: session.userId, closed: Boolean(closed), notified: false });
+      return { closed: Boolean(closed), notified: false };
+    }
 
     // The close already happened, so a task retry would find nothing to do: retry just the send.
     const text = render.summary({ closeReason: "inactive", day: closed.day, data: closed.data, next: closed.next });
     try {
       await retry.onThrow(() => sendMessage(chatId, text), { maxAttempts: 3 });
       await markSummarySent(sessionId);
+      log.info("Session closed for inactivity", { session_id: sessionId, user_id: session.userId, closed: true, notified: true });
       return { closed: true, notified: true };
     } catch (err) {
-      logger.warn(err instanceof TelegramError && err.isBlocked ? "User blocked the bot" : "Summary not delivered", {
-        sessionId,
-        error: String(err),
+      log.warn(err instanceof TelegramError && err.isBlocked ? "User blocked the bot" : "Summary not delivered", {
+        session_id: sessionId,
+        user_id: session.userId,
+        ...errorAttrs(err),
       });
       return { closed: true, notified: false };
     }

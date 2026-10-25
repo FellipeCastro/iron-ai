@@ -31,17 +31,37 @@ export const CONFIRM_BELOW = 0.7;
 type Out = { text: string; keyboard?: InlineKeyboard; sessionId?: string };
 type Ctx = { chatId: number; user: User; state: ChatState; routine: Routine | null; pool: MatchCandidate[] | null };
 
-export type HandleOptions = { isLastAttempt: boolean; log: (msg: string, data?: Record<string, unknown>) => void };
+export type HandleOptions = {
+  isLastAttempt: boolean;
+  log: (level: "warn" | "error", msg: string, data?: Record<string, string | number | boolean>) => void;
+  /** Handled failures that still deserve an error event, since the run itself succeeds. */
+  report: (err: unknown) => void;
+};
 type Status = "processed" | "clarify" | "ignored" | "failed";
 
+/** Outcome of one update; the task logs it as a single event, so it carries what explains the reply. */
+export type HandleResult = {
+  status: Status | "duplicate";
+  kind?: "message" | "callback" | "command" | "link";
+  userId?: string;
+  command?: string;
+  linkError?: string;
+  intent?: Intent["type"];
+  confidence?: number;
+  model?: string;
+  fallback?: boolean;
+  inputTokens?: number;
+  outputTokens?: number;
+};
+
 /** Entry point used by the trigger task. Idempotent per `update_id` (see the `messages` row guard). */
-export async function handleUpdate(update: TgUpdate, opts: HandleOptions) {
+export async function handleUpdate(update: TgUpdate, opts: HandleOptions): Promise<HandleResult> {
   const message = update.message ?? update.edited_message;
   const callback = update.callback_query;
   const chat = message?.chat ?? callback?.message?.chat;
-  if (!chat || chat.type !== "private") return { status: "ignored" as const };
+  if (!chat || chat.type !== "private") return { status: "ignored" };
   // Edits are not re-applied: the log is append-only and corrections are explicit.
-  if (update.edited_message) return { status: "ignored" as const };
+  if (update.edited_message) return { status: "ignored" };
 
   const link = await findByChat(chat.id);
   const [row] = await db
@@ -52,7 +72,7 @@ export async function handleUpdate(update: TgUpdate, opts: HandleOptions) {
   if (!row) {
     const existing = await db.query.messages.findFirst({ where: eq(messages.updateId, update.update_id) });
     // Already handled by an earlier run (webhook redelivery): writes must not happen twice.
-    if (existing && existing.status !== "received") return { status: "duplicate" as const };
+    if (existing && existing.status !== "received") return { status: "duplicate", userId: link?.userId };
   }
 
   const finish = (status: Status, parsedJson?: unknown) =>
@@ -65,21 +85,21 @@ export async function handleUpdate(update: TgUpdate, opts: HandleOptions) {
     if (!link) {
       await answerCallbackQuery(callback.id);
       await finish("ignored");
-      return { status: "ignored" as const };
+      return { status: "ignored", kind: "callback" };
     }
     const ctx = await loadCtx(chat.id, link.user, link.chatState);
     const outs = await handleCallback(ctx, callback.data);
     await finish("processed");
     await answerCallbackQuery(callback.id).catch(() => undefined);
     await deliver(chat.id, outs, callback.message?.message_id);
-    return { status: "processed" as const };
+    return { status: "processed", kind: "callback", userId: link.userId };
   }
 
   const text = message?.text?.trim();
   if (!text) {
     await finish("ignored");
     await sendMessage(chat.id, render.nonText());
-    return { status: "ignored" as const };
+    return { status: "ignored", kind: "message", userId: link?.userId };
   }
 
   // /start <token> links the chat; works whether or not this chat is already linked.
@@ -89,17 +109,17 @@ export async function handleUpdate(update: TgUpdate, opts: HandleOptions) {
     await finish("processed");
     if (!result.ok) {
       await sendMessage(chat.id, result.reason === "chat_taken" ? render.linkChatTaken() : render.linkInvalid());
-    } else {
-      await db.update(messages).set({ userId: result.userId }).where(eq(messages.updateId, update.update_id));
-      await sendMessage(chat.id, render.linked(Boolean(await loadRoutine(result.userId))));
+      return { status: "processed", kind: "link", linkError: result.reason };
     }
-    return { status: "processed" as const };
+    await db.update(messages).set({ userId: result.userId }).where(eq(messages.updateId, update.update_id));
+    await sendMessage(chat.id, render.linked(Boolean(await loadRoutine(result.userId))));
+    return { status: "processed", kind: "link", userId: result.userId };
   }
 
   if (!link) {
     await finish("ignored");
     await sendMessage(chat.id, render.notLinked());
-    return { status: "ignored" as const };
+    return { status: "ignored", kind: "message" };
   }
 
   const ctx = await loadCtx(chat.id, link.user, link.chatState);
@@ -110,7 +130,7 @@ export async function handleUpdate(update: TgUpdate, opts: HandleOptions) {
   if (command) {
     await finish("processed");
     await deliver(chat.id, command);
-    return { status: "processed" as const };
+    return { status: "processed", kind: "command", userId: link.userId, command: text.match(/^\/(\w+)/)?.[1]?.toLowerCase() };
   }
 
   await sendTyping(chat.id);
@@ -120,17 +140,33 @@ export async function handleUpdate(update: TgUpdate, opts: HandleOptions) {
   } catch (err) {
     const budget = err instanceof BudgetExceededError;
     if (!budget && !opts.isLastAttempt) throw err; // let the task retry
-    opts.log(budget ? "OpenAI daily budget exceeded" : "Parser failed on last attempt", { error: String(err) });
+    if (budget) {
+      opts.log("error", "OpenAI daily budget exceeded", { user_id: link.userId });
+    } else {
+      opts.log("error", "Parser failed on last attempt", { user_id: link.userId });
+      opts.report(err);
+    }
     await finish("failed");
     await sendMessage(chat.id, render.unavailable());
-    return { status: "failed" as const };
+    return { status: "failed", kind: "message", userId: link.userId };
   }
-  if (parsed.budgetAlert) opts.log("OpenAI spend crossed the alert threshold", { model: parsed.model });
+  if (parsed.budgetAlert) opts.log("warn", "OpenAI spend crossed the alert threshold", { model: parsed.model });
 
   const outs = await execute(ctx, parsed.parsed.intent, {}, parsed.parsed.confidence, false);
-  await finish(parsed.parsed.intent.type === "clarify" ? "clarify" : "processed", { ...parsed.parsed, model: parsed.model });
+  const status = parsed.parsed.intent.type === "clarify" ? "clarify" : "processed";
+  await finish(status, { ...parsed.parsed, model: parsed.model });
   await deliver(chat.id, outs);
-  return { status: "processed" as const, intent: parsed.parsed.intent.type };
+  return {
+    status,
+    kind: "message",
+    userId: link.userId,
+    intent: parsed.parsed.intent.type,
+    confidence: parsed.parsed.confidence,
+    model: parsed.model,
+    fallback: parsed.fallback,
+    inputTokens: parsed.usage.inputTokens,
+    outputTokens: parsed.usage.outputTokens,
+  };
 }
 
 // ---------- Context ----------

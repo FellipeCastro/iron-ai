@@ -1,6 +1,7 @@
-import { concurrencyLimit, logger, task } from "@trigger.dev/sdk";
+import { concurrencyLimit, task } from "@trigger.dev/sdk";
 import { eq } from "drizzle-orm";
 import { db, users } from "@/db";
+import { log } from "./log";
 
 export type ClerkUserPayload = { clerkId: string };
 
@@ -19,7 +20,7 @@ export const clerkUserCreated = task({
       .onConflictDoNothing({ target: users.clerkId })
       .returning({ id: users.id });
 
-    logger.info(row ? "User created" : "User already existed", { clerkId });
+    log.info(row ? "User created" : "User already existed", { clerk_id: clerkId, user_id: row?.id });
     return { created: Boolean(row) };
   },
 });
@@ -35,7 +36,7 @@ export const clerkUserUpdated = task({
       .values({ clerkId })
       .onConflictDoUpdate({ target: users.clerkId, set: { updatedAt: new Date() } });
 
-    logger.info("User synced", { clerkId });
+    log.info("User synced", { clerk_id: clerkId });
     return { synced: true };
   },
 });
@@ -47,7 +48,7 @@ export const clerkUserDeleted = task({
     // Hard delete; every user-owned table cascades from `users`.
     const deleted = await db.delete(users).where(eq(users.clerkId, clerkId)).returning({ id: users.id });
 
-    logger.info(deleted.length ? "User deleted" : "User not found", { clerkId });
+    log.info(deleted.length ? "User deleted" : "User not found", { clerk_id: clerkId, user_id: deleted[0]?.id });
     return { deleted: deleted.length > 0 };
   },
 });

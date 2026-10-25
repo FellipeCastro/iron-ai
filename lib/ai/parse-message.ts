@@ -14,7 +14,14 @@ const format = zodTextFormat(ParsedMessage, "parsed_message");
 let client: OpenAI | null = null;
 const openai = () => (client ??= new OpenAI({ maxRetries: 1, timeout: 20_000 }));
 
-export type ParseResult = { parsed: ParsedMessage; model: string; budgetAlert: boolean };
+export type ParseResult = {
+  parsed: ParsedMessage;
+  model: string;
+  /** True when the primary model failed and the fallback answered. */
+  fallback: boolean;
+  usage: { inputTokens: number; outputTokens: number };
+  budgetAlert: boolean;
+};
 
 async function callModel(model: string, text: string, ctx: ParserContext) {
   const response = await openai().responses.parse({
@@ -24,8 +31,9 @@ async function callModel(model: string, text: string, ctx: ParserContext) {
     text: { format },
     store: false,
   });
-  const budgetAlert = await recordAiUsage(response.usage?.input_tokens ?? 0, response.usage?.output_tokens ?? 0);
-  return { parsed: response.output_parsed, budgetAlert };
+  const usage = { inputTokens: response.usage?.input_tokens ?? 0, outputTokens: response.usage?.output_tokens ?? 0 };
+  const budgetAlert = await recordAiUsage(usage.inputTokens, usage.outputTokens);
+  return { parsed: response.output_parsed, usage, budgetAlert };
 }
 
 /** Errors worth retrying on the fallback model (outages, overload), not bad requests or auth. */
@@ -54,5 +62,5 @@ export async function parseMessage(text: string, ctx: ParserContext): Promise<Pa
   const parsed = result.parsed
     ? validateIntent(ParsedMessage.parse(result.parsed))
     : { intent: { type: "clarify" as const, reason: "ambiguous" as const }, confidence: 0 };
-  return { parsed, model, budgetAlert: result.budgetAlert };
+  return { parsed, model, fallback: model !== OPENAI_PARSER_MODEL, usage: result.usage, budgetAlert: result.budgetAlert };
 }
