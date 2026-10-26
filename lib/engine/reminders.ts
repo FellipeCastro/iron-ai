@@ -35,6 +35,19 @@ export const parseClock = (time: string) => {
   return h * 60 + m;
 };
 
+/** Free-text time ("18:30", "18h", "18h30", "às 7") → "HH:MM", or null when it is not a time of day. */
+export function parseTimeInput(text: string) {
+  const m = text
+    .trim()
+    .toLowerCase()
+    .replace(/^(às|as)\s+/, "")
+    .match(/^(\d{1,2})(?:\s*[:h]\s*([0-5]\d)?)?$/);
+  if (!m) return null;
+  const hours = Number(m[1]);
+  if (hours > 23) return null;
+  return `${String(hours).padStart(2, "0")}:${m[2] ?? "00"}`;
+}
+
 export function isReminderDue(local: LocalTime, reminderTime: string, trainingDays: number[]) {
   if (!trainingDays.includes(local.isoWeekday)) return false;
   const delta = local.minutes - parseClock(reminderTime);

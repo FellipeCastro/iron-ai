@@ -1,6 +1,7 @@
 import { retry, task } from "@trigger.dev/sdk";
 import { eq } from "drizzle-orm";
 import { db, sessions } from "@/db";
+import { durationPrompt } from "@/lib/bot/duration";
 import { isInactive } from "@/lib/engine/session";
 import { loadRoutine } from "@/lib/services/routine";
 import { closeSession, markSummarySent } from "@/lib/services/workout";
@@ -37,6 +38,9 @@ export const closeInactiveSession = task({
     try {
       await retry.onThrow(() => sendMessage(chatId, text), { maxAttempts: 3 });
       await markSummarySent(sessionId);
+      // The summary is out, so a failed prompt must not fail the run: the duration just stays as estimated.
+      const prompt = await durationPrompt(session.userId, closed).catch(() => null);
+      if (prompt) await sendMessage(chatId, prompt.text, prompt.keyboard).catch(() => undefined);
       log.info("Session closed for inactivity", { session_id: sessionId, user_id: session.userId, closed: true, notified: true });
       return { closed: true, notified: true };
     } catch (err) {

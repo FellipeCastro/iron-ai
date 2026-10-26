@@ -103,7 +103,7 @@ export default async function DashboardPage() {
                             </span>
                           </>
                         ) : (
-                          "meta na 1ª vez"
+                          "meta a definir"
                         )}
                       </span>
                     </Link>

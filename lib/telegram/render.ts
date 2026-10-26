@@ -12,7 +12,8 @@ const kg = (n: number) => `${formatNumber(n)} kg`;
 const load = (weight: number, reps: number) => (weight > 0 ? `${kg(weight)} × ${reps}` : `${reps} reps`);
 const link = (path: string, label: string) => `<a href="${siteUrl()}${path}">${label}</a>`;
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
-const groupLabel = (g: string) => MUSCLE_LABEL[g as MuscleGroup] ?? g;
+const ordinal = (position: number) => `${position}ª série`;
+const groupLabel =(g: string) => MUSCLE_LABEL[g as MuscleGroup] ?? g;
 const RECORD_LABEL: Record<PrKind, string> = { weight: "🏆 recorde de carga", reps: "🏆 recorde de reps" };
 
 // ---------- Linking & onboarding ----------
@@ -65,7 +66,27 @@ export function routineDraft(days: DraftDay[]) {
   return lines.join("\n");
 }
 
-export const routineSaved = (firstTitle: string) => `Rotina salva! ✅ Seu próximo treino é o <b>A · ${esc(firstTitle)}</b>.\n\n${howToLog()}`;
+export const routineSaved = (firstTitle: string) => `Rotina salva! ✅ Seu próximo treino é o <b>A · ${esc(firstTitle)}</b>.`;
+
+const WEEKDAY_NAMES = ["segunda", "terça", "quarta", "quinta", "sexta", "sábado", "domingo"];
+const formatClock = (time: string) => time.slice(0, 5).replace(":", "h").replace(/h00$/, "h");
+
+export const askDays = (empty = false) =>
+  `${empty ? "Escolha pelo menos um dia. " : ""}Quais dias da semana você treina? Toque nos dias e depois em <b>Confirmar dias</b>.`;
+
+export const askTime = (retry = false) =>
+  retry
+    ? "Não entendi o horário. Me mande assim: <i>18:30</i> ou <i>7h</i>."
+    : "Que horas você costuma treinar? Eu te lembro nesse horário, nos dias escolhidos. Ex.: <i>18:30</i> ou <i>7h</i>.";
+
+export const onboardingDone = (days: number[], time: string | null) =>
+  [
+    "Tudo pronto! ✅",
+    `🗓️ Dias: ${days.map((d) => WEEKDAY_NAMES[d - 1]).join(", ")}`,
+    time ? `⏰ Lembrete às ${formatClock(time)}` : "⏰ Sem lembrete (você pode ligar em Configurações)",
+    "",
+    howToLog(),
+  ].join("\n");
 
 // ---------- Logging ----------
 
@@ -89,8 +110,8 @@ export function setsLogged(input: {
   for (const it of input.items) {
     const tag = it.isExtra ? " <i>(extra)</i>" : "";
     const rec = it.record ? ` ${RECORD_LABEL[it.record]}` : "";
-    lines.push(`✅ <b>${esc(it.name)}</b> — S${it.setPosition}: ${load(it.weight, it.reps)}${tag}${rec}`);
-    if (it.target) lines.push(`    ↳ próxima meta S${it.setPosition}: ${load(it.target.weight, it.target.reps)}`);
+    lines.push(`✅ <b>${esc(it.name)}</b> — ${ordinal(it.setPosition)}: ${load(it.weight, it.reps)}${tag}${rec}`);
+    if (it.target) lines.push(`    ↳ próxima meta da ${ordinal(it.setPosition)}: ${load(it.target.weight, it.target.reps)}`);
   }
   if (input.remaining.length) {
     const next = input.remaining.slice(0, 3).map((r) => `${esc(r.name)} (${plural(r.missing, "série", "séries")})`);
@@ -129,14 +150,14 @@ export const corrected = (
   target: { weight: number; reps: number } | null,
 ) =>
   [
-    `✏️ <b>${esc(it.name)}</b> — S${it.setPosition} corrigida: ${load(it.from.weight, it.from.reps)} → <b>${load(it.to.weight, it.to.reps)}</b>`,
-    target ? `    ↳ próxima meta S${it.setPosition}: ${load(target.weight, target.reps)}` : "",
+    `✏️ <b>${esc(it.name)}</b> — ${ordinal(it.setPosition)} corrigida: ${load(it.from.weight, it.from.reps)} → <b>${load(it.to.weight, it.to.reps)}</b>`,
+    target ? `    ↳ próxima meta da ${ordinal(it.setPosition)}: ${load(target.weight, target.reps)}` : "",
   ]
     .filter(Boolean)
     .join("\n");
 
 export const deleted = (it: { name: string; setPosition: number; weight: number; reps: number }) =>
-  `🗑️ Removida: <b>${esc(it.name)}</b> — S${it.setPosition}: ${load(it.weight, it.reps)}`;
+  `🗑️ Removida: <b>${esc(it.name)}</b> — ${ordinal(it.setPosition)}: ${load(it.weight, it.reps)}`;
 
 export const nothingToCorrect = () => "Não achei nenhuma série recente para alterar.";
 
@@ -171,6 +192,14 @@ export function summary(input: {
   lines.push(link(HISTORY_URL, "Ver no histórico"));
   return lines.join("\n");
 }
+
+const formatMinutes = (min: number) => (min >= 60 ? `${Math.floor(min / 60)}h${min % 60 ? String(min % 60).padStart(2, "0") : ""}` : `${min} min`);
+
+export const confirmDuration = (minutes: number) => `⏱️ Seu treino durou <b>${formatMinutes(minutes)}</b>. Está certo?`;
+export const askDurationEdit = (retry = false) =>
+  `${retry ? "Não entendi a duração. " : ""}Quanto tempo durou o treino? Ex.: <i>50</i>, <i>1h10</i>.`;
+export const durationConfirmed = (minutes: number) => `Duração confirmada: <b>${formatMinutes(minutes)}</b> ✅`;
+export const durationUpdated = (minutes: number) => `Duração atualizada para <b>${formatMinutes(minutes)}</b> ✅`;
 
 export type PlanView = {
   letter: string;

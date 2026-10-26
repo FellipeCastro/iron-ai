@@ -1,8 +1,11 @@
 import { eq } from "drizzle-orm";
-import { db, messages, telegramLinks, type User } from "@/db";
+import { db, messages, telegramLinks, users, type User } from "@/db";
 import { parseMessage } from "@/lib/ai/parse-message";
 import type { Intent } from "@/lib/ai/schemas";
+import { durationPrompt } from "@/lib/bot/duration";
+import { parseDurationInput } from "@/lib/engine/duration";
 import { matchExercise, type MatchCandidate } from "@/lib/engine/match";
+import { parseTimeInput } from "@/lib/engine/reminders";
 import { BudgetExceededError } from "@/lib/limits";
 import { loadCatalog, loadDay, loadRoutine, ensureCustomExercise, saveRoutine, type Routine, type RoutineDayFull } from "@/lib/services/routine";
 import * as reports from "@/lib/services/reports";
@@ -16,10 +19,11 @@ import {
   logSets,
   markSummarySent,
   nextRoutineDay,
+  setSessionDuration,
   type ClosedSession,
 } from "@/lib/services/workout";
 import { answerCallbackQuery, editMessageText, sendMessage, sendTyping, type InlineKeyboard, type TgUpdate } from "@/lib/telegram/client";
-import { confirmKeyboard, pickKeyboard } from "@/lib/telegram/keyboards";
+import { confirmKeyboard, daysKeyboard, pickKeyboard, skipKeyboard } from "@/lib/telegram/keyboards";
 import * as render from "@/lib/telegram/render";
 import { newPendingId, parseCallback, readChatState, type ChatState, type Pending, type RoutineDraft } from "@/lib/telegram/state";
 
@@ -123,6 +127,17 @@ export async function handleUpdate(update: TgUpdate, opts: HandleOptions): Promi
   }
 
   const ctx = await loadCtx(chat.id, link.user, link.chatState);
+
+  // Steps that wait for typed text (training time, corrected duration) consume the message.
+  if (ctx.state.pending && !text.startsWith("/")) {
+    const awaited = await handleAwaitedText(ctx, ctx.state.pending, text);
+    if (awaited) {
+      await finish("processed");
+      await deliver(chat.id, awaited);
+      return { status: "processed", kind: "message", userId: link.userId };
+    }
+  }
+
   // A new message abandons whatever was waiting for a button.
   if (ctx.state.pending) await saveState(ctx, { pending: null });
 
@@ -198,7 +213,7 @@ async function parserContext(ctx: Ctx) {
       title: view.title,
       exercises: view.exercises.map((e) => ({
         name: e.name,
-        target: e.targets.map((t) => `S${t.position} ${t.weight}kg×${t.reps}`).join(", ") || null,
+        target: e.targets.map((t) => `${t.position}ª série ${t.weight}kg×${t.reps}`).join(", ") || null,
       })),
     },
     lastSets: log.slice(-5).map((s) => ({ exercise: s.exerciseName, weight: s.weight, reps: s.reps })),
@@ -316,7 +331,7 @@ async function apply(ctx: Ctx, intent: Intent, ids: Record<string, string>): Pro
       outs.push({ text: render.setsLogged(result) });
       if (result.complete) {
         const closed = await closeSession(ctx.user, result.sessionId, "complete", ctx.routine);
-        if (closed) outs.push(summaryOut(closed, "complete"));
+        if (closed) outs.push(summaryOut(closed, "complete"), await durationPrompt(ctx.user.id, closed));
       }
       return outs;
     }
@@ -366,7 +381,25 @@ function summaryOut(closed: ClosedSession, reason: "user" | "complete" | "inacti
 async function finishWorkout(ctx: Ctx): Promise<Out[]> {
   const open = await findOpenSession(ctx.user.id);
   const closed = open ? await closeSession(ctx.user, open.id, "user", ctx.routine) : null;
-  return [closed ? summaryOut(closed, "user") : { text: render.noOpenSession() }];
+  if (!closed) return [{ text: render.noOpenSession() }];
+  return [summaryOut(closed, "user"), await durationPrompt(ctx.user.id, closed)];
+}
+
+/** Text typed while a step is waiting for it. Returns null when the message is not meant for that step. */
+async function handleAwaitedText(ctx: Ctx, pending: Pending, text: string): Promise<Out[] | null> {
+  if (pending.kind === "time") {
+    const time = parseTimeInput(text);
+    if (!time) return [{ text: render.askTime(true), keyboard: skipKeyboard(pending.id, "Sem lembrete") }];
+    return finishOnboarding(ctx, time);
+  }
+  if (pending.kind === "duration_edit") {
+    const minutes = parseDurationInput(text);
+    if (!minutes) return [{ text: render.askDurationEdit(true) }];
+    await saveState(ctx, { pending: null });
+    const updated = await setSessionDuration(ctx.user.id, pending.sessionId, minutes);
+    return [{ text: updated ? render.durationUpdated(minutes) : render.expiredAction() }];
+  }
+  return null;
 }
 
 // ---------- Routine onboarding ----------
@@ -400,7 +433,23 @@ async function saveRoutineDraft(ctx: Ctx, days: RoutineDraft): Promise<Out[]> {
     input.push({ title: d.title, exercises });
   }
   await saveRoutine(ctx.user.id, input);
-  return [{ text: render.routineSaved(days[0].title) }];
+  // Onboarding continues: weekdays, then the training time.
+  const id = newPendingId();
+  await saveState(ctx, { pending: { kind: "days", id, days: [] } });
+  return [{ text: render.routineSaved(days[0].title) }, { text: render.askDays(), keyboard: daysKeyboard(id, []) }];
+}
+
+async function askTime(ctx: Ctx): Promise<Out[]> {
+  const id = newPendingId();
+  await saveState(ctx, { pending: { kind: "time", id } });
+  return [{ text: render.askTime(), keyboard: skipKeyboard(id, "Sem lembrete") }];
+}
+
+/** Last onboarding step: stores the time (null = no reminder) and closes the flow. */
+async function finishOnboarding(ctx: Ctx, time: string | null): Promise<Out[]> {
+  await saveState(ctx, { pending: null });
+  const [saved] = await db.update(users).set({ reminderTime: time }).where(eq(users.id, ctx.user.id)).returning({ trainingDays: users.trainingDays });
+  return [{ text: render.onboardingDone(saved?.trainingDays ?? [], time) }];
 }
 
 // ---------- Buttons ----------
@@ -410,7 +459,31 @@ async function handleCallback(ctx: Ctx, data: string | undefined): Promise<Out[]
   const pending: Pending | null = ctx.state.pending;
   if (!cb || !pending || pending.id !== cb.id) return [{ text: render.expiredAction() }];
 
+  // Weekday step: toggles keep the step open and redraw the keyboard in place.
+  if (pending.kind === "days") {
+    if (cb.action === "day") {
+      const days = pending.days.includes(cb.day) ? pending.days.filter((d) => d !== cb.day) : [...pending.days, cb.day].sort();
+      await saveState(ctx, { pending: { ...pending, days } });
+      return [{ text: render.askDays(), keyboard: daysKeyboard(pending.id, days) }];
+    }
+    if (cb.action === "ok") {
+      if (!pending.days.length) return [{ text: render.askDays(true), keyboard: daysKeyboard(pending.id, []) }];
+      await db.update(users).set({ trainingDays: pending.days }).where(eq(users.id, ctx.user.id));
+      return askTime(ctx);
+    }
+    return [{ text: render.expiredAction() }];
+  }
+  if (pending.kind === "time") return cb.action === "skip" ? finishOnboarding(ctx, null) : [{ text: render.expiredAction() }];
+
   await saveState(ctx, { pending: null });
+  if (pending.kind === "duration" || pending.kind === "duration_edit") {
+    if (cb.action === "ok" && pending.kind === "duration") return [{ text: render.durationConfirmed(pending.minutes) }];
+    if (cb.action === "edit") {
+      await saveState(ctx, { pending: { kind: "duration_edit", id: pending.id, sessionId: pending.sessionId } });
+      return [{ text: render.askDurationEdit() }];
+    }
+    return [{ text: render.expiredAction() }];
+  }
   if (cb.action === "no") return [{ text: render.cancelled() }];
 
   if (cb.action === "pick") {

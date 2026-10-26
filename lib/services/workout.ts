@@ -159,12 +159,26 @@ export async function closeSession(user: User, sessionId: string, reason: CloseR
   return {
     session: closed,
     day: day ? { letter: day.letter, title: day.title } : null,
-    data: sessionSummary(sessionId, log, changes),
+    // Same span the site shows (start to end of the session), which the user can then confirm or correct.
+    data: { ...sessionSummary(sessionId, log, changes), durationMin: sessionMinutes(closed.startedAt, endedAt) },
     next: routine && day ? nextDay(routine.days, day.letter) : null,
   };
 }
 
 export type ClosedSession = NonNullable<Awaited<ReturnType<typeof closeSession>>>;
+
+const sessionMinutes = (startedAt: Date, endedAt: Date) => Math.max(1, Math.round((endedAt.getTime() - startedAt.getTime()) / 60_000));
+
+/** The user's own duration for a finished session: the end moves so the site shows the same span. */
+export async function setSessionDuration(userId: string, sessionId: string, minutes: number) {
+  const session = await db.query.sessions.findFirst({ where: and(eq(sessions.id, sessionId), eq(sessions.userId, userId)) });
+  if (!session?.endedAt) return false;
+  await db
+    .update(sessions)
+    .set({ endedAt: new Date(session.startedAt.getTime() + minutes * 60_000) })
+    .where(eq(sessions.id, sessionId));
+  return true;
+}
 
 export const markSummarySent = (sessionId: string) => db.update(sessions).set({ summarySentAt: new Date() }).where(eq(sessions.id, sessionId));
 

@@ -254,12 +254,12 @@ export function RoutineEditor({ initial, catalog }: { initial: Routine; catalog:
                           </div>
                         </div>
 
-                        <div className="mt-3 flex flex-wrap items-center gap-2 sm:pl-9">
+                        <div className="mt-3 flex flex-col items-start gap-2 sm:pl-9">
                           {Array.from({ length: e.plannedSets }, (_, s) => {
                             const t = e.targets[s];
                             return (
                               <Badge key={s} tone={t ? "neutral" : "blue"}>
-                                S{s + 1} · {t ? `${formatKg(t.weight)} × ${t.reps}` : "meta na 1ª vez"}
+                                {s + 1}ª série · {t ? `${formatKg(t.weight)} × ${t.reps}` : "meta a definir"}
                               </Badge>
                             );
                           })}
