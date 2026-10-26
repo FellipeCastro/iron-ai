@@ -34,37 +34,31 @@ const chatCards = [
   {
     title: "Registro por texto livre",
     text: "Mande “supino reto 1 série 10kg” e pronto: a série fica salva no seu histórico.",
-    gradient: "bg-[linear-gradient(145deg,#0a0a0a_0%,#1e3a8a_100%)]",
     height: "min-h-[320px]",
   },
   {
     title: "Plano do dia no seu horário",
     text: "No dia de treino, o Iron AI te avisa com o plano completo: exercícios, séries, reps e carga de hoje.",
-    gradient: "bg-[linear-gradient(145deg,#0b1626_0%,#2563eb_100%)]",
     height: "min-h-[360px]",
   },
   {
     title: "Evolução em segundos",
     text: "Pergunte “evolução no supino reto” e receba o gráfico com carga atual, 1RM estimado e calorias gastas no período.",
-    gradient: "bg-[linear-gradient(145deg,#111111_0%,#1d4ed8_100%)]",
     height: "min-h-[340px]",
   },
   {
     title: "Errou? Ele corrige",
     text: "É só mandar “errei, foi 25kg” que a série é corrigida 🔥",
-    gradient: "bg-[linear-gradient(145deg,#1e1a24_0%,#1e40af_100%)]",
     height: "min-h-[300px]",
   },
   {
     title: "Metas automáticas",
     text: "Bateu a meta? +1 rep 😮",
-    gradient: "bg-[linear-gradient(145deg,#000000_0%,#3b82f6_140%)]",
     height: "min-h-[260px]",
   },
   {
     title: "Resumo de progressão",
     text: "Carga, repetições e calorias comparadas no período. Simples, rápido e sem planilha.",
-    gradient: "bg-[linear-gradient(145deg,#0b1626_0%,#2AABEE_160%)]",
     height: "min-h-[320px]",
   },
 ];
@@ -283,15 +277,11 @@ export default function Home() {
               {[chatCards[col], chatCards[col + 3]].map((card) => (
                 <article
                   key={card.title}
-                  className={`relative flex flex-col justify-end overflow-hidden rounded-[24px] px-8 pt-10 pb-9 text-white shadow-[0_10px_30px_rgba(0,0,0,0.12)] ${card.height} ${card.gradient}`}
+                  className={`flex flex-col justify-end rounded-[24px] border border-white/10 bg-[#2d2935] px-8 pt-10 pb-9 text-white shadow-[0_10px_30px_rgba(0,0,0,0.25)] ${card.height}`}
                 >
-                  <div
-                    aria-hidden
-                    className="pointer-events-none absolute -top-16 -right-16 size-56 rounded-full bg-white/15 blur-3xl"
-                  />
-                  <span className="relative block text-[48px] leading-8 font-black text-white/70">&ldquo;</span>
-                  <h3 className="relative mt-3 text-[26px] leading-8 font-bold">{card.title}</h3>
-                  <p className="relative mt-3 text-[16px] leading-6 text-white/90">{card.text}</p>
+                  <span className="block text-[48px] leading-8 font-black text-white/70">&ldquo;</span>
+                  <h3 className="mt-3 text-[26px] leading-8 font-bold">{card.title}</h3>
+                  <p className="mt-3 text-[16px] leading-6 font-medium text-[#d4d4d8]">{card.text}</p>
                 </article>
               ))}
             </div>

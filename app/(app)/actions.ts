@@ -8,8 +8,10 @@ import { headers } from "next/headers";
 import { z } from "zod";
 import { db, users } from "@/db";
 import { currentAppUser } from "@/lib/data/load";
+import { MAX_DURATION_MIN } from "@/lib/engine/duration";
 import { DAY_LETTERS, MAX_PLANNED_SETS, renameExerciseForUser, saveRoutine } from "@/lib/services/routine";
 import { createLinkToken, unlinkTelegram } from "@/lib/services/users";
+import { setSessionDuration } from "@/lib/services/workout";
 
 // Server Actions for the (app) pages. Each one resolves the signed-in user itself (they are reachable
 // by direct POST) and validates its input with Zod. Changes that alter what the bot does (routine, reminders,
@@ -79,6 +81,20 @@ export async function saveRoutineAction(input: z.input<typeof RoutineInput>): Pr
     });
     refresh();
     return { ok: true, data: renamed };
+  });
+}
+
+const DurationInput = z.object({ sessionId: z.uuid(), minutes: z.number().int().min(1).max(MAX_DURATION_MIN) });
+
+export async function updateSessionDurationAction(input: z.input<typeof DurationInput>): Promise<ActionResult> {
+  return traced("updateSessionDurationAction", async () => {
+    const user = await currentAppUser();
+    const parsed = DurationInput.safeParse(input);
+    if (!parsed.success) return fail("Duração inválida. Use entre 1 e 600 minutos.");
+    if (!(await setSessionDuration(user.id, parsed.data.sessionId, parsed.data.minutes))) return fail("Treino não encontrado.");
+    Sentry.logger.info("Session duration edited", { user_id: user.id, minutes: parsed.data.minutes, source: "web" });
+    refresh();
+    return { ok: true, data: undefined };
   });
 }
 

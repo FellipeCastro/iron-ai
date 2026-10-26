@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { auth } from "@clerk/nextjs/server";
+import { EditDuration } from "@/components/app/edit-duration";
 import { Badge, Card, CardTitle, DayBadge, PageHeader } from "@/components/app/ui";
 import { ChevronDownIcon } from "@/components/landing/icons";
 import { getHistory, type CloseReason, type WorkoutSession } from "@/lib/data";
@@ -143,9 +144,12 @@ function SessionCard({ session: s, timeZone }: { session: WorkoutSession; timeZo
             </li>
           ))}
         </ul>
-        <p className="mt-4 text-[13px] text-[#8a8a94]">
-          {closeLabel[s.closeReason]} · calorias estimadas {formatKcal(s.calories)}
-        </p>
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+          <p className="text-[13px] text-[#8a8a94]">
+            {closeLabel[s.closeReason]} · calorias estimadas {formatKcal(s.calories)}
+          </p>
+          <EditDuration sessionId={s.id} minutes={Math.max(1, Math.round((Date.parse(s.endedAt) - Date.parse(s.startedAt)) / 60_000))} />
+        </div>
       </div>
     </details>
   );
