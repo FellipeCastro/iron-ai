@@ -18,11 +18,15 @@ import {
   TelegramIcon,
   TimerIcon,
 } from "@/components/landing/icons";
+import { siteUrl } from "@/lib/env";
 import { PRIVACY_URL, TERMS_URL } from "@/lib/routes";
 
 const navLinks = [
   { label: "Como funciona", href: "#como-funciona" },
   { label: "Recursos", href: "#recursos" },
+  { label: "Vantagens", href: "#vantagens" },
+  { label: "Progressão", href: "#progressao" },
+  { label: "Conversas", href: "#conversas" },
   { label: "FAQ", href: "#faq" },
 ];
 
@@ -30,44 +34,38 @@ const chatCards = [
   {
     title: "Registro por texto livre",
     text: "Mande “supino reto 1 série 10kg” e pronto: a série fica salva no seu histórico.",
-    image: "/assets/image-01.png",
-    position: "50% 0%",
-    height: "h-[543px]",
+    gradient: "bg-[linear-gradient(145deg,#0a0a0a_0%,#1e3a8a_100%)]",
+    height: "min-h-[320px]",
   },
   {
     title: "Plano do dia no seu horário",
     text: "No dia de treino, o Iron AI te avisa com o plano completo: exercícios, séries, reps e carga de hoje.",
-    image: "/assets/image-02.png",
-    position: "50% 0%",
-    height: "h-[571px]",
+    gradient: "bg-[linear-gradient(145deg,#0b1626_0%,#2563eb_100%)]",
+    height: "min-h-[360px]",
   },
   {
     title: "Evolução em segundos",
-    text: "Pergunte “evolução no supino reto” e receba o gráfico com carga atual, 1RM estimado e volume total do período.",
-    image: "/assets/image-03.png",
-    position: "50% 0%",
-    height: "h-[571px]",
+    text: "Pergunte “evolução no supino reto” e receba o gráfico com carga atual, 1RM estimado e calorias gastas no período.",
+    gradient: "bg-[linear-gradient(145deg,#111111_0%,#1d4ed8_100%)]",
+    height: "min-h-[340px]",
   },
   {
     title: "Errou? Ele corrige",
     text: "É só mandar “errei, foi 25kg” que a série é corrigida 🔥",
-    image: "/assets/image-01.png",
-    position: "50% 60%",
-    height: "h-[571px]",
+    gradient: "bg-[linear-gradient(145deg,#1e1a24_0%,#1e40af_100%)]",
+    height: "min-h-[300px]",
   },
   {
     title: "Metas automáticas",
     text: "Bateu a meta? +1 rep 😮",
-    image: "/assets/image-04.png",
-    position: "50% 35%",
-    height: "h-[571px]",
+    gradient: "bg-[linear-gradient(145deg,#000000_0%,#3b82f6_140%)]",
+    height: "min-h-[260px]",
   },
   {
     title: "Resumo de progressão",
-    text: "Carga, repetições e volume comparados no período. Simples, rápido e sem planilha.",
-    image: "/assets/image-04.png",
-    position: "50% 75%",
-    height: "h-[571px]",
+    text: "Carga, repetições e calorias comparadas no período. Simples, rápido e sem planilha.",
+    gradient: "bg-[linear-gradient(145deg,#0b1626_0%,#2AABEE_160%)]",
+    height: "min-h-[320px]",
   },
 ];
 
@@ -75,7 +73,7 @@ const reasons = [
   {
     icon: <TimerIcon className="size-7" />,
     title: "Economize seu tempo",
-    text: "Nada de planilha nem app cheio de botões. Você escreve do seu jeito no Telegram e o Iron AI entende exercício, carga e repetições na hora.",
+    text: "Nada de planilha nem app cheio de botões. Você escreve do seu jeito para o seu contato inteligente e o Iron AI entende exercício, carga e repetições na hora.",
   },
   {
     icon: <ChartUpIcon className="size-7" />,
@@ -120,8 +118,8 @@ const faqs = [
     a: "Cada série tem uma meta. Se você bate a meta, a próxima ganha +1 rep. Ao chegar em 12 reps, a carga sobe pelo seu incremento configurado e as reps voltam para 8.",
   },
   {
-    q: "Posso mudar o horário dos lembretes?",
-    a: "Sim. No painel web você define seus dias de treino, horário do lembrete, fuso e incremento de carga.",
+    q: "Posso mudar o horário do treino?",
+    a: "Sim. No painel web você define seus dias de treino, horário do treino, fuso e incremento de carga.",
   },
   {
     q: "Como excluo minha conta e meus dados?",
@@ -150,20 +148,60 @@ const footerColumns = [
   },
 ];
 
+const jsonLd = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      "@id": `${siteUrl()}/#organization`,
+      name: "Iron AI",
+      url: siteUrl(),
+      logo: `${siteUrl()}/assets/logo-icon-black.png`,
+    },
+    {
+      "@type": "SoftwareApplication",
+      "@id": `${siteUrl()}/#app`,
+      name: "Iron AI",
+      description:
+        "Contato inteligente que organiza os seus treinos: registro de séries por mensagem, metas automáticas, lembretes e gráficos de evolução.",
+      applicationCategory: "HealthApplication",
+      operatingSystem: "Web, Telegram",
+      inLanguage: "pt-BR",
+      url: siteUrl(),
+      offers: { "@type": "Offer", price: "0", priceCurrency: "BRL" },
+    },
+    {
+      "@type": "FAQPage",
+      mainEntity: faqs.map((faq) => ({
+        "@type": "Question",
+        name: faq.q,
+        acceptedAnswer: { "@type": "Answer", text: faq.a },
+      })),
+    },
+  ],
+};
+
 export default function Home() {
   return (
     <div className="bg-[linear-gradient(180deg,#ffffff_0px,#fffffc_400px,#fffff6_1500px,#fffff1_2500px,#fdfef2_3000px,#f7fbf7_4000px,#f1f8fd_5000px)] text-[#111]">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c") }}
+      />
+
       {/* Header */}
-      <header className="mx-auto flex h-20 max-w-[1440px] items-center justify-between px-6 lg:px-20">
-        <Logo />
-        <nav className="hidden items-center gap-[30px] text-[16px] font-medium lg:flex">
-          {navLinks.map((link) => (
-            <Link key={link.label} href={link.href} className="hover:opacity-70">
-              {link.label}
-            </Link>
-          ))}
-        </nav>
-        <HeaderAuth />
+      <header className="sticky top-0 z-50 border-b border-black/5 bg-white/60 backdrop-blur-xl backdrop-saturate-150">
+        <div className="mx-auto flex h-20 max-w-[1440px] items-center justify-between px-6 lg:px-12">
+          <Logo />
+          <nav className="hidden items-center gap-6 text-[15px] font-medium lg:flex">
+            {navLinks.map((link) => (
+              <Link key={link.label} href={link.href} className="hover:opacity-70">
+                {link.label}
+              </Link>
+            ))}
+          </nav>
+          <HeaderAuth />
+        </div>
       </header>
 
       {/* Hero */}
@@ -182,19 +220,19 @@ export default function Home() {
               ))}
             </div>
             <span className="text-[13px] font-medium sm:text-[14px]">
-              Direto no Telegram com <StarIcon className="-mt-1 inline size-4" /> 100% grátis
+              Seu contato inteligente de treino <StarIcon className="-mt-1 inline size-4" /> 100% grátis
             </span>
           </div>
           <h1 className="mt-6 text-[36px] leading-[46px] font-medium sm:text-[48px] sm:leading-[64px] tracking-[-0.01em]">
-            <span className="font-bold">Conheça o Iron AI</span>
+            <span className="font-bold">Um contato inteligente</span>
             <br />
-            Registre seu treino
+            que organiza
             <br />
-            com uma mensagem
+            os seus treinos
           </h1>
           <p className="mt-6 max-w-[520px] text-[16px] leading-6 text-[#5b5b66]">
-            Conheça o Iron AI, o assistente de treino que vive no seu Telegram. Mande suas séries em texto livre e ele
-            registra, calcula a próxima meta e acompanha sua evolução.
+            O Iron AI é o contato inteligente que organiza os seus treinos. Mande suas séries em texto livre, pelo
+            Telegram, e ele registra, calcula a próxima meta e acompanha sua evolução.
           </p>
           <CtaBadges className="mt-6" />
         </div>
@@ -235,9 +273,9 @@ export default function Home() {
       </section>
 
       {/* Chat cards */}
-      <section id="como-funciona" className="mx-auto max-w-[1440px] px-6 pt-10 lg:px-[96px]">
+      <section id="como-funciona" className="mx-auto max-w-[1440px] scroll-mt-20 px-6 pt-10 lg:px-[96px]">
         <h2 className="text-center text-[32px] leading-tight sm:text-[44px] font-medium tracking-[-0.01em] lg:text-[48px]">
-          Tudo pelo chat, do jeito que você já fala 👀
+          Um contato inteligente, do jeito que você já fala 👀
         </h2>
         <div className="mt-[90px] grid gap-[21px] md:grid-cols-3">
           {[0, 1, 2].map((col) => (
@@ -245,21 +283,15 @@ export default function Home() {
               {[chatCards[col], chatCards[col + 3]].map((card) => (
                 <article
                   key={card.title}
-                  className={`relative overflow-hidden rounded-[24px] bg-[#0b1626] shadow-[0_10px_30px_rgba(0,0,0,0.12)] ${card.height}`}
+                  className={`relative flex flex-col justify-end overflow-hidden rounded-[24px] px-8 pt-10 pb-9 text-white shadow-[0_10px_30px_rgba(0,0,0,0.12)] ${card.height} ${card.gradient}`}
                 >
-                  <Image
-                    src={card.image}
-                    alt=""
-                    fill
-                    sizes="(min-width: 768px) 402px, 100vw"
-                    className="scale-[1.35] object-cover"
-                    style={{ objectPosition: card.position }}
+                  <div
+                    aria-hidden
+                    className="pointer-events-none absolute -top-16 -right-16 size-56 rounded-full bg-white/15 blur-3xl"
                   />
-                  <div className="absolute inset-x-4 bottom-4 rounded-[14px] border border-white/25 bg-[linear-gradient(110deg,rgba(0,0,0,0.75),rgba(30,30,40,0.45))] px-6 pt-5 pb-6 text-white backdrop-blur-md">
-                    <span className="block text-[22px] leading-3 font-black text-[#3b82f6]">&quot;</span>
-                    <h3 className="mt-2 text-[20px] font-bold">{card.title}</h3>
-                    <p className="mt-2 text-[14px] leading-5 text-white/90">{card.text}</p>
-                  </div>
+                  <span className="relative block text-[48px] leading-8 font-black text-white/70">&ldquo;</span>
+                  <h3 className="relative mt-3 text-[26px] leading-8 font-bold">{card.title}</h3>
+                  <p className="relative mt-3 text-[16px] leading-6 text-white/90">{card.text}</p>
                 </article>
               ))}
             </div>
@@ -268,7 +300,7 @@ export default function Home() {
       </section>
 
       {/* What it includes */}
-      <section id="recursos" className="pt-[240px]">
+      <section id="recursos" className="scroll-mt-20 pt-[240px]">
         <h2 className="mb-[70px] text-center text-[32px] leading-tight sm:text-[44px] font-medium tracking-[-0.01em] lg:text-[48px]">
           O que o Iron AI inclui?
         </h2>
@@ -276,9 +308,9 @@ export default function Home() {
       </section>
 
       {/* Why choose */}
-      <section className="mx-auto max-w-[1440px] px-6 pt-[240px]">
+      <section id="vantagens" className="mx-auto max-w-[1440px] scroll-mt-20 px-6 pt-[240px]">
         <h2 className="text-center text-[32px] leading-tight sm:text-[44px] font-semibold tracking-[-0.01em] lg:text-[48px]">
-          Por que escolher o Iron AI?
+          Por que ter um contato inteligente no treino?
         </h2>
         <p className="mt-2 text-center text-[18px] text-[#333]">O jeito mais simples de registrar e evoluir seu treino.</p>
         <div className="mx-auto mt-[84px] grid max-w-[1120px] gap-8 md:grid-cols-3">
@@ -293,7 +325,7 @@ export default function Home() {
       </section>
 
       {/* Highlight */}
-      <section className="mx-auto grid max-w-[1440px] items-center gap-10 px-6 pt-[235px] pb-[260px] lg:grid-cols-[1fr_480px] lg:pl-[145px] lg:pr-[110px]">
+      <section id="progressao" className="mx-auto grid max-w-[1440px] scroll-mt-20 items-center gap-10 px-6 pt-[235px] pb-[260px] lg:grid-cols-[1fr_480px] lg:pl-[145px] lg:pr-[110px]">
         <div>
           <p className="text-[14px] font-medium tracking-[0.08em] text-[#f43f5e] uppercase">Novo recurso</p>
           <h2 className="mt-6 text-[34px] leading-[44px] font-semibold sm:text-[48px] sm:leading-[60px] tracking-[-0.01em] text-[#1f2433]">
@@ -317,7 +349,7 @@ export default function Home() {
       </section>
 
       {/* Conversations (dark) */}
-      <section className="bg-[#1e1a24] px-6 pt-[157px] pb-[169px]">
+      <section id="conversas" className="scroll-mt-20 bg-[#1e1a24] px-6 pt-[157px] pb-[169px]">
         <h2 className="text-center text-[32px] leading-tight sm:text-[44px] font-semibold tracking-[-0.01em] text-white lg:text-[48px]">
           Fale do seu jeito, ele entende
         </h2>
@@ -340,7 +372,7 @@ export default function Home() {
       </section>
 
       {/* FAQ */}
-      <section id="faq" className="bg-[linear-gradient(180deg,#f4f9f9,#f9fcf5)] px-6 pt-[134px] pb-8">
+      <section id="faq" className="scroll-mt-20 bg-[linear-gradient(180deg,#f4f9f9,#f9fcf5)] px-6 pt-[134px] pb-8">
         <h2 className="text-center text-[32px] leading-tight sm:text-[44px] font-medium tracking-[-0.01em] lg:text-[48px]">Perguntas frequentes</h2>
         <p className="mt-2 text-center text-[18px] text-[#333]">As dúvidas que mais recebemos.</p>
         <div className="mx-auto mt-[52px] flex max-w-[768px] flex-col gap-3">
@@ -381,11 +413,11 @@ export default function Home() {
               ))}
             </div>
             <h2 className="mt-1 max-w-[400px] text-[36px] leading-[40px] font-bold sm:text-[48px] sm:leading-[48px] tracking-[-0.01em] text-[#1e1a24]">
-              Seu próximo PR começa aqui
+              Seu contato inteligente para treinar melhor
             </h2>
             <div className="mt-6 flex items-center gap-4 text-[18px] text-[#3f3f46]">
               <span className="flex items-center gap-2">
-                <TelegramIcon className="size-6 text-[#3b3842]" /> Telegram
+                <TelegramIcon className="size-6 text-[#3b3842]" /> Conversa no chat
               </span>
               <span className="size-1 rounded-full bg-[#a1a1aa]" />
               <span className="flex items-center gap-2">

@@ -50,10 +50,10 @@ export function LineChart({ points, unit, label }: { points: LinePoint[]; unit?:
           aria-label={label}
           tabIndex={0}
           onPointerMove={onPointerMove}
-          onPointerLeave={() => setActive(null)}
+          onPointerLeave={(e) => e.pointerType === "mouse" && setActive(null)}
           onKeyDown={onKeyDown}
           onBlur={() => setActive(null)}
-          className="block overflow-visible outline-none"
+          className="block touch-pan-y overflow-visible outline-none"
         >
           {ticks.map((t) => (
             <g key={t}>

@@ -1,6 +1,6 @@
 import { and, desc, eq, gte, isNotNull } from "drizzle-orm";
 import { db, sessions, type MuscleGroup, type User } from "@/db";
-import { exerciseReport, muscleGroupReport, recordsByExercise, sessionSummary } from "@/lib/engine/reports";
+import { caloriesOf, exerciseReport, muscleGroupReport, recordsByExercise, sessionSummary } from "@/lib/engine/reports";
 import * as render from "@/lib/telegram/render";
 import { loadDay, type RoutineDayFull, type Routine } from "./routine";
 import { findOpenSession, loadLog, loadTargets, nextRoutineDay } from "./workout";
@@ -72,7 +72,7 @@ export async function weekReportText(user: User) {
     sessions: recent.length,
     planned: user.trainingDays.length,
     sets: week.length,
-    volume: week.reduce((sum, s) => sum + s.weight * s.reps, 0),
+    calories: caloriesOf(week),
     records: week.filter((s) => records.get(s)).length,
   });
 }

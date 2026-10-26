@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { Chip } from "@/components/brand/chip";
@@ -6,9 +7,11 @@ import { ArrowRightIcon, StarIcon } from "@/components/landing/icons";
 
 const highlights = ["Registro por texto livre", "Metas automáticas de 8 a 12 reps", "Gráficos de evolução e PRs"];
 
+export const metadata: Metadata = { robots: { index: false, follow: true } };
+
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="grid min-h-screen flex-1 text-[#111] lg:grid-cols-[1fr_minmax(0,620px)]">
+    <div className="grid min-h-dvh flex-1 text-[#111] lg:grid-cols-[1fr_minmax(0,620px)]">
       {/* Form */}
       <div className="flex flex-col bg-[linear-gradient(180deg,#ffffff_0%,#fffff6_60%,#f7fbf7_100%)]">
         <header className="flex h-20 items-center justify-between px-6 lg:px-12">

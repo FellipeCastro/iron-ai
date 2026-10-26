@@ -4,10 +4,10 @@ import { auth } from "@clerk/nextjs/server";
 import { Badge, Card, CardTitle, DayBadge, PageHeader } from "@/components/app/ui";
 import { ChevronDownIcon } from "@/components/landing/icons";
 import { getHistory, type CloseReason, type WorkoutSession } from "@/lib/data";
-import { WEEKDAYS, formatCompact, formatDate, formatDuration, formatKg, formatNumber, formatTime } from "@/lib/format";
+import { WEEKDAYS, formatDate, formatDuration, formatKcal, formatKg, formatNumber, formatTime } from "@/lib/format";
 import { exerciseUrl } from "@/lib/routes";
 
-export const metadata: Metadata = { title: "Histórico — Iron AI" };
+export const metadata: Metadata = { title: "Histórico" };
 
 const closeLabel: Record<CloseReason, string> = {
   user: "Encerrado por você",
@@ -47,9 +47,10 @@ export default async function HistoryPage() {
         </div>
 
         <div className="mt-6 overflow-x-auto pb-1">
-          <div className="grid w-max grid-flow-col grid-rows-7 gap-1.5">
+          {/* Weeks stretch to fill the card, down to phone width. */}
+          <div className="grid min-w-[300px] grid-flow-col grid-cols-[auto_repeat(12,minmax(0,1fr))] grid-rows-7 gap-1 sm:gap-1.5">
             {WEEKDAYS.map((d) => (
-              <span key={d.iso} className="flex h-6 items-center pr-2 text-[12px] text-[#8a8a94]">
+              <span key={d.iso} className="flex h-6 items-center pr-2 text-[11px] sm:h-9 sm:text-[12px] text-[#8a8a94]">
                 {d.short}
               </span>
             ))}
@@ -57,7 +58,7 @@ export default async function HistoryPage() {
               <span
                 key={cell.key}
                 title={`${formatDate(`${cell.key}T12:00:00Z`, "UTC", { weekday: "short", day: "2-digit", month: "short" })}${cell.letter ? ` · Treino ${cell.letter}` : ""}`}
-                className={`flex size-6 items-center justify-center rounded-[6px] text-[11px] font-bold ${
+                className={`flex h-6 items-center justify-center rounded-[6px] text-[10px] font-bold sm:h-9 sm:rounded-[8px] sm:text-[12px] ${
                   cell.future ? "border border-dashed border-[#e5e7eb]" : cell.letter ? "bg-[#3b82f6] text-white" : "bg-[#f1f1f4]"
                 }`}
               >
@@ -110,7 +111,7 @@ function SessionCard({ session: s, timeZone }: { session: WorkoutSession; timeZo
         <div className="flex flex-wrap items-center gap-2">
           <Badge>{formatDuration(s.startedAt, s.endedAt)}</Badge>
           <Badge>{s.setCount} séries</Badge>
-          <Badge>{formatCompact(s.volume)} kg</Badge>
+          <Badge>{formatKcal(s.calories)}</Badge>
           {s.prCount > 0 && <Badge tone="pr">🏆 {s.prCount} {s.prCount === 1 ? "recorde" : "recordes"}</Badge>}
         </div>
         <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-[#f3f4f6] transition-transform group-open:rotate-180">
@@ -143,7 +144,7 @@ function SessionCard({ session: s, timeZone }: { session: WorkoutSession; timeZo
           ))}
         </ul>
         <p className="mt-4 text-[13px] text-[#8a8a94]">
-          {closeLabel[s.closeReason]} · volume total {formatNumber(s.volume)} kg
+          {closeLabel[s.closeReason]} · calorias estimadas {formatKcal(s.calories)}
         </p>
       </div>
     </details>

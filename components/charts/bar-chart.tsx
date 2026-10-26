@@ -28,7 +28,7 @@ export function BarChart({ data, unit, label }: { data: BarDatum[]; unit?: strin
   const current = active === null ? null : data[active];
 
   return (
-    <div ref={ref} className="relative" onPointerLeave={() => setActive(null)}>
+    <div ref={ref} className="relative" onPointerLeave={(e) => e.pointerType === "mouse" && setActive(null)}>
       {width > 0 && (
         <svg width={width} height={HEIGHT} role="img" aria-label={label} className="block overflow-visible">
           {ticks.map((t) => (

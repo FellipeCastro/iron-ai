@@ -43,10 +43,20 @@ const compact = new Intl.NumberFormat("pt-BR", { notation: "compact", maximumFra
 export const formatNumber = (n: number) => num.format(n);
 export const formatCompact = (n: number) => compact.format(n);
 export const formatKg = (n: number) => `${num.format(n)} kg`;
+/** "50kg × 8 reps"; bodyweight sets (no load) drop the weight. */
+export const formatLoad = (weight: number, reps: number) => (weight > 0 ? `${num.format(weight)}kg × ${reps} reps` : `${reps} reps`);
 export const formatSigned = (n: number, unit = "") => `${n > 0 ? "+" : n < 0 ? "−" : ""}${num.format(Math.abs(n))}${unit}`;
 
 /** Epley estimate of the one-rep max. */
 export const estimate1rm = (weight: number, reps: number) => Math.round(weight * (1 + reps / 30) * 10) / 10;
+
+/** Rough kcal burned per kg of Σ weight × reps (includes rest-period and recovery overhead). */
+const KCAL_PER_KG_LIFTED = 0.035;
+
+/** Estimated calories burned for a given lifted volume (Σ weight × reps, in kg). */
+export const estimateCalories = (volumeKg: number) => volumeKg * KCAL_PER_KG_LIFTED;
+
+export const formatKcal = (kcal: number) => `~${Math.round(kcal).toLocaleString("pt-BR")} kcal`;
 
 /** Calendar date (YYYY-MM-DD) of an instant in a timezone. */
 export const dateKey = (date: Date, timeZone: string) => date.toLocaleDateString("en-CA", { timeZone });

@@ -3,6 +3,7 @@ import { matchExercise } from "@/lib/engine/match";
 import { bestSet, markRecords } from "@/lib/engine/records";
 import { exerciseReport, sessionSummary, type ReportSet } from "@/lib/engine/reports";
 import { isStagnant } from "@/lib/engine/stagnation";
+import { estimateCalories } from "@/lib/format";
 
 const l = (weight: number, reps: number) => ({ weight, reps });
 
@@ -48,7 +49,7 @@ describe("reports", () => {
   it("summarizes a session with records and load-ups", () => {
     const summary = sessionSummary("s3", history, [{ exerciseId: "supino", setPosition: 1, before: l(50, 12), after: l(52.5, 9) }]);
     expect(summary.setCount).toBe(2);
-    expect(summary.volume).toBe(52.5 * 8 + 50 * 12);
+    expect(summary.calories).toBeCloseTo(estimateCalories(52.5 * 8 + 50 * 12));
     expect(summary.records.map((r) => r.record)).toEqual(["weight", "reps"]);
     expect(summary.loadUps).toBe(1);
   });

@@ -4,7 +4,8 @@ import { Callout, LegalPage, List, Placeholder, Strong, type LegalSection } from
 import { PRIVACY_URL, SETTINGS_URL } from "@/lib/routes";
 
 export const metadata: Metadata = {
-  title: "Termos de serviço — Iron AI",
+  title: "Termos de serviço",
+  alternates: { canonical: "/termos" },
   description: "As regras de uso do Iron AI: conta, Telegram, limites, IA, conteúdo e responsabilidades.",
 };
 

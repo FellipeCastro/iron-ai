@@ -10,7 +10,7 @@ export function HeaderAuth() {
     <div className="flex items-center gap-4">
       <Suspense>
         <Show when="signed-out">
-          <Link href={SIGN_IN_URL} className="text-[16px] font-medium hover:opacity-70 md:hidden">
+          <Link href={SIGN_IN_URL} className="text-[16px] font-semibold hover:opacity-70 md:hidden">
             Entrar
           </Link>
           <CtaBadges size="sm" className="hidden md:flex" />

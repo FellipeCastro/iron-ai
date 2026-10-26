@@ -4,12 +4,12 @@ import { useState } from "react";
 import { LineChart } from "@/components/charts/line-chart";
 import { Card } from "./ui";
 
-export type ExerciseChartPoint = { t: number; label: string; maxWeight: number; bestE1rm: number; volume: number };
+export type ExerciseChartPoint = { t: number; label: string; maxWeight: number; bestE1rm: number; calories: number };
 
 const metrics = {
   maxWeight: { label: "Carga máxima", unit: "kg", help: "A maior carga usada em cada treino." },
   bestE1rm: { label: "1RM estimado", unit: "kg", help: "Quanto você levantaria em 1 repetição, estimado pela melhor série." },
-  volume: { label: "Volume", unit: "kg", help: "Carga × repetições somadas de todas as séries do treino." },
+  calories: { label: "Calorias", unit: "kcal", help: "Estimativa das calorias gastas neste exercício em cada treino." },
 } as const;
 
 const periods = [

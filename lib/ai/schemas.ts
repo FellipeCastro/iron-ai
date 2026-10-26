@@ -43,7 +43,7 @@ const AskReport = z.object({
   scope: z
     .enum(["next_workout", "last_workout", "exercise", "muscle_group", "week"])
     .describe(
-      "next_workout: what to do next / targets. last_workout: summary. exercise: progress of one exercise. muscle_group: volume by group. week: weekly overview.",
+      "next_workout: what to do next / targets. last_workout: summary. exercise: progress of one exercise. muscle_group: estimated calories by group. week: weekly overview.",
     ),
   exercise: exerciseName.nullable(),
   muscle_group: z.enum(muscleGroup.enumValues).nullable(),

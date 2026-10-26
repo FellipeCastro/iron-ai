@@ -98,4 +98,4 @@ export const buttonSecondary =
 export const buttonDanger =
   "inline-flex h-11 items-center justify-center gap-2 rounded-full bg-[#e11d48] px-6 text-[15px] font-semibold text-white transition-opacity hover:opacity-85 disabled:opacity-40";
 export const inputBase =
-  "h-11 rounded-[12px] border border-[#e5e7eb] bg-white px-4 text-[15px] outline-none transition-colors focus:border-[#111]";
+  "h-11 rounded-[12px] border border-[#e5e7eb] bg-white px-4 text-[16px] outline-none sm:text-[15px] transition-colors focus:border-[#111]";

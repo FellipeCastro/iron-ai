@@ -6,10 +6,10 @@ import { ExerciseChart } from "@/components/app/exercise-chart";
 import { ChevronLeftIcon } from "@/components/app/icons";
 import { Badge, Card, CardTitle, PageHeader, StatTile } from "@/components/app/ui";
 import { getExerciseDetail } from "@/lib/data";
-import { MUSCLE_LABEL, formatDate, formatKg, formatNumber, formatSigned } from "@/lib/format";
+import { MUSCLE_LABEL, formatDate, formatKg, formatLoad, formatSigned } from "@/lib/format";
 import { EXERCISES_URL } from "@/lib/routes";
 
-export const metadata: Metadata = { title: "Evolução — Iron AI" };
+export const metadata: Metadata = { title: "Evolução" };
 
 const REP_RANGE = [8, 9, 10, 11, 12];
 
@@ -42,12 +42,12 @@ export default async function ExercisePage({ params }: PageProps<"/exercises/[id
           delta={summary.weightChange30d > 0 ? { text: formatSigned(summary.weightChange30d, " kg"), good: true } : undefined}
           hint={summary.weightChange30d > 0 ? "em 30 dias" : "igual há 30 dias"}
         />
-        <StatTile label="Recorde" value={`${formatNumber(record.weight)} × ${record.reps}`} hint={`em ${formatDate(record.date, timeZone)}`} />
+        <StatTile label="Recorde" value={formatLoad(record.weight, record.reps)} hint={`em ${formatDate(record.date, timeZone)}`} />
         <StatTile label="1RM estimado" value={formatKg(data.bestE1rm)} hint="melhor série" />
         <StatTile
           label="Próxima meta"
-          value={targets[0] ? `${formatNumber(targets[0].weight)} × ${targets[0].reps}` : "—"}
-          hint={targets[0] ? "kg × reps na 1ª série" : "fora da rotina"}
+          value={targets[0] ? formatLoad(targets[0].weight, targets[0].reps) : "—"}
+          hint={targets[0] ? "na 1ª série" : "fora da rotina"}
         />
       </div>
 
@@ -59,7 +59,7 @@ export default async function ExercisePage({ params }: PageProps<"/exercises/[id
             label: formatDate(p.date, timeZone),
             maxWeight: p.maxWeight,
             bestE1rm: p.bestE1rm,
-            volume: p.volume,
+            calories: p.calories,
           }))}
         />
       </div>
@@ -72,8 +72,8 @@ export default async function ExercisePage({ params }: PageProps<"/exercises/[id
               {targets.map((t) => (
                 <li key={t.position} className="flex items-center gap-4">
                   <span className="w-8 text-[14px] font-semibold text-[#8a8a94]">S{t.position}</span>
-                  <span className="w-[120px] text-[16px] font-semibold tabular-nums">
-                    {formatKg(t.weight)} × {t.reps}
+                  <span className="w-[140px] shrink-0 sm:w-[170px] text-[16px] font-semibold tabular-nums">
+                    {formatLoad(t.weight, t.reps)}
                   </span>
                   <div className="flex flex-1 gap-1" aria-label={`${t.reps} de 12 repetições`}>
                     {REP_RANGE.map((r) => (
@@ -100,7 +100,7 @@ export default async function ExercisePage({ params }: PageProps<"/exercises/[id
                       key={s.position}
                       className={`rounded-[10px] px-2.5 py-1 text-[13px] tabular-nums ${s.isPr ? "bg-[#fff7e0] font-semibold text-[#92400e]" : "bg-[#f5f5f8] text-[#3f3f46]"}`}
                     >
-                      {formatNumber(s.weight)} × {s.reps}
+                      {formatLoad(s.weight, s.reps)}
                       {s.isPr && " 🏆"}
                     </span>
                   ))}

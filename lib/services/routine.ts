@@ -123,6 +123,37 @@ export function loadCatalog(userId: string) {
     .orderBy(exercises.name);
 }
 
+/**
+ * Renames an exercise for one user. The global catalog is shared, so a catalog exercise is never edited:
+ * the user gets their own copy under the new name. A custom exercise is renamed in place, keeping its history.
+ */
+export async function renameExerciseForUser(userId: string, exerciseId: string, name: string) {
+  const [current] = await db
+    .select({ id: exercises.id, name: exercises.name, muscleGroup: exercises.muscleGroup, ownerUserId: exercises.ownerUserId, aliases: exercises.aliases })
+    .from(exercises)
+    .where(and(eq(exercises.id, exerciseId), or(isNull(exercises.ownerUserId), eq(exercises.ownerUserId, userId))));
+  if (!current) throw new Error("Exercício inválido na rotina.");
+
+  const clean = name.trim().replace(/\s+/g, " ").slice(0, 80);
+  if (clean.toLowerCase() === current.name.toLowerCase()) return { id: current.id, name: current.name };
+
+  if (current.ownerUserId === null) return ensureCustomExercise(userId, clean, current.muscleGroup);
+
+  const label = clean.charAt(0).toUpperCase() + clean.slice(1);
+  const [existing] = await db
+    .select({ id: exercises.id, name: exercises.name })
+    .from(exercises)
+    .where(and(eq(exercises.ownerUserId, userId), eq(exercises.name, label)));
+  if (existing) return existing;
+
+  const [row] = await db
+    .update(exercises)
+    .set({ name: label, aliases: [...new Set([...current.aliases, clean.toLowerCase()])] })
+    .where(eq(exercises.id, current.id))
+    .returning({ id: exercises.id, name: exercises.name });
+  return row;
+}
+
 /** Custom exercise owned by the user; reuses an existing one with the same name. */
 export async function ensureCustomExercise(userId: string, name: string, muscleGroup: MuscleGroup) {
   const clean = name.trim().replace(/\s+/g, " ").slice(0, 80);

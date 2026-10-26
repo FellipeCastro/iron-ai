@@ -146,7 +146,7 @@ export function SettingsForm({ initial, linkedSince }: { initial: Settings; link
 
       {/* Preferences */}
       <Card>
-        <CardTitle title="Treino e lembretes" subtitle="O lembrete chega no Telegram nos seus dias de treino, no horário escolhido." />
+        <CardTitle title="Dias e horário de treino" subtitle="Avisamos no Telegram na hora do seu treino, nos dias escolhidos." />
 
         <div className="mt-6 grid gap-8">
           <fieldset>
@@ -175,7 +175,7 @@ export function SettingsForm({ initial, linkedSince }: { initial: Settings; link
 
           <div className="grid gap-6 sm:grid-cols-2">
             <label className="grid gap-2">
-              <span className="text-[15px] font-semibold">Horário do lembrete</span>
+              <span className="text-[15px] font-semibold">Horário do treino</span>
               <input
                 type="time"
                 value={prefs.reminderTime}

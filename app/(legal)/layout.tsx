@@ -5,7 +5,7 @@ import { PRIVACY_URL, TERMS_URL } from "@/lib/routes";
 
 export default function LegalLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex min-h-screen flex-1 flex-col bg-[linear-gradient(180deg,#ffffff_0px,#fffff6_600px,#f7fbf7_1600px,#f1f8fd_3000px)] text-[#111]">
+    <div className="flex min-h-dvh flex-1 flex-col bg-[linear-gradient(180deg,#ffffff_0px,#fffff6_600px,#f7fbf7_1600px,#f1f8fd_3000px)] text-[#111]">
       <header className="mx-auto flex h-20 w-full max-w-[1180px] items-center justify-between px-4 sm:px-6">
         <Logo />
         <Link href="/" className="inline-flex items-center gap-2 text-[15px] font-medium hover:opacity-70">

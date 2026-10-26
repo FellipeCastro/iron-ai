@@ -35,7 +35,7 @@ export type WorkoutSession = {
   endedAt: string; // ISO
   closeReason: CloseReason;
   exercises: SessionExercise[];
-  volume: number; // Σ weight × reps (kg)
+  calories: number; // estimated kcal, from Σ weight × reps
   setCount: number;
   prCount: number;
 };
@@ -44,7 +44,7 @@ export type ExercisePoint = {
   date: string; // ISO
   maxWeight: number;
   bestE1rm: number;
-  volume: number;
+  calories: number;
 };
 
 export type ExerciseSummary = ExerciseRef & {

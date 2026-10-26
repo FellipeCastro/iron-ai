@@ -4,7 +4,8 @@ import { Callout, DataTable, LegalPage, List, Placeholder, Strong, type LegalSec
 import { SETTINGS_URL, TERMS_URL } from "@/lib/routes";
 
 export const metadata: Metadata = {
-  title: "Política de privacidade — Iron AI",
+  title: "Política de privacidade",
+  alternates: { canonical: "/privacidade" },
   description: "Quais dados o Iron AI coleta, como usa, com quem compartilha e como você pode excluí-los.",
 };
 
@@ -43,7 +44,7 @@ const sections: LegalSection[] = [
             ],
             [
               <Strong key="p">Preferências</Strong>,
-              "Fuso horário, horário do lembrete, dias de treino e incremento de carga.",
+              "Fuso horário, horário de treino, dias de treino e incremento de carga.",
               "Você, em Configurações",
             ],
             [
@@ -93,7 +94,7 @@ const sections: LegalSection[] = [
           </li>
           <li>
             <Strong>Manter o serviço estável e seguro</Strong> — limite diário de mensagens, teto de gasto com o serviço de IA,
-            diagnóstico de erros e auditoria de ações importantes (como salvar a rotina, alterar lembretes, desconectar o
+            diagnóstico de erros e auditoria de ações importantes (como salvar a rotina, alterar o horário de treino, desconectar o
             Telegram ou excluir a conta). Base legal: legítimo interesse (art. 7º, IX).
           </li>
           <li>

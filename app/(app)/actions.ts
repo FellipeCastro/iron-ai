@@ -8,7 +8,7 @@ import { headers } from "next/headers";
 import { z } from "zod";
 import { db, users } from "@/db";
 import { currentAppUser } from "@/lib/data/load";
-import { DAY_LETTERS, MAX_PLANNED_SETS, saveRoutine } from "@/lib/services/routine";
+import { DAY_LETTERS, MAX_PLANNED_SETS, renameExerciseForUser, saveRoutine } from "@/lib/services/routine";
 import { createLinkToken, unlinkTelegram } from "@/lib/services/users";
 
 // Server Actions for the (app) pages. Each one resolves the signed-in user itself (they are reachable
@@ -31,23 +31,39 @@ const RoutineInput = z
   .array(
     z.object({
       title: z.string().trim().max(60),
-      exercises: z.array(z.object({ id: z.uuid(), plannedSets: z.number().int().min(1).max(MAX_PLANNED_SETS) })).max(20),
+      exercises: z
+        .array(
+          z.object({
+            id: z.uuid(),
+            plannedSets: z.number().int().min(1).max(MAX_PLANNED_SETS),
+            // Only sent when the user edited the name.
+            name: z.string().trim().min(1).max(80).optional(),
+          }),
+        )
+        .max(20),
     }),
   )
   .min(1)
   .max(DAY_LETTERS.length);
 
-export async function saveRoutineAction(input: z.input<typeof RoutineInput>): Promise<ActionResult> {
+/** Exercises renamed on save: old id -> the exercise the routine now points at. */
+export type RenamedExercises = Record<string, { id: string; name: string }>;
+
+export async function saveRoutineAction(input: z.input<typeof RoutineInput>): Promise<ActionResult<RenamedExercises>> {
   return traced("saveRoutineAction", async () => {
     const user = await currentAppUser();
     const parsed = RoutineInput.safeParse(input);
     if (!parsed.success) return fail("Rotina inválida. Confira os treinos e tente de novo.");
+    const renamed: RenamedExercises = {};
     try {
+      for (const e of parsed.data.flatMap((d) => d.exercises)) {
+        if (e.name && !renamed[e.id]) renamed[e.id] = await renameExerciseForUser(user.id, e.id, e.name);
+      }
       await saveRoutine(
         user.id,
         parsed.data.map((d, i) => ({
           title: d.title || `Treino ${DAY_LETTERS[i]}`,
-          exercises: d.exercises.map((e) => ({ exerciseId: e.id, plannedSets: e.plannedSets })),
+          exercises: d.exercises.map((e) => ({ exerciseId: renamed[e.id]?.id ?? e.id, plannedSets: e.plannedSets })),
         })),
       );
     } catch (err) {
@@ -58,10 +74,11 @@ export async function saveRoutineAction(input: z.input<typeof RoutineInput>): Pr
       user_id: user.id,
       day_count: parsed.data.length,
       exercise_count: parsed.data.reduce((sum, d) => sum + d.exercises.length, 0),
+      renamed_count: Object.keys(renamed).length,
       source: "web",
     });
     refresh();
-    return { ok: true, data: undefined };
+    return { ok: true, data: renamed };
   });
 }
 

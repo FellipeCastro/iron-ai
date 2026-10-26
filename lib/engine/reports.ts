@@ -1,4 +1,4 @@
-import { estimate1rm } from "@/lib/format";
+import { estimate1rm, estimateCalories } from "@/lib/format";
 import type { Load } from "./progression";
 import { bestSet, markRecords, type PrKind } from "./records";
 import { isStagnant } from "./stagnation";
@@ -15,7 +15,7 @@ export type ReportSet = Load & {
   createdAt: Date;
 };
 
-const volumeOf = (sets: Load[]) => sets.reduce((sum, s) => sum + s.weight * s.reps, 0);
+export const caloriesOf = (sets: Load[]) => estimateCalories(sets.reduce((sum, s) => sum + s.weight * s.reps, 0));
 
 function groupBy<T, K>(items: T[], key: (t: T) => K) {
   const map = new Map<K, T[]>();
@@ -53,7 +53,7 @@ export function sessionSummary<T extends ReportSet>(sessionId: string, history: 
 
   return {
     setCount: sets.length,
-    volume: volumeOf(sets),
+    calories: caloriesOf(sets),
     durationMin: first && last ? Math.round((last.getTime() - first.getTime()) / 60_000) : 0,
     exercises,
     records: exercises.flatMap((e) => e.sets.filter((s) => s.record).map((s) => ({ name: e.name, ...s }))),
@@ -69,7 +69,7 @@ export function exerciseReport<T extends ReportSet>(history: T[], exerciseId: st
   const sessions = [...groupBy(sets, (s) => s.sessionId).values()].map((list) => ({
     date: list[0].createdAt,
     best: bestSet(list)!,
-    volume: volumeOf(list),
+    calories: caloriesOf(list),
     hasRecord: list.some((s) => records.get(s)),
   }));
   const newestFirst = [...sessions].reverse();
@@ -86,12 +86,12 @@ export function exerciseReport<T extends ReportSet>(history: T[], exerciseId: st
     bestE1rm: Math.max(...sets.map((s) => estimate1rm(s.weight, s.reps))),
     latest: { weight: latest.best.weight, reps: latest.best.reps, date: latest.date },
     weightChange30d: latest.best.weight - baseline.best.weight,
-    recent: newestFirst.slice(0, 5).map((s) => ({ date: s.date, weight: s.best.weight, reps: s.best.reps, volume: s.volume })),
+    recent: newestFirst.slice(0, 5).map((s) => ({ date: s.date, weight: s.best.weight, reps: s.best.reps, calories: s.calories })),
     stagnant: isStagnant(newestFirst),
   };
 }
 
-/** Sets and volume per muscle group in the last `days` days vs the period before. */
+/** Sets and estimated calories per muscle group in the last `days` days vs the period before. */
 export function muscleGroupReport<T extends ReportSet>(history: T[], now: Date, days = 7) {
   const span = days * 86_400_000;
   const current = history.filter((s) => now.getTime() - s.createdAt.getTime() < span);
@@ -105,9 +105,9 @@ export function muscleGroupReport<T extends ReportSet>(history: T[], now: Date, 
     .map(([group, list]) => ({
       group,
       sets: list.length,
-      volume: volumeOf(list),
-      previousVolume: volumeOf(prevByGroup.get(group) ?? []),
+      calories: caloriesOf(list),
+      previousCalories: caloriesOf(prevByGroup.get(group) ?? []),
       exercises: [...new Set(list.map((s) => s.exerciseName))],
     }))
-    .sort((a, b) => b.volume - a.volume);
+    .sort((a, b) => b.calories - a.calories);
 }

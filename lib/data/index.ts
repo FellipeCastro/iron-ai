@@ -1,5 +1,5 @@
 import { isStagnant } from "@/lib/engine/stagnation";
-import { dateKey, estimate1rm, formatDate } from "@/lib/format";
+import { dateKey, estimate1rm, estimateCalories, formatDate } from "@/lib/format";
 import { loadCatalog } from "@/lib/services/routine";
 import { currentAppUser, loadUserData } from "./load";
 import type { ExercisePoint, ExerciseRef, ExerciseSummary, PersonalRecord, Routine, Settings, WorkoutSession } from "./types";
@@ -28,7 +28,7 @@ function exercisePoints(sessions: WorkoutSession[], id: string): ExercisePoint[]
           date: s.startedAt,
           maxWeight: Math.max(...ex.sets.map((x) => x.weight)),
           bestE1rm: Math.max(...ex.sets.map((x) => estimate1rm(x.weight, x.reps))),
-          volume: ex.sets.reduce((sum, x) => sum + x.weight * x.reps, 0),
+          calories: estimateCalories(ex.sets.reduce((sum, x) => sum + x.weight * x.reps, 0)),
         },
       ];
     })
@@ -69,14 +69,14 @@ export async function getDashboard() {
   const prevMonth = addDays(`${month}-01`, -1).slice(0, 7);
   const keyed = sessions.map((s) => ({ s, key: sessionKey(s, timeZone) }));
   const inRange = (from: string, to: string) => keyed.filter(({ key }) => key >= from && key < to).map(({ s }) => s);
-  const sumVolume = (list: WorkoutSession[]) => list.reduce((sum, s) => sum + s.volume, 0);
+  const sumCalories = (list: WorkoutSession[]) => list.reduce((sum, s) => sum + s.calories, 0);
 
-  const weeklyVolume = Array.from({ length: 8 }, (_, i) => {
+  const weeklyCalories = Array.from({ length: 8 }, (_, i) => {
     const start = addDays(thisWeek, -7 * (7 - i));
     const list = inRange(start, addDays(start, 7));
     return {
       label: formatDate(`${start}T12:00:00Z`, "UTC"),
-      value: sumVolume(list),
+      value: sumCalories(list),
       detail: `${list.length} ${list.length === 1 ? "treino" : "treinos"}`,
       current: i === 7,
     };
@@ -108,12 +108,12 @@ export async function getDashboard() {
     stats: {
       sessionsThisMonth: keyed.filter(({ key }) => key.startsWith(month)).length,
       sessionsPrevMonth: keyed.filter(({ key }) => key.startsWith(prevMonth)).length,
-      volume7d: sumVolume(inRange(addDays(today, -6), addDays(today, 1))),
-      volumePrev7d: sumVolume(inRange(addDays(today, -13), addDays(today, -6))),
+      calories7d: sumCalories(inRange(addDays(today, -6), addDays(today, 1))),
+      caloriesPrev7d: sumCalories(inRange(addDays(today, -13), addDays(today, -6))),
       loadUps30d: summaries.filter((e) => e.weightChange30d > 0).length,
       trackedExercises: summaries.length,
     },
-    weeklyVolume,
+    weeklyCalories,
     recentPrs: recentPrs.slice(0, 4),
     stagnant: summaries.filter((e) => e.stagnant),
     lastSession: sessions[0] ?? null,

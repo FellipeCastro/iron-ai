@@ -19,7 +19,7 @@ const features = [
   {
     title: "Gráficos de evolução e recordes",
     description:
-      "Acompanhe carga, 1RM estimado e volume de cada exercício. Seus PRs ficam registrados no chat e no painel web.",
+      "Acompanhe carga, 1RM estimado e calorias gastas em cada exercício. Seus PRs ficam registrados no chat e no painel web.",
     image: "/assets/image-03.png",
   },
   {

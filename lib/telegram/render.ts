@@ -1,7 +1,7 @@
 import type { PrKind } from "@/lib/engine/records";
 import type { exerciseReport, muscleGroupReport, sessionSummary } from "@/lib/engine/reports";
 import { siteUrl } from "@/lib/env";
-import { MUSCLE_LABEL, formatNumber } from "@/lib/format";
+import { MUSCLE_LABEL, formatKcal, formatNumber } from "@/lib/format";
 import { DASHBOARD_URL, HISTORY_URL, ROUTINE_URL, SETTINGS_URL, exerciseUrl } from "@/lib/routes";
 import type { MuscleGroup } from "@/db/schema";
 
@@ -156,7 +156,7 @@ export function summary(input: {
   const lines = [
     `<b>${CLOSE_LABEL[input.closeReason]}</b>${input.day ? ` · ${esc(input.day.letter)} ${esc(input.day.title)}` : ""}`,
     "",
-    `⏱️ ${data.durationMin} min · ${plural(data.setCount, "série", "séries")} · ${kg(data.volume)} de volume`,
+    `⏱️ ${data.durationMin} min · ${plural(data.setCount, "série", "séries")} · ${formatKcal(data.calories)} gastas (estimativa)`,
   ];
   if (data.records.length) {
     lines.push("", "<b>Recordes</b>");
@@ -215,11 +215,11 @@ export function exerciseReportText(id: string, r: NonNullable<ReturnType<typeof 
 export function muscleGroupReportText(rows: ReturnType<typeof muscleGroupReport>, days: number, only: string | null) {
   const list = only ? rows.filter((r) => r.group === only) : rows;
   if (list.length === 0) return only ? `Nenhuma série de ${groupLabel(only)} nos últimos ${days} dias.` : `Nenhuma série nos últimos ${days} dias.`;
-  const lines = [`<b>Volume por grupo · últimos ${days} dias</b>`, ""];
+  const lines = [`<b>Calorias por grupo · últimos ${days} dias</b>`, ""];
   for (const r of list) {
-    const diff = r.previousVolume ? Math.round(((r.volume - r.previousVolume) / r.previousVolume) * 100) : null;
+    const diff = r.previousCalories ? Math.round(((r.calories - r.previousCalories) / r.previousCalories) * 100) : null;
     lines.push(
-      `• <b>${groupLabel(r.group)}</b>: ${plural(r.sets, "série", "séries")}, ${kg(r.volume)}${diff === null ? "" : ` (${diff >= 0 ? "+" : ""}${diff}%)`}`,
+      `• <b>${groupLabel(r.group)}</b>: ${plural(r.sets, "série", "séries")}, ${formatKcal(r.calories)}${diff === null ? "" : ` (${diff >= 0 ? "+" : ""}${diff}%)`}`,
     );
     if (only) lines.push(`   ${r.exercises.map(esc).join(", ")}`);
   }
@@ -227,12 +227,12 @@ export function muscleGroupReportText(rows: ReturnType<typeof muscleGroupReport>
   return lines.join("\n");
 }
 
-export function weekReport(input: { sessions: number; planned: number; sets: number; volume: number; records: number }) {
+export function weekReport(input: { sessions: number; planned: number; sets: number; calories: number; records: number }) {
   return [
     "<b>Resumo dos últimos 7 dias</b>",
     "",
     input.planned ? `🗓️ ${input.sessions} de ${input.planned} treinos planejados` : `🗓️ ${plural(input.sessions, "treino", "treinos")}`,
-    `💪 ${plural(input.sets, "série", "séries")} · ${kg(input.volume)} de volume`,
+    `💪 ${plural(input.sets, "série", "séries")} · ${formatKcal(input.calories)} gastas (estimativa)`,
     `🏆 ${plural(input.records, "recorde", "recordes")}`,
     "",
     link(DASHBOARD_URL, "Abrir painel"),

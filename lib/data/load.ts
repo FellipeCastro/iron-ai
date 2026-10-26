@@ -3,7 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { and, desc, eq, isNotNull } from "drizzle-orm";
 import { cache } from "react";
 import { db, routineDays, sessions, telegramLinks } from "@/db";
-import { recordsByExercise } from "@/lib/engine/reports";
+import { caloriesOf, recordsByExercise } from "@/lib/engine/reports";
 import { localTime } from "@/lib/engine/reminders";
 import { DAILY_MESSAGE_LIMIT, messagesToday } from "@/lib/limits";
 import { loadRoutine } from "@/lib/services/routine";
@@ -81,7 +81,7 @@ export const loadUserData = cache(async () => {
         endedAt: session.endedAt!.toISOString(),
         closeReason: (session.closeReason ?? "user") as CloseReason,
         exercises: list,
-        volume: sets.reduce((sum, s) => sum + s.weight * s.reps, 0),
+        calories: caloriesOf(sets),
         setCount: sets.length,
         prCount: list.filter((e) => e.sets.some((s) => s.isPr)).length,
       },

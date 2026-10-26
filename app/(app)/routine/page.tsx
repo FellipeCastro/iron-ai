@@ -4,7 +4,7 @@ import { RoutineEditor } from "@/components/app/routine-editor";
 import { PageHeader } from "@/components/app/ui";
 import { getCatalog, getRoutine } from "@/lib/data";
 
-export const metadata: Metadata = { title: "Rotina — Iron AI" };
+export const metadata: Metadata = { title: "Rotina" };
 
 export default async function RoutinePage() {
   await auth.protect();

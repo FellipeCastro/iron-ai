@@ -8,7 +8,7 @@ import { getDashboard } from "@/lib/data";
 import { formatCompact, formatDuration, formatKg, formatRelativeDay, formatSigned } from "@/lib/format";
 import { HISTORY_URL, ROUTINE_URL, SETTINGS_URL, exerciseUrl } from "@/lib/routes";
 
-export const metadata: Metadata = { title: "Painel — Iron AI" };
+export const metadata: Metadata = { title: "Painel" };
 
 export default async function DashboardPage() {
   await auth.protect();
@@ -16,7 +16,9 @@ export default async function DashboardPage() {
   const now = new Date(data.now);
   const { nextDay, stats, week, lastSession, telegram } = data;
   const totalSets = nextDay?.exercises.reduce((sum, e) => sum + e.plannedSets, 0) ?? 0;
-  const volumeDelta = stats.volumePrev7d ? Math.round(((stats.volume7d - stats.volumePrev7d) / stats.volumePrev7d) * 100) : null;
+  const caloriesDelta = stats.caloriesPrev7d ? Math.round(((stats.calories7d - stats.caloriesPrev7d) / stats.caloriesPrev7d) * 100) : null;
+  const botUsername = process.env.TELEGRAM_BOT_USERNAME?.replace(/^@/, "");
+  const botUrl = botUsername ? `https://t.me/${botUsername}` : null;
   const monthDelta = stats.sessionsThisMonth - stats.sessionsPrevMonth;
 
   return (
@@ -28,12 +30,30 @@ export default async function DashboardPage() {
           !nextDay
             ? "Monte sua rotina para começar a registrar pelo Telegram."
             : data.isTrainingDay
-              ? `Hoje é dia de treino.${data.reminderTime ? ` O lembrete chega no Telegram às ${data.reminderTime}.` : ""}`
+              ? `Hoje é dia de treino.${data.reminderTime ? ` Avisamos no Telegram às ${data.reminderTime}.` : ""}`
               : `Hoje é dia de descanso. O próximo treino é o ${nextDay.letter}.`
         }
       />
 
-      <div className="mt-10 grid gap-6 lg:grid-cols-3">
+      <Link
+        href={telegram.connected && botUrl ? botUrl : SETTINGS_URL}
+        {...(telegram.connected && botUrl ? { target: "_blank", rel: "noreferrer" } : {})}
+        className="mt-5 inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-[14px] font-medium shadow-[0_8px_30px_rgba(0,0,0,0.04)] transition-opacity hover:opacity-80"
+      >
+        <TelegramColorIcon className="size-5" />
+        {telegram.connected ? (
+          <>
+            Telegram conectado
+            {telegram.username?.startsWith("@") ? ` · ${telegram.username}` : ""}
+            <span className="text-[#5b5b66]">— abrir conversa</span>
+          </>
+        ) : (
+          "Conectar Telegram"
+        )}
+        <ArrowRightIcon className="size-4" />
+      </Link>
+
+      <div className="mt-6 grid gap-6 lg:grid-cols-3">
         {/* Next workout */}
         {!nextDay ? (
           <section className="rounded-[28px] bg-[#1e1a24] p-6 text-white shadow-[0_10px_30px_rgba(0,0,0,0.12)] sm:p-8 lg:col-span-2">
@@ -111,31 +131,6 @@ export default async function DashboardPage() {
         )}
 
         <div className="grid gap-6">
-          {/* Telegram */}
-          <Card>
-            <div className="flex items-center gap-3">
-              <TelegramColorIcon className="size-10" />
-              <div className="min-w-0">
-                <h2 className="text-[18px] font-bold">Telegram</h2>
-                {telegram.connected ? (
-                  <p className="truncate text-[14px] text-[#5b5b66]">{telegram.username}</p>
-                ) : (
-                  <p className="text-[14px] text-[#5b5b66]">Não conectado</p>
-                )}
-              </div>
-              <span className="ml-auto">{telegram.connected ? <Badge tone="good">● Conectado</Badge> : <Badge tone="warn">Pendente</Badge>}</span>
-            </div>
-            {telegram.connected ? (
-              <p className="mt-4 rounded-[14px] bg-[#f5f5f8] px-4 py-3 text-[14px] text-[#3f3f46]">
-                Mande no chat: <span className="font-semibold text-[#111]">“supino 10 reps 50kg”</span>
-              </p>
-            ) : (
-              <Link href={SETTINGS_URL} className={`${buttonPrimary} mt-4 w-full`}>
-                Conectar Telegram
-              </Link>
-            )}
-          </Card>
-
           {/* Last workout */}
           <Card>
             <CardTitle
@@ -166,6 +161,43 @@ export default async function DashboardPage() {
               <p className="mt-4 text-[14px] text-[#5b5b66]">Nenhum treino registrado ainda.</p>
             )}
           </Card>
+
+          <Card>
+            <CardTitle title="Destaques" subtitle="Recordes recentes e pontos de atenção" />
+            <ul className="mt-5 grid gap-3">
+              {data.recentPrs.map((pr) => (
+                <li key={pr.id}>
+                  <Link href={exerciseUrl(pr.id)} className="flex items-center gap-3 rounded-[14px] px-1 py-1 hover:bg-[#f9f9fb]">
+                    <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[#fff7e0] text-[18px]" aria-hidden>
+                      🏆
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block truncate text-[15px] font-semibold">{pr.name}</span>
+                      <span className="text-[13px] text-[#5b5b66]">
+                        {formatKg(pr.weight)} × {pr.reps} · {formatRelativeDay(pr.date, now, data.timeZone)}
+                      </span>
+                    </span>
+                  </Link>
+                </li>
+              ))}
+              {data.stagnant.map((e) => (
+                <li key={e.id}>
+                  <Link href={exerciseUrl(e.id)} className="flex items-center gap-3 rounded-[14px] px-1 py-1 hover:bg-[#f9f9fb]">
+                    <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[#fff1f3] text-[18px]" aria-hidden>
+                      ⚠️
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block truncate text-[15px] font-semibold">{e.name}</span>
+                      <span className="text-[13px] text-[#be123c]">Sem progresso nos últimos 3 treinos</span>
+                    </span>
+                  </Link>
+                </li>
+              ))}
+              {data.recentPrs.length === 0 && data.stagnant.length === 0 && (
+                <li className="text-[14px] text-[#5b5b66]">Seus recordes aparecem aqui conforme você treina.</li>
+              )}
+            </ul>
+          </Card>
         </div>
       </div>
 
@@ -178,61 +210,36 @@ export default async function DashboardPage() {
           delta={monthDelta !== 0 ? { text: formatSigned(monthDelta), good: monthDelta > 0 } : undefined}
         />
         <StatTile
-          label="Volume em 7 dias"
-          value={`${formatCompact(stats.volume7d)} kg`}
+          label="Calorias em 7 dias"
+          value={`~${formatCompact(Math.round(stats.calories7d))} kcal`}
           hint="vs. 7 dias anteriores"
-          delta={volumeDelta !== null ? { text: formatSigned(volumeDelta, "%"), good: volumeDelta === 0 ? null : volumeDelta > 0 } : undefined}
+          delta={
+            caloriesDelta !== null
+              ? {
+                  text: formatSigned(caloriesDelta, "%"),
+                  good: caloriesDelta === 0 ? null : caloriesDelta > 0,
+                }
+              : undefined
+          }
         />
         <StatTile label="Cargas aumentadas em 30 dias" value={String(stats.loadUps30d)} hint={`de ${stats.trackedExercises} exercícios da rotina`} />
       </div>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
-          <CardTitle title="Volume por semana" subtitle="Carga × repetições somadas. A barra clara é a semana atual." />
+        <Card className="lg:col-span-3">
+          <CardTitle title="Calorias por semana" subtitle="Estimativa das calorias gastas nos treinos. A barra clara é a semana atual." />
           <div className="mt-6">
             <BarChart
-              label="Volume de treino por semana nas últimas 8 semanas"
-              unit="kg"
-              data={data.weeklyVolume.map((w) => ({ label: w.label, value: w.value, detail: w.detail, muted: w.current }))}
+              label="Calorias estimadas por semana nas últimas 8 semanas"
+              unit="kcal"
+              data={data.weeklyCalories.map((w) => ({
+                label: w.label,
+                value: w.value,
+                detail: w.detail,
+                muted: w.current,
+              }))}
             />
           </div>
-        </Card>
-
-        <Card>
-          <CardTitle title="Destaques" subtitle="Recordes recentes e pontos de atenção" />
-          <ul className="mt-5 grid gap-3">
-            {data.recentPrs.map((pr) => (
-              <li key={pr.id}>
-                <Link href={exerciseUrl(pr.id)} className="flex items-center gap-3 rounded-[14px] px-1 py-1 hover:bg-[#f9f9fb]">
-                  <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[#fff7e0] text-[18px]" aria-hidden>
-                    🏆
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block truncate text-[15px] font-semibold">{pr.name}</span>
-                    <span className="text-[13px] text-[#5b5b66]">
-                      {formatKg(pr.weight)} × {pr.reps} · {formatRelativeDay(pr.date, now, data.timeZone)}
-                    </span>
-                  </span>
-                </Link>
-              </li>
-            ))}
-            {data.stagnant.map((e) => (
-              <li key={e.id}>
-                <Link href={exerciseUrl(e.id)} className="flex items-center gap-3 rounded-[14px] px-1 py-1 hover:bg-[#f9f9fb]">
-                  <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[#fff1f3] text-[18px]" aria-hidden>
-                    ⚠️
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block truncate text-[15px] font-semibold">{e.name}</span>
-                    <span className="text-[13px] text-[#be123c]">Sem progresso nos últimos 3 treinos</span>
-                  </span>
-                </Link>
-              </li>
-            ))}
-            {data.recentPrs.length === 0 && data.stagnant.length === 0 && (
-              <li className="text-[14px] text-[#5b5b66]">Seus recordes aparecem aqui conforme você treina.</li>
-            )}
-          </ul>
         </Card>
       </div>
     </>

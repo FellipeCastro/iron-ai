@@ -5,7 +5,7 @@ import { PageHeader } from "@/components/app/ui";
 import { getSettings } from "@/lib/data";
 import { formatDate } from "@/lib/format";
 
-export const metadata: Metadata = { title: "Configurações — Iron AI" };
+export const metadata: Metadata = { title: "Configurações" };
 
 export default async function SettingsPage() {
   await auth.protect();
@@ -16,7 +16,7 @@ export default async function SettingsPage() {
 
   return (
     <>
-      <PageHeader eyebrow="Configurações" title="Sua conta" description="Telegram, lembretes e preferências de progressão." />
+      <PageHeader eyebrow="Configurações" title="Sua conta" description="Telegram, horário de treino e preferências de progressão." />
       <div className="max-w-[860px]">
         <SettingsForm initial={settings} linkedSince={linkedSince} />
       </div>
