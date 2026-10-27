@@ -9,6 +9,7 @@ export const TERMS_URL = "/termos";
 export const PRIVACY_URL = "/privacidade";
 
 export const exerciseUrl = (id: string) => `${EXERCISES_URL}/${id}`;
+export const sessionUrl = (id: string) => `${HISTORY_URL}/${id}`;
 
 export const APP_NAV = [
   { label: "Painel", href: DASHBOARD_URL },

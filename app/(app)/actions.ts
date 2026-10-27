@@ -11,7 +11,7 @@ import { currentAppUser } from "@/lib/data/load";
 import { MAX_DURATION_MIN } from "@/lib/engine/duration";
 import { DAY_LETTERS, MAX_PLANNED_SETS, renameExerciseForUser, saveRoutine } from "@/lib/services/routine";
 import { createLinkToken, unlinkTelegram } from "@/lib/services/users";
-import { setSessionDuration } from "@/lib/services/workout";
+import { deleteSetById, editSetById, setSessionDuration } from "@/lib/services/workout";
 
 // Server Actions for the (app) pages. Each one resolves the signed-in user itself (they are reachable
 // by direct POST) and validates its input with Zod. Changes that alter what the bot does (routine, reminders,
@@ -95,6 +95,34 @@ export async function updateSessionDurationAction(input: z.input<typeof Duration
     Sentry.logger.info("Session duration edited", { user_id: user.id, minutes: parsed.data.minutes, source: "web" });
     refresh();
     return { ok: true, data: undefined };
+  });
+}
+
+const SetEditInput = z.object({ setId: z.uuid(), weight: z.number().min(0).max(1000), reps: z.number().int().min(1).max(100) });
+
+export async function updateSetAction(input: z.input<typeof SetEditInput>): Promise<ActionResult> {
+  return traced("updateSetAction", async () => {
+    const user = await currentAppUser();
+    const parsed = SetEditInput.safeParse(input);
+    if (!parsed.success) return fail("Valores inválidos. Carga até 1000 kg e de 1 a 100 repetições.");
+    const { setId, weight, reps } = parsed.data;
+    if (!(await editSetById(user, setId, { weight, reps }))) return fail("Série não encontrada.");
+    Sentry.logger.info("Set edited", { user_id: user.id, source: "web" });
+    refresh();
+    return { ok: true, data: undefined };
+  });
+}
+
+export async function deleteSetAction(input: { setId: string }): Promise<ActionResult<{ sessionEmpty: boolean }>> {
+  return traced("deleteSetAction", async () => {
+    const user = await currentAppUser();
+    const parsed = z.object({ setId: z.uuid() }).safeParse(input);
+    if (!parsed.success) return fail("Série inválida.");
+    const result = await deleteSetById(user, parsed.data.setId);
+    if (!result) return fail("Série não encontrada.");
+    Sentry.logger.info("Set deleted", { user_id: user.id, source: "web" });
+    refresh();
+    return { ok: true, data: result };
   });
 }
 

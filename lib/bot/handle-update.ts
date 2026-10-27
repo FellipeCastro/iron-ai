@@ -203,8 +203,10 @@ async function currentDay(ctx: Ctx): Promise<RoutineDayFull | null> {
 }
 
 async function parserContext(ctx: Ctx) {
-  const [day, log] = await Promise.all([currentDay(ctx), loadLog(ctx.user.id)]);
+  const [day, open] = await Promise.all([currentDay(ctx), findOpenSession(ctx.user.id)]);
   const view = await reports.planView(ctx.user.id, day);
+  // Only the workout in progress counts as conversation: a finished one must not leak into a new message.
+  const sessionSets = open ? await loadLog(ctx.user.id, { sessionId: open.id }) : [];
   return {
     onboarding: !ctx.routine,
     routine: (ctx.routine?.days ?? []).map((d) => ({ letter: d.letter, title: d.title, exercises: d.exercises.map((e) => e.name) })),
@@ -216,17 +218,25 @@ async function parserContext(ctx: Ctx) {
         target: e.targets.map((t) => `${t.position}ª série ${t.weight}kg×${t.reps}`).join(", ") || null,
       })),
     },
-    lastSets: log.slice(-5).map((s) => ({ exercise: s.exerciseName, weight: s.weight, reps: s.reps })),
+    sessionSets: sessionSets.slice(-12).map((s) => ({ exercise: s.exerciseName, position: s.setPosition, weight: s.weight, reps: s.reps })),
   };
 }
 
-/** Matching pool: today's exercises first, then the rest of the routine, then the catalog. */
+/**
+ * Matching pool: what is being trained right now first (the exercise in progress, then the others already
+ * logged in this workout), then today's exercises, the rest of the routine, and the catalog. So "crucifixo"
+ * right after "crucifixo invertido" stays on the same exercise instead of jumping to a catalog namesake.
+ */
 async function pool(ctx: Ctx) {
   if (ctx.pool) return ctx.pool;
-  const [day, catalog] = await Promise.all([currentDay(ctx), loadCatalog(ctx.user.id)]);
+  const [day, catalog, open] = await Promise.all([currentDay(ctx), loadCatalog(ctx.user.id), findOpenSession(ctx.user.id)]);
+  const sessionSets = open ? await loadLog(ctx.user.id, { sessionId: open.id }) : [];
   const priority = new Map<string, number>();
   for (const d of ctx.routine?.days ?? []) for (const e of d.exercises) priority.set(e.exerciseId, 1);
   for (const e of day?.exercises ?? []) priority.set(e.exerciseId, 2);
+  for (const s of sessionSets) priority.set(s.exerciseId, 3);
+  const inProgress = sessionSets.at(-1)?.exerciseId;
+  if (inProgress) priority.set(inProgress, 4);
   ctx.pool = catalog.map((c) => ({ ...c, priority: priority.get(c.id) ?? 0 }));
   return ctx.pool;
 }
@@ -375,7 +385,10 @@ async function reportText(ctx: Ctx, intent: Extract<Intent, { type: "ask_report"
 }
 
 function summaryOut(closed: ClosedSession, reason: "user" | "complete" | "inactive"): Out {
-  return { text: render.summary({ closeReason: reason, day: closed.day, data: closed.data, next: closed.next }), sessionId: closed.session.id };
+  return {
+    text: render.summary({ sessionId: closed.session.id, closeReason: reason, day: closed.day, data: closed.data, next: closed.next }),
+    sessionId: closed.session.id,
+  };
 }
 
 async function finishWorkout(ctx: Ctx): Promise<Out[]> {

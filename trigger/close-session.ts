@@ -34,7 +34,7 @@ export const closeInactiveSession = task({
     }
 
     // The close already happened, so a task retry would find nothing to do: retry just the send.
-    const text = render.summary({ closeReason: "inactive", day: closed.day, data: closed.data, next: closed.next });
+    const text = render.summary({ sessionId, closeReason: "inactive", day: closed.day, data: closed.data, next: closed.next });
     try {
       await retry.onThrow(() => sendMessage(chatId, text), { maxAttempts: 3 });
       await markSummarySent(sessionId);

@@ -38,6 +38,7 @@ export async function lastWorkoutText(user: User, routine: Routine | null) {
   const upTo = log.filter((s) => s.createdAt.getTime() <= (last.endedAt ?? new Date()).getTime() || s.sessionId === last.id);
   const day = last.dayId ? await loadDay(last.dayId) : null;
   return render.summary({
+    sessionId: last.id,
     closeReason: last.closeReason ?? "user",
     day: day ? { letter: day.letter, title: day.title } : null,
     data: sessionSummary(last.id, upTo, []),

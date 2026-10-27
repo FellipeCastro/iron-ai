@@ -2,7 +2,7 @@ import type { PrKind } from "@/lib/engine/records";
 import type { exerciseReport, muscleGroupReport, sessionSummary } from "@/lib/engine/reports";
 import { siteUrl } from "@/lib/env";
 import { MUSCLE_LABEL, formatKcal, formatNumber } from "@/lib/format";
-import { DASHBOARD_URL, HISTORY_URL, ROUTINE_URL, SETTINGS_URL, exerciseUrl } from "@/lib/routes";
+import { DASHBOARD_URL, ROUTINE_URL, SETTINGS_URL, exerciseUrl, sessionUrl } from "@/lib/routes";
 import type { MuscleGroup } from "@/db/schema";
 
 // Every bot reply is a template here (HTML parse mode). The LLM never writes user-facing text.
@@ -10,6 +10,7 @@ import type { MuscleGroup } from "@/db/schema";
 export const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 const kg = (n: number) => `${formatNumber(n)} kg`;
 const load = (weight: number, reps: number) => (weight > 0 ? `${kg(weight)} × ${reps}` : `${reps} reps`);
+const loadReps = (weight: number, reps: number) => (weight > 0 ? `${kg(weight)} × ${reps} reps` : `${reps} reps`);
 const link = (path: string, label: string) => `<a href="${siteUrl()}${path}">${label}</a>`;
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 const ordinal = (position: number) => `${position}ª série`;
@@ -110,8 +111,7 @@ export function setsLogged(input: {
   for (const it of input.items) {
     const tag = it.isExtra ? " <i>(extra)</i>" : "";
     const rec = it.record ? ` ${RECORD_LABEL[it.record]}` : "";
-    lines.push(`✅ <b>${esc(it.name)}</b> — ${ordinal(it.setPosition)}: ${load(it.weight, it.reps)}${tag}${rec}`);
-    if (it.target) lines.push(`    ↳ próxima meta da ${ordinal(it.setPosition)}: ${load(it.target.weight, it.target.reps)}`);
+    lines.push(`✅ <b>${esc(it.name)}</b> — ${ordinal(it.setPosition)}: ${loadReps(it.weight, it.reps)}${tag}${rec}`);
   }
   if (input.remaining.length) {
     const next = input.remaining.slice(0, 3).map((r) => `${esc(r.name)} (${plural(r.missing, "série", "séries")})`);
@@ -168,6 +168,7 @@ export const noOpenSession = () => "Você não tem treino em andamento. Mande su
 const CLOSE_LABEL = { user: "Treino encerrado", complete: "Treino completo! 🎉", inactive: "Treino encerrado após 90 min sem séries" } as const;
 
 export function summary(input: {
+  sessionId: string;
   closeReason: keyof typeof CLOSE_LABEL;
   day: { letter: string; title: string } | null;
   data: ReturnType<typeof sessionSummary>;
@@ -186,10 +187,10 @@ export function summary(input: {
   if (data.loadUps) lines.push("", `📈 ${plural(data.loadUps, "série subiu", "séries subiram")} de carga para o próximo treino.`);
   lines.push("", "<b>Exercícios</b>");
   for (const e of data.exercises) {
-    lines.push(`• ${esc(e.name)}: ${e.sets.map((s) => load(s.weight, s.reps)).join(", ")}`);
+    lines.push(`• <b>${esc(e.name)}</b>: ${e.sets.map((s) => load(s.weight, s.reps)).join(" · ")}`);
   }
   if (input.next) lines.push("", `Próximo: <b>${esc(input.next.letter)} · ${esc(input.next.title)}</b>`);
-  lines.push(link(HISTORY_URL, "Ver no histórico"));
+  lines.push("", `✏️ ${link(sessionUrl(input.sessionId), "Revisar e editar este treino no site")}`);
   return lines.join("\n");
 }
 

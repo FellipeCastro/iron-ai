@@ -4,7 +4,8 @@
 export const PARSER_INSTRUCTIONS = `You read messages that a Brazilian gym-goer sends to a workout logging bot (pt-BR, informal, typos, abbreviations) and turn each one into exactly one intent. You never answer the user.
 
 Intents:
-- log_sets: the user reports sets just performed. Examples: "supino 10 reps 20kg" → 1 set; "supino 3x10 com 20" → 3 sets of 10 reps at 20 kg; "rosca 12, 10, 8 com 14kg" → three groups (12, 10 and 8 reps, 14 kg each); "fiz mais uma de 9" → the exercise of the last logged set, 9 reps, weight null; "puxada 45kg 10 e 52kg 8" → two groups. "x" between numbers means sets×reps when the first number is small (≤10) and comes before reps; "20kg x 10" means load × reps. Bodyweight exercises have weight_kg = null unless extra load is said.
+- log_sets: the user reports sets just performed. Examples: "supino 10 reps 20kg" → 1 set; "supino 3x10 com 20" → 3 sets of 10 reps at 20 kg; "rosca 12, 10, 8 com 14kg" → three groups (12, 10 and 8 reps, 14 kg each); "fiz mais uma de 9" → the exercise of the last logged set, 9 reps, weight null; "puxada 45kg 10 e 52kg 8" → two groups. "x" between numbers means sets×reps when the first number is small (≤10) and comes before reps; "20kg x 10" means load × reps. When a number carries a kg unit, that number is the load and the other is the reps: "10x20kg" and "20kg x 10" are both 10 reps at 20 kg (1 set). Bodyweight exercises have weight_kg = null unless extra load is said.
+- Conversation continuity: the context lists the sets already logged in this workout and the exercise in progress. A message with reps/load but no exercise name ("10x30kg", "mais uma de 9", "agora 12 com 35") continues the exercise in progress: set exercise to that exact name, and it becomes its next set (the bot numbers it). A shortened or partial name ("crucifixo" after "Crucifixo invertido") also refers to the exercise in progress or another one already logged in this workout: use that exact name, never a different exercise that merely shares the word. Only treat a message as a new exercise when the user clearly names a different one. Never use this for a message that has no numbers.
 - correct_set: fixing something already logged: "errei, foi 25kg", "a última foi 8 reps", "corrige a 2ª série do supino pra 11".
 - delete_set: removing a logged set: "apaga a última", "registrei errado, remove".
 - finish_workout: "terminei", "acabei", "fim do treino", "encerra".
@@ -21,7 +22,8 @@ Rules:
 export type ParserContext = {
   routine: { letter: string; title: string; exercises: string[] }[];
   today: { letter: string; title: string; exercises: { name: string; target: string | null }[] } | null;
-  lastSets: { exercise: string; weight: number; reps: number }[];
+  /** Sets already logged in the workout in progress, oldest → newest. Empty when no workout is open. */
+  sessionSets: { exercise: string; position: number; weight: number; reps: number }[];
   onboarding: boolean;
 };
 
@@ -37,8 +39,11 @@ export function buildParserInput(text: string, ctx: ParserContext) {
       `Current workout: ${ctx.today.letter}. Targets: ${ctx.today.exercises.map((e) => `${e.name}${e.target ? ` [${e.target}]` : ""}`).join("; ")}`,
     );
   }
-  if (ctx.lastSets.length) {
-    lines.push(`Last logged sets (oldest → newest): ${ctx.lastSets.map((s) => `${s.exercise} ${s.weight}kg×${s.reps}`).join("; ")}`);
+  if (ctx.sessionSets.length) {
+    lines.push(
+      `Sets logged in this workout so far (oldest → newest): ${ctx.sessionSets.map((s) => `${s.exercise} ${s.position}ª série ${s.weight}kg×${s.reps}`).join("; ")}`,
+      `Exercise in progress (the last one logged): ${ctx.sessionSets.at(-1)!.exercise}`,
+    );
   }
 
   return [

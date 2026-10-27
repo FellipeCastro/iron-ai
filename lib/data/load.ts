@@ -63,6 +63,7 @@ export const loadUserData = cache(async () => {
       };
       exercises.set(s.exerciseId, ex);
       ex.sets.push({
+        id: s.id,
         position: s.setPosition,
         weight: s.weight,
         reps: s.reps,

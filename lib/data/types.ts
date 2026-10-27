@@ -15,6 +15,7 @@ export type RoutineDay = { letter: DayLetter; title: string; exercises: RoutineE
 export type Routine = { days: RoutineDay[]; nextLetter: DayLetter };
 
 export type LoggedSet = {
+  id: string;
   position: number;
   weight: number;
   reps: number;

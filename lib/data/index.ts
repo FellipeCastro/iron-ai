@@ -148,6 +148,12 @@ export async function getHistory() {
   };
 }
 
+export async function getSession(id: string) {
+  const { timeZone, sessions } = await load();
+  const session = sessions.find((s) => s.id === id);
+  return session ? { timeZone, session } : null;
+}
+
 export async function getExerciseSummaries() {
   const { timeZone, today, sessions } = await load();
   return { timeZone, exercises: trainedExercises(sessions).map((ref) => summarize(sessions, ref, today, timeZone)) };

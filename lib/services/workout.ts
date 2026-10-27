@@ -13,8 +13,9 @@ import { loadDay, type Routine } from "./routine";
 export type LogRow = ReportSet & { id: string; supersedesId: string | null };
 
 /** Every valid (non-voided) set of the user, chronological. Optionally limited to some exercises. */
-export async function loadLog(userId: string, filter?: { exerciseIds?: string[]; sessionId?: string }): Promise<LogRow[]> {
+export async function loadLog(userId: string, filter?: { exerciseIds?: string[]; sessionId?: string; setId?: string }): Promise<LogRow[]> {
   const where: SQL[] = [eq(sessions.userId, userId), isNull(setEntries.voidedAt)];
+  if (filter?.setId) where.push(eq(setEntries.id, filter.setId));
   if (filter?.exerciseIds) where.push(inArray(setEntries.exerciseId, filter.exerciseIds));
   if (filter?.sessionId) where.push(eq(setEntries.sessionId, filter.sessionId));
 
@@ -295,7 +296,10 @@ async function findSet(userId: string, selector: SetSelector) {
 
 export async function correctSet(user: User, selector: SetSelector, change: { weight: number | null; reps: number | null }) {
   const old = await findSet(user.id, selector);
-  if (!old) return null;
+  return old ? applyCorrection(user, old, change) : null;
+}
+
+async function applyCorrection(user: User, old: LogRow, change: { weight: number | null; reps: number | null }) {
   const to = { weight: change.weight ?? old.weight, reps: change.reps ?? old.reps };
 
   await db.batch([
@@ -322,9 +326,32 @@ export async function correctSet(user: User, selector: SetSelector, change: { we
 
 export async function deleteSet(user: User, selector: SetSelector) {
   const old = await findSet(user.id, selector);
-  if (!old) return null;
+  return old ? applyDelete(user, old) : null;
+}
+
+async function applyDelete(user: User, old: LogRow) {
   await db.update(setEntries).set({ voidedAt: new Date() }).where(eq(setEntries.id, old.id));
   const log = await loadLog(user.id, { exerciseIds: [old.exerciseId] });
   await recomputeTargets(user.id, user.weightIncrementKg, log, [old.exerciseId]);
   return { name: old.exerciseName, setPosition: old.setPosition, weight: old.weight, reps: old.reps };
+}
+
+// ---------- Edits from the site (by set id) ----------
+
+const findSetById = async (userId: string, setId: string) => (await loadLog(userId, { setId }))[0] ?? null;
+
+/** Corrects one set of the user's log, wherever it is in the history. Null when the set is not theirs. */
+export async function editSetById(user: User, setId: string, change: { weight: number; reps: number }) {
+  const old = await findSetById(user.id, setId);
+  return old ? applyCorrection(user, old, change) : null;
+}
+
+/** Removes one set. A session left without sets is dropped, since the site has nothing to show for it. */
+export async function deleteSetById(user: User, setId: string) {
+  const old = await findSetById(user.id, setId);
+  if (!old) return null;
+  await applyDelete(user, old);
+  const remaining = await loadLog(user.id, { sessionId: old.sessionId });
+  if (remaining.length === 0) await db.delete(sessions).where(eq(sessions.id, old.sessionId));
+  return { sessionEmpty: remaining.length === 0 };
 }
