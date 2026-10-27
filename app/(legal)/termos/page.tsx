@@ -9,7 +9,7 @@ export const metadata: Metadata = {
   description: "As regras de uso do Iron AI: conta, Telegram, limites, IA, conteúdo e responsabilidades.",
 };
 
-// The "150 mensagens" below mirrors DAILY_MESSAGE_LIMIT (lib/limits.ts); not imported because that module loads the database client.
+// The "60 mensagens" and "1.000 mensagens" below mirror the defaults of dailyMessageLimit / monthlyMessageLimit (lib/limits.ts); not imported because that module loads the database client.
 
 const linkClass = "font-medium text-[#111] underline underline-offset-2";
 
@@ -89,8 +89,8 @@ const sections: LegalSection[] = [
         <p>O Iron AI é gratuito. Para manter o Serviço estável para todos, existem limites:</p>
         <List>
           <li>
-            <Strong>Até 150 mensagens de texto por dia</Strong> para o bot, contadas no seu fuso horário. Toques
-            em botões não contam. Acima do limite, o bot deixa de registrar até o dia seguinte; o painel web continua funcionando.
+            <Strong>Até 60 mensagens de texto por dia e 1.000 por mês</Strong> para o bot, contadas no seu fuso horário. Toques
+            em botões não contam. Acima do limite, o bot deixa de registrar até o dia (ou mês) seguinte; o painel web continua funcionando.
           </li>
           <li>
             <Strong>Teto diário de uso da IA</Strong> para todo o Serviço. Se ele for atingido, o bot pode pausar temporariamente a

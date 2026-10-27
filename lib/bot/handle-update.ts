@@ -1,12 +1,13 @@
 import { eq } from "drizzle-orm";
 import { db, messages, telegramLinks, users, type User } from "@/db";
-import { parseMessage } from "@/lib/ai/parse-message";
+import { fastParse, fastPathMode, sameIntent } from "@/lib/ai/fast-parse";
+import { parseMessage, type ParseResult } from "@/lib/ai/parse-message";
 import type { Intent } from "@/lib/ai/schemas";
 import { durationPrompt } from "@/lib/bot/duration";
 import { parseDurationInput } from "@/lib/engine/duration";
 import { matchExercise, type MatchCandidate } from "@/lib/engine/match";
 import { parseTimeInput } from "@/lib/engine/reminders";
-import { BudgetExceededError } from "@/lib/limits";
+import { BudgetExceededError, UserBudgetExceededError } from "@/lib/limits";
 import { loadCatalog, loadDay, loadRoutine, ensureCustomExercise, saveRoutine, type Routine, type RoutineDayFull } from "@/lib/services/routine";
 import * as reports from "@/lib/services/reports";
 import { consumeLinkToken, findByChat } from "@/lib/services/users";
@@ -31,6 +32,7 @@ import { newPendingId, parseCallback, readChatState, type ChatState, type Pendin
 // that (exercise matching, progression, records, replies) is deterministic code and templates.
 
 export const CONFIRM_BELOW = 0.7;
+const FAST_PATH_MODEL = "fast-path";
 
 type Out = { text: string; keyboard?: InlineKeyboard; sessionId?: string };
 type Ctx = { chatId: number; user: User; state: ChatState; routine: Routine | null; pool: MatchCandidate[] | null };
@@ -54,7 +56,10 @@ export type HandleResult = {
   confidence?: number;
   model?: string;
   fallback?: boolean;
+  /** served = answered by the shortcut; agree/disagree = shadow comparison against the model. */
+  fastPath?: "served" | "agree" | "disagree";
   inputTokens?: number;
+  cachedInputTokens?: number;
   outputTokens?: number;
 };
 
@@ -149,21 +154,38 @@ export async function handleUpdate(update: TgUpdate, opts: HandleOptions): Promi
   }
 
   await sendTyping(chat.id);
-  let parsed;
-  try {
-    parsed = await parseMessage(text, await parserContext(ctx));
-  } catch (err) {
-    const budget = err instanceof BudgetExceededError;
-    if (!budget && !opts.isLastAttempt) throw err; // let the task retry
-    if (budget) {
-      opts.log("error", "OpenAI daily budget exceeded", { user_id: link.userId });
-    } else {
-      opts.log("error", "Parser failed on last attempt", { user_id: link.userId });
-      opts.report(err);
+  const mode = fastPathMode();
+  // Shortcut for plain messages ("supino 3x10 20kg", "terminei"): no model call, so it also keeps working
+  // when a budget is spent. In shadow mode it only observes: the model still answers.
+  const fast = mode === "off" ? null : await fastParse(text, () => pool(ctx));
+  let fastPath: HandleResult["fastPath"];
+  let parsed: ParseResult;
+  if (fast && mode === "on") {
+    parsed = { parsed: fast.parsed, model: FAST_PATH_MODEL, fallback: false, usage: { inputTokens: 0, cachedInputTokens: 0, outputTokens: 0 }, budgetAlert: false };
+    fastPath = "served";
+  } else {
+    try {
+      parsed = await parseMessage(text, await parserContext(ctx), link.userId);
+    } catch (err) {
+      const budget = err instanceof BudgetExceededError;
+      const userBudget = err instanceof UserBudgetExceededError;
+      if (!budget && !userBudget && !opts.isLastAttempt) throw err; // let the task retry
+      if (budget || userBudget) {
+        opts.log("error", budget ? "OpenAI daily budget exceeded" : "OpenAI per-user daily budget exceeded", { user_id: link.userId });
+      } else {
+        opts.log("error", "Parser failed on last attempt", { user_id: link.userId });
+        opts.report(err);
+      }
+      await finish("failed");
+      await sendMessage(chat.id, userBudget ? render.rateLimited() : render.unavailable());
+      return { status: "failed", kind: "message", userId: link.userId };
     }
-    await finish("failed");
-    await sendMessage(chat.id, render.unavailable());
-    return { status: "failed", kind: "message", userId: link.userId };
+    if (fast) {
+      fastPath = sameIntent(fast, parsed.parsed, await pool(ctx)) ? "agree" : "disagree";
+      if (fastPath === "disagree") {
+        opts.log("warn", "Fast path disagrees with the model", { user_id: link.userId, fast_intent: fast.parsed.intent.type, model_intent: parsed.parsed.intent.type });
+      }
+    }
   }
   if (parsed.budgetAlert) opts.log("warn", "OpenAI spend crossed the alert threshold", { model: parsed.model });
 
@@ -179,7 +201,9 @@ export async function handleUpdate(update: TgUpdate, opts: HandleOptions): Promi
     confidence: parsed.parsed.confidence,
     model: parsed.model,
     fallback: parsed.fallback,
+    fastPath,
     inputTokens: parsed.usage.inputTokens,
+    cachedInputTokens: parsed.usage.cachedInputTokens,
     outputTokens: parsed.usage.outputTokens,
   };
 }
@@ -218,7 +242,7 @@ async function parserContext(ctx: Ctx) {
         target: e.targets.map((t) => `${t.position}ª série ${t.weight}kg×${t.reps}`).join(", ") || null,
       })),
     },
-    sessionSets: sessionSets.slice(-12).map((s) => ({ exercise: s.exerciseName, position: s.setPosition, weight: s.weight, reps: s.reps })),
+    sessionSets: sessionSets.slice(-8).map((s) => ({ exercise: s.exerciseName, position: s.setPosition, weight: s.weight, reps: s.reps })),
   };
 }
 

@@ -3,7 +3,7 @@ import * as Sentry from "@sentry/nextjs";
 import { idempotencyKeys, tasks } from "@trigger.dev/sdk";
 import type { NextRequest } from "next/server";
 import { localTime } from "@/lib/engine/reminders";
-import { countMessage, DAILY_MESSAGE_LIMIT } from "@/lib/limits";
+import { countMessage, dailyMessageLimit, messagesThisMonth, monthlyMessageLimit } from "@/lib/limits";
 import { findByChat } from "@/lib/services/users";
 import { sendMessage, type TgUpdate } from "@/lib/telegram/client";
 import * as render from "@/lib/telegram/render";
@@ -54,12 +54,25 @@ export async function POST(req: NextRequest) {
 
   // Daily cap on text messages of linked users (button taps are free; unlinked chats never reach the LLM).
   if (link && update.message) {
-    const count = await countMessage(link.userId, localTime(new Date(), link.user.timezone).date);
-    if (count > DAILY_MESSAGE_LIMIT) {
-      if (count === DAILY_MESSAGE_LIMIT + 1) {
+    const today = localTime(new Date(), link.user.timezone).date;
+    const count = await countMessage(link.userId, today);
+    const dailyLimit = dailyMessageLimit();
+    if (count > dailyLimit) {
+      if (count === dailyLimit + 1) {
         // Once per user and day, like the notice itself: tells whether the cap is tuned right.
-        Sentry.logger.warn("Daily message limit reached", { user_id: link.userId, limit: DAILY_MESSAGE_LIMIT });
-        await sendMessage(chat.id, render.rateLimited(DAILY_MESSAGE_LIMIT)).catch(() => undefined);
+        Sentry.logger.warn("Daily message limit reached", { user_id: link.userId, limit: dailyLimit });
+        await sendMessage(chat.id, render.rateLimited(dailyLimit)).catch(() => undefined);
+      }
+      outcome("rate_limited");
+      return new Response("OK");
+    }
+    // Messages over the cap are still counted, so the month total reflects what the user tried to send.
+    const monthly = await messagesThisMonth(link.userId, today);
+    const monthlyLimit = monthlyMessageLimit();
+    if (monthly > monthlyLimit) {
+      if (monthly === monthlyLimit + 1) {
+        Sentry.logger.warn("Monthly message limit reached", { user_id: link.userId, limit: monthlyLimit });
+        await sendMessage(chat.id, render.monthlyLimited(monthlyLimit)).catch(() => undefined);
       }
       outcome("rate_limited");
       return new Response("OK");

@@ -5,7 +5,7 @@ import { cache } from "react";
 import { db, routineDays, sessions, telegramLinks } from "@/db";
 import { caloriesOf, recordsByExercise } from "@/lib/engine/reports";
 import { localTime } from "@/lib/engine/reminders";
-import { DAILY_MESSAGE_LIMIT, messagesToday } from "@/lib/limits";
+import { dailyMessageLimit, messagesToday } from "@/lib/limits";
 import { loadRoutine } from "@/lib/services/routine";
 import { ensureUser } from "@/lib/services/users";
 import { loadLog, loadTargets, nextRoutineDay } from "@/lib/services/workout";
@@ -112,7 +112,7 @@ export const loadUserData = cache(async () => {
     reminderTime: user.reminderTime?.slice(0, 5) ?? "",
     trainingDays: user.trainingDays,
     weightIncrementKg: user.weightIncrementKg,
-    usage: { today: usedToday, limit: DAILY_MESSAGE_LIMIT },
+    usage: { today: usedToday, limit: dailyMessageLimit() },
   };
 
   return {

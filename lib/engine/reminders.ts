@@ -1,4 +1,4 @@
-// Reminder timing, evaluated by the 5-minute cron in each user's timezone.
+// Reminder timing, evaluated by the 15-minute cron in each user's timezone.
 
 /** Late ticks (deploys, outages) still send within this window; after it the day's reminder is skipped. */
 export const REMINDER_WINDOW_MIN = 120;

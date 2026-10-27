@@ -41,7 +41,9 @@ export const handleTelegramUpdate = schemaTask({
       confidence: result.confidence,
       ai_model: result.model,
       ai_fallback: result.fallback,
+      fast_path: result.fastPath,
       ai_input_tokens: result.inputTokens,
+      ai_cached_input_tokens: result.cachedInputTokens,
       ai_output_tokens: result.outputTokens,
       duration_ms: Date.now() - startedAt,
     });

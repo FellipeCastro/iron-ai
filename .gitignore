@@ -42,3 +42,6 @@ next-env.d.ts
 
 # trigger.dev
 .trigger
+
+# Real user messages exported for parser evaluation
+/scripts/golden/

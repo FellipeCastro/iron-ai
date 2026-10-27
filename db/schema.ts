@@ -277,10 +277,27 @@ export const aiUsage = pgTable("ai_usage", {
   date: date("date").primaryKey(),
   requests: integer("requests").notNull().default(0),
   inputTokens: bigint("input_tokens", { mode: "number" }).notNull().default(0),
+  cachedInputTokens: bigint("cached_input_tokens", { mode: "number" }).notNull().default(0),
   outputTokens: bigint("output_tokens", { mode: "number" }).notNull().default(0),
   costUsd: numeric("cost_usd", { precision: 10, scale: 4, mode: "number" }).notNull().default(0),
+  // Share of costUsd spent on the fallback model, capped separately so an outage cannot burn the budget.
+  fallbackCostUsd: numeric("fallback_cost_usd", { precision: 10, scale: 4, mode: "number" }).notNull().default(0),
   alertedAt: timestamp("alerted_at", { withTimezone: true }),
 });
+
+// OpenAI spend per user and UTC day, for the per-user ceiling.
+export const aiUsageUser = pgTable(
+  "ai_usage_user",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    date: date("date").notNull(),
+    requests: integer("requests").notNull().default(0),
+    costUsd: numeric("cost_usd", { precision: 10, scale: 4, mode: "number" }).notNull().default(0),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.date] })],
+);
 
 // ---------- Relations (for db.query.*) ----------
 

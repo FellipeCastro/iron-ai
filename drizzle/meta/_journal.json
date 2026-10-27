@@ -15,6 +15,13 @@
       "when": 1792888289516,
       "tag": "0001_backend",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793109255907,
+      "tag": "0002_ai_cost_controls",
+      "breakpoints": true
     }
   ]
 }

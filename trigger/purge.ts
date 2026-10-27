@@ -10,6 +10,7 @@ const COUNTERS_DAYS = 90;
 /** Daily retention: raw Telegram text lives 30 days; old tokens and counters go too. */
 export const purge = schedules.task({
   id: "purge",
+  machine: "micro",
   cron: { pattern: "0 4 * * *", timezone: "America/Sao_Paulo" },
   run: async (payload) => {
     const now = payload.timestamp.getTime();

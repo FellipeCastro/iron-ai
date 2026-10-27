@@ -15,6 +15,7 @@ export type CloseSessionPayload = { sessionId: string };
 /** Closes a session idle for 90 minutes and sends the summary. Triggered by the tick cron. */
 export const closeInactiveSession = task({
   id: "close-inactive-session",
+  machine: "micro",
   concurrency: userChat,
   run: async ({ sessionId }: CloseSessionPayload) => {
     const session = await db.query.sessions.findFirst({

@@ -13,18 +13,21 @@ import { closeInactiveSession } from "./close-session";
 import { errorAttrs, log } from "./log";
 
 /**
- * Global 5-minute tick: closes idle sessions and sends training-day reminders. Safe to run twice:
- * session closes are deduped by idempotency key and reminders by the (user, local date) row.
+ * Global 15-minute tick: closes idle sessions and sends training-day reminders. Every 15 minutes is
+ * enough (idle close is 90 min, reminders have a 120 min window) and, being above Neon's 5-minute
+ * scale-to-zero, lets the database sleep between ticks. Safe to run twice: session closes are deduped
+ * by idempotency key and reminders by the (user, local date) row.
  */
 export const tick = schedules.task({
   id: "tick",
-  cron: "*/5 * * * *",
+  cron: "*/15 * * * *",
+  machine: "micro",
   maxDuration: 240,
   run: async (payload) => {
     const now = payload.timestamp;
     const closes = await closeIdleSessions(now);
     const reminders = await sendReminders(now);
-    // Runs every 5 minutes: only ticks that did something are worth a log.
+    // Runs every 15 minutes: only ticks that did something are worth a log.
     if (closes || reminders.sent || reminders.failed || reminders.blocked) {
       log.info("Tick done", {
         sessions_closed: closes,

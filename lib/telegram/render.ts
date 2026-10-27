@@ -283,8 +283,11 @@ const CLARIFY = {
 
 export const clarify = (reason: keyof typeof CLARIFY | "help") => (reason === "help" ? help() : CLARIFY[reason]);
 
-export const rateLimited = (limit: number) =>
-  `Você atingiu o limite de ${limit} mensagens hoje. Amanhã eu volto a registrar por aqui; até lá, o site continua funcionando.`;
+export const rateLimited = (limit?: number) =>
+  `Você atingiu o limite ${limit ? `de ${limit} mensagens ` : ""}de hoje. Amanhã eu volto a registrar por aqui; até lá, o site continua funcionando.`;
+
+export const monthlyLimited = (limit: number) =>
+  `Você atingiu o limite de ${limit} mensagens deste mês. No próximo mês eu volto a registrar por aqui; até lá, o site continua funcionando.`;
 
 export const unavailable = () =>
   "Estou com instabilidade agora e não consegui ler sua mensagem. Tente de novo em alguns minutos — nada foi registrado.";
