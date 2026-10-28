@@ -35,15 +35,15 @@ export function FeatureShowcase() {
 
   return (
     <div className="mx-auto grid max-w-[1200px] items-start gap-12 px-6 lg:grid-cols-[1fr_572px] lg:gap-[100px]">
-      <div className="flex flex-col items-center">
-        <div className="relative h-[651px] w-[343px]">
+      <div className="flex flex-col items-center lg:pl-[60px]">
+        <div className="relative h-[738px] w-[360px]">
           {features.map((feature, i) => (
             <Image
               key={feature.image}
               src={feature.image}
               alt=""
               fill
-              sizes="343px"
+              sizes="360px"
               className={`object-contain transition-opacity duration-500 ${i === active ? "opacity-100" : "opacity-0"}`}
               priority={i === 0}
             />

@@ -246,8 +246,8 @@ export default function Home() {
           <Image
             src="/assets/image-01.png"
             alt="Conversa com o Iron AI registrando uma série de supino"
-            width={527}
-            height={1006}
+            width={703}
+            height={1440}
             priority
             className="absolute top-0 left-0 w-[285px] -rotate-[3deg] drop-shadow-[0_20px_30px_rgba(0,0,0,0.18)]"
           />
@@ -266,8 +266,8 @@ export default function Home() {
           <Image
             src="/assets/image-02.png"
             alt="Plano de treino do dia enviado pelo Iron AI"
-            width={529}
-            height={991}
+            width={703}
+            height={1440}
             priority
             className="absolute -top-[50px] left-[385px] w-[290px] rotate-[4deg] drop-shadow-[0_20px_30px_rgba(0,0,0,0.18)]"
           />
@@ -302,7 +302,7 @@ export default function Home() {
 
       {/* What it includes */}
       <section id="recursos" className="scroll-mt-20 pt-[240px]">
-        <h2 className="mb-[70px] text-center text-[32px] leading-tight sm:text-[44px] font-medium tracking-[-0.01em] lg:text-[48px]">
+        <h2 className="mb-[58px] text-center text-[32px] leading-tight sm:text-[44px] font-medium tracking-[-0.01em] lg:text-[48px]">
           O que o Iron AI inclui?
         </h2>
         <FeatureShowcase />
@@ -342,8 +342,8 @@ export default function Home() {
           <Image
             src="/assets/image-04.png"
             alt="Resumo de progressão no supino reto enviado pelo Iron AI"
-            width={533}
-            height={962}
+            width={703}
+            height={1440}
             className="w-[355px] -rotate-[4deg] drop-shadow-[0_25px_35px_rgba(0,0,0,0.2)]"
           />
         </div>

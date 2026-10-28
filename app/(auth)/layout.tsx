@@ -26,7 +26,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
       {/* Showcase */}
       <aside className="relative hidden overflow-hidden bg-[#1e1a24] px-14 pt-20 text-white lg:flex lg:flex-col">
         <div className="inline-flex w-fit items-center gap-2 rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-[14px] font-medium">
-          <StarIcon className="size-4" /> 100% grátis, direto no Telegram
+          <StarIcon className="size-4" /> Direto no Telegram
         </div>
         <h2 className="mt-6 text-[40px] leading-[50px] font-semibold tracking-[-0.01em]">
           Seu próximo PR
@@ -46,15 +46,15 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
           <Image
             src="/assets/image-01.png"
             alt="Conversa com o Iron AI registrando uma série"
-            width={527}
-            height={1006}
+            width={703}
+            height={1440}
             className="absolute top-10 left-0 w-[240px] -rotate-[4deg] drop-shadow-[0_20px_30px_rgba(0,0,0,0.4)]"
           />
           <Image
             src="/assets/image-03.png"
             alt="Gráfico de evolução enviado pelo Iron AI"
-            width={527}
-            height={1006}
+            width={703}
+            height={1440}
             className="absolute top-0 left-[230px] w-[250px] rotate-[4deg] drop-shadow-[0_20px_30px_rgba(0,0,0,0.4)]"
           />
           <Chip title="Supino reto" value="25kg" className="top-[20px] left-[190px]" />
