@@ -118,7 +118,8 @@ export const loadUserData = cache(async () => {
     usage: { today: usedToday, limit: dailyMessageLimit() },
     billing: {
       status: subscription?.status ?? null,
-      hasAccess: hasAccess(subscription),
+      hasAccess: hasAccess(subscription, user.complimentary),
+      complimentary: user.complimentary,
       plan: subscription ? planOf(subscription.priceId) : null,
       trialEnd: subscription?.status === "trialing" ? (subscription.trialEnd?.toISOString() ?? null) : null,
       currentPeriodEnd: subscription?.currentPeriodEnd.toISOString() ?? null,

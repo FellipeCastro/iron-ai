@@ -73,6 +73,8 @@ export type Billing = {
   status: string | null;
   /** False once the subscription is over or unpaid: the page offers Checkout again. */
   hasAccess: boolean;
+  /** Account from before billing launched: free access, nothing to manage in Stripe. */
+  complimentary: boolean;
   plan: "monthly" | "annual" | null;
   trialEnd: string | null;
   currentPeriodEnd: string | null;

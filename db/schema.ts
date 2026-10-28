@@ -59,6 +59,8 @@ export const users = pgTable("users", {
   weightIncrementKg: kg("weight_increment_kg").notNull().default(2.5),
   // Set the first time the user opens Checkout; webhooks map Stripe events back to the user through it.
   stripeCustomerId: text("stripe_customer_id").unique(),
+  // Free access without a subscription: granted to every account that existed before billing launched (migration 0004).
+  complimentary: boolean("complimentary").notNull().default(false),
   createdAt: createdAt(),
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .notNull()
