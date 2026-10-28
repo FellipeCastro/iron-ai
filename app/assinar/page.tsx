@@ -14,15 +14,7 @@ export const metadata: Metadata = { title: "Escolha seu plano", robots: { index:
 
 // Where sign-in/sign-up land and where the dashboard sends users without a subscription. Users who already
 // have access skip it; everyone else picks a plan and continues to Stripe Checkout.
-export default async function SubscribePage({ searchParams }: { searchParams: Promise<{ plan?: string }> }) {
-  const { userId, redirectToSignIn } = await auth();
-  if (!userId) return redirectToSignIn();
-  const user = await ensureUser(userId);
-  if (await userHasAccess(user.id)) redirect(DASHBOARD_URL);
-
-  // The pricing cards on the landing page preselect the plan the visitor clicked.
-  const { plan } = await searchParams;
-
+export default function SubscribePage({ searchParams }: { searchParams: Promise<{ plan?: string }> }) {
   return (
     <div className="flex min-h-dvh flex-col bg-[linear-gradient(180deg,#ffffff_0px,#fffff6_600px,#f7fbf7_1400px)] text-[#111]">
       <header className="mx-auto flex h-20 w-full max-w-[1280px] items-center justify-between px-6">
@@ -36,8 +28,22 @@ export default async function SubscribePage({ searchParams }: { searchParams: Pr
         <p className="mt-3 mb-12 text-center text-[18px] text-[#333]">
           Teste {TRIAL_DAYS} dias grátis com tudo liberado. Os dois planos incluem os mesmos recursos.
         </p>
-        <PlanPicker initial={plan === "monthly" ? "monthly" : "annual"} />
+        <Suspense>
+          <Plans searchParams={searchParams} />
+        </Suspense>
       </main>
     </div>
   );
+}
+
+async function Plans({ searchParams }: { searchParams: Promise<{ plan?: string }> }) {
+  const { userId, redirectToSignIn } = await auth();
+  if (!userId) return redirectToSignIn();
+  const user = await ensureUser(userId);
+  if (await userHasAccess(user.id)) redirect(DASHBOARD_URL);
+
+  // The pricing cards on the landing page preselect the plan the visitor clicked.
+  const { plan } = await searchParams;
+
+  return <PlanPicker initial={plan === "monthly" ? "monthly" : "annual"} />;
 }
