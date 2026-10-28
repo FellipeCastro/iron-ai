@@ -15,7 +15,7 @@ export function CtaBadges({ size = "lg", className = "" }: { size?: BadgeSize; c
   return (
     <div className={`flex flex-wrap items-center gap-3 ${className}`}>
       <Link href={SIGN_UP_URL} className={`${box} bg-black text-white`}>
-        Começar grátis
+        Testar 14 dias grátis
       </Link>
       <Link href={SIGN_IN_URL} className={`${box} border border-[#d4d4d8] bg-white text-[#111]`}>
         Entrar

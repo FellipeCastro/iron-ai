@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseDurationInput } from "@/lib/engine/duration";
-import { parseTimeInput } from "@/lib/engine/reminders";
+import { isNoReminder, parseTimeInput, parseWeekdaysInput } from "@/lib/engine/reminders";
 
 describe("parseDurationInput", () => {
   it("reads plain minutes", () => {
@@ -31,5 +31,29 @@ describe("parseTimeInput", () => {
     expect(parseTimeInput("25:00")).toBeNull();
     expect(parseTimeInput("18:75")).toBeNull();
     expect(parseTimeInput("de manhã")).toBeNull();
+  });
+});
+
+describe("parseWeekdaysInput", () => {
+  it("reads lists, ranges and shortcuts", () => {
+    expect(parseWeekdaysInput("segunda, quarta e sexta")).toEqual([1, 3, 5]);
+    expect(parseWeekdaysInput("seg qua sex")).toEqual([1, 3, 5]);
+    expect(parseWeekdaysInput("Terça e quinta-feira")).toEqual([2, 4]);
+    expect(parseWeekdaysInput("segunda a sexta")).toEqual([1, 2, 3, 4, 5]);
+    expect(parseWeekdaysInput("sex a seg")).toEqual([1, 5, 6, 7]);
+    expect(parseWeekdaysInput("sábado e domingo")).toEqual([6, 7]);
+    expect(parseWeekdaysInput("todos os dias")).toEqual([1, 2, 3, 4, 5, 6, 7]);
+  });
+  it("rejects text without weekdays", () => {
+    expect(parseWeekdaysInput("quatro vezes por semana")).toBeNull();
+    expect(parseWeekdaysInput("18:30")).toBeNull();
+  });
+});
+
+describe("isNoReminder", () => {
+  it("recognises declining the reminder", () => {
+    expect(isNoReminder("sem lembrete")).toBe(true);
+    expect(isNoReminder("não")).toBe(true);
+    expect(isNoReminder("18:30")).toBe(false);
   });
 });

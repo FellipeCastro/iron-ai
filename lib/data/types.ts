@@ -65,4 +65,16 @@ export type Settings = {
   trainingDays: number[]; // ISO weekdays, 1 = Monday
   weightIncrementKg: number;
   usage: { today: number; limit: number }; // Telegram messages counted today vs the daily cap
+  billing: Billing;
+};
+
+export type Billing = {
+  /** Stripe status (trialing, active, past_due, canceled, ...); null = never subscribed. */
+  status: string | null;
+  /** False once the subscription is over or unpaid: the page offers Checkout again. */
+  hasAccess: boolean;
+  plan: "monthly" | "annual" | null;
+  trialEnd: string | null;
+  currentPeriodEnd: string | null;
+  cancelAtPeriodEnd: boolean;
 };

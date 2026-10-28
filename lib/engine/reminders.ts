@@ -48,6 +48,40 @@ export function parseTimeInput(text: string) {
   return `${String(hours).padStart(2, "0")}:${m[2] ?? "00"}`;
 }
 
+const WEEKDAY_WORDS: Record<string, number> = {
+  seg: 1, segunda: 1, ter: 2, terca: 2, qua: 3, quarta: 3, qui: 4, quinta: 4, sex: 5, sexta: 5, sab: 6, sabado: 6, dom: 7, domingo: 7,
+};
+
+/** Free-text weekdays ("seg, qua e sex", "segunda a sexta", "todos os dias") → sorted ISO numbers (1 = Monday), or null. */
+export function parseWeekdaysInput(text: string) {
+  const t = text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/-?feiras?\b/g, "");
+  if (/\b(todos? os dias|todo dia|diariamente)\b/.test(t)) return [1, 2, 3, 4, 5, 6, 7];
+  if (/\bdias uteis\b/.test(t)) return [1, 2, 3, 4, 5];
+  if (/\bfins? de semana\b/.test(t)) return [6, 7];
+
+  const found = [...t.matchAll(/\b(segunda|seg|terca|ter|quarta|qua|quinta|qui|sexta|sex|sabado|sab|domingo|dom)\b/g)];
+  if (!found.length) return null;
+  const days = new Set<number>();
+  for (let i = 0; i < found.length; i++) {
+    const day = WEEKDAY_WORDS[found[i][1]];
+    days.add(day);
+    const next = found[i + 1];
+    // "segunda a sexta": fill the days in between (wrapping past Sunday, e.g. "sex a seg").
+    if (next && /^\s*(a|ate|ao|-)\s*$/.test(t.slice(found[i].index + found[i][0].length, next.index))) {
+      const end = WEEKDAY_WORDS[next[1]];
+      for (let d = day; d !== end; d = (d % 7) + 1) days.add(d);
+    }
+  }
+  return [...days].sort((a, b) => a - b);
+}
+
+/** "sem lembrete", "não", "pular"… — declining the reminder in the last onboarding step. */
+export const isNoReminder = (text: string) => /^(sem lembrete|nao|não|pular|pula|nenhum|nenhuma|n)\b/i.test(text.trim());
+
 export function isReminderDue(local: LocalTime, reminderTime: string, trainingDays: number[]) {
   if (!trainingDays.includes(local.isoWeekday)) return false;
   const delta = local.minutes - parseClock(reminderTime);

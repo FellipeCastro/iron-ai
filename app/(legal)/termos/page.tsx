@@ -1,15 +1,18 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Callout, LegalPage, List, Placeholder, Strong, type LegalSection } from "@/components/legal/legal-page";
+import { ANNUAL_PRICE, MONTHLY_PRICE, TRIAL_DAYS } from "@/components/landing/pricing";
 import { PRIVACY_URL, SETTINGS_URL } from "@/lib/routes";
 
 export const metadata: Metadata = {
   title: "Termos de serviço",
   alternates: { canonical: "/termos" },
-  description: "As regras de uso do Iron AI: conta, Telegram, limites, IA, conteúdo e responsabilidades.",
+  description: "As regras de uso do Iron AI: conta, assinatura e cobrança, Telegram, limites, IA, conteúdo e responsabilidades.",
 };
 
 // The "60 mensagens" and "1.000 mensagens" below mirror the defaults of dailyMessageLimit / monthlyMessageLimit (lib/limits.ts); not imported because that module loads the database client.
+
+const brl = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
 const linkClass = "font-medium text-[#111] underline underline-offset-2";
 
@@ -82,11 +85,66 @@ const sections: LegalSection[] = [
     ),
   },
   {
-    id: "gratuito",
-    title: "Serviço gratuito e limites de uso",
+    id: "assinatura",
+    title: "Assinatura, teste grátis e cobrança",
     content: (
       <>
-        <p>O Iron AI é gratuito. Para manter o Serviço estável para todos, existem limites:</p>
+        <p>
+          O Iron AI é um serviço por assinatura. Para usar o painel e o bot é preciso ter uma assinatura ativa, que começa com um
+          teste grátis.
+        </p>
+        <List>
+          <li>
+            <Strong>Planos:</Strong> mensal, por {brl(MONTHLY_PRICE)} a cada mês, ou anual, por {brl(ANNUAL_PRICE)} a cada ano. Os dois
+            incluem os mesmos recursos. Os valores estão em reais e podem incluir tributos, quando aplicáveis.
+          </li>
+          <li>
+            <Strong>Teste grátis de {TRIAL_DAYS} dias:</Strong> vale para a primeira assinatura de cada conta. Pedimos um cartão
+            ao assinar, mas nada é cobrado durante o teste. Se você não cancelar antes do fim, a cobrança do plano escolhido
+            começa automaticamente no primeiro dia depois do teste.
+          </li>
+          <li>
+            <Strong>Renovação automática:</Strong> a assinatura se renova ao fim de cada período (mês ou ano) e o cartão é
+            cobrado até você cancelar.
+          </li>
+          <li>
+            <Strong>Pagamento:</Strong> é processado pela Stripe. Não vemos nem guardamos o número do seu cartão. Se uma cobrança
+            falhar, a assinatura fica com pagamento pendente e o acesso é mantido enquanto a Stripe tenta cobrar de novo; se
+            as tentativas falharem, a assinatura é encerrada e o acesso é bloqueado.
+          </li>
+          <li>
+            <Strong>Cancelamento:</Strong> você cancela quando quiser em{" "}
+            <Link href={SETTINGS_URL} className={linkClass}>
+              Configurações
+            </Link>
+            , em “Gerenciar assinatura”. O acesso continua até o fim do período já pago (ou do teste) e não há nova cobrança.
+            Você também pode trocar de plano ou atualizar o cartão por lá.
+          </li>
+          <li>
+            <Strong>Reembolso:</Strong> se você contratou pela internet, pode se arrepender em até 7 dias corridos contados da
+            cobrança, com devolução do valor (art. 49 do Código de Defesa do Consumidor). Escreva para{" "}
+            <Placeholder>E-MAIL DE CONTATO</Placeholder>. Fora desse prazo, cobranças já feitas não são reembolsadas, salvo
+            cobrança indevida ou quando a lei exigir.
+          </li>
+          <li>
+            <Strong>Mudança de preço:</Strong> podemos reajustar os preços. O novo valor só vale para a próxima renovação, depois
+            de avisarmos você com antecedência pelo site, pelo bot ou por e-mail. Se não concordar, cancele antes da renovação.
+          </li>
+          <li>
+            <Strong>Fim da assinatura:</Strong> sem assinatura ativa, o painel, o bot e os lembretes ficam bloqueados. Seus dados
+            continuam guardados e voltam a ficar disponíveis se você assinar de novo; você pode excluí-los a qualquer momento
+            apagando a conta.
+          </li>
+        </List>
+      </>
+    ),
+  },
+  {
+    id: "limites",
+    title: "Limites de uso",
+    content: (
+      <>
+        <p>Para manter o Serviço estável para todos, existem limites mesmo com a assinatura ativa:</p>
         <List>
           <li>
             <Strong>Até 60 mensagens de texto por dia e 1.000 por mês</Strong> para o bot, contadas no seu fuso horário. Toques
@@ -97,10 +155,6 @@ const sections: LegalSection[] = [
             leitura de mensagens. Nada é registrado nesse período, e você será avisado no chat.
           </li>
         </List>
-        <p>
-          Se no futuro passarmos a oferecer planos pagos, as condições serão apresentadas antes de qualquer cobrança, e o uso
-          pago dependerá da sua aceitação expressa.
-        </p>
       </>
     ),
   },
@@ -173,7 +227,7 @@ const sections: LegalSection[] = [
     title: "Serviços de terceiros",
     content: (
       <p>
-        O Serviço depende de serviços de terceiros, como Telegram (canal do bot), Clerk (login), OpenAI (interpretação de
+        O Serviço depende de serviços de terceiros, como Telegram (canal do bot), Clerk (login), Stripe (pagamentos), OpenAI (interpretação de
         mensagens) e provedores de hospedagem, banco de dados e monitoramento. O uso do Telegram está sujeito aos termos do
         próprio Telegram. Não controlamos esses serviços e não respondemos por indisponibilidades ou mudanças causadas por eles,
         embora trabalhemos para reduzir o impacto para você.
@@ -196,7 +250,7 @@ const sections: LegalSection[] = [
     title: "Disponibilidade e garantias",
     content: (
       <p>
-        Oferecemos o Serviço gratuitamente e “no estado em que se encontra”. Fazemos o possível para mantê-lo funcionando e
+        Oferecemos o Serviço “no estado em que se encontra”. Fazemos o possível para mantê-lo funcionando e
         preciso, mas não garantimos que ele estará sempre disponível, livre de erros ou que as interpretações e metas serão
         sempre corretas. Isso não afasta os direitos que a legislação brasileira, incluindo o Código de Defesa do Consumidor, lhe
         assegura.
@@ -224,7 +278,8 @@ const sections: LegalSection[] = [
           <Link href={SETTINGS_URL} className={linkClass}>
             Configurações
           </Link>
-          . A exclusão é imediata e definitiva e apaga seus dados conforme a{" "}
+          . A exclusão é imediata e definitiva, cancela a assinatura na hora (sem novas cobranças e sem reembolso do período em
+          curso, salvo o direito de arrependimento acima) e apaga seus dados conforme a{" "}
           <Link href={`${PRIVACY_URL}#exclusao`} className={linkClass}>
             Política de privacidade
           </Link>
@@ -233,7 +288,7 @@ const sections: LegalSection[] = [
         <p>
           <Strong>Por nós:</Strong> podemos suspender ou encerrar o acesso de quem violar estes termos ou colocar o Serviço ou
           outros usuários em risco, avisando quando possível. Também podemos descontinuar o Serviço, com aviso prévio razoável
-          sempre que possível.
+          sempre que possível. Se encerrarmos a sua assinatura sem culpa sua, devolvemos o valor proporcional ao período já pago e não utilizado.
         </p>
       </>
     ),
@@ -275,7 +330,7 @@ export default function TermsPage() {
     <LegalPage
       eyebrow="Legal"
       title="Termos de serviço"
-      updatedAt="25 de outubro de 2026"
+      updatedAt="28 de outubro de 2026"
       intro={
         <p>
           Leia com atenção. Estes termos explicam como o Iron AI funciona, o que você pode esperar dele e o que esperamos de

@@ -1,8 +1,9 @@
 import { idempotencyKeys, schedules } from "@trigger.dev/sdk";
-import { and, eq, gte, isNotNull, isNull, lt, sql } from "drizzle-orm";
-import { db, reminderLog, sessions, telegramLinks, users } from "@/db";
+import { and, eq, gte, inArray, isNotNull, isNull, lt, sql } from "drizzle-orm";
+import { db, reminderLog, sessions, subscriptions, telegramLinks, users } from "@/db";
 import { isReminderDue, localTime } from "@/lib/engine/reminders";
 import { INACTIVITY_MINUTES } from "@/lib/engine/session";
+import { ACCESS_STATUSES } from "@/lib/services/access";
 import { planView } from "@/lib/services/reports";
 import { loadRoutine } from "@/lib/services/routine";
 import { findOpenSession, nextRoutineDay } from "@/lib/services/workout";
@@ -69,7 +70,9 @@ async function sendReminders(now: Date) {
     .select({ user: users, chatId: telegramLinks.chatId })
     .from(users)
     .innerJoin(telegramLinks, eq(telegramLinks.userId, users.id))
-    .where(and(isNotNull(users.reminderTime), sql`cardinality(${users.trainingDays}) > 0`));
+    // Reminders are part of the product: only for users with a trial or paid subscription.
+    .innerJoin(subscriptions, eq(subscriptions.userId, users.id))
+    .where(and(isNotNull(users.reminderTime), sql`cardinality(${users.trainingDays}) > 0`, inArray(subscriptions.status, ACCESS_STATUSES)));
 
   let sent = 0;
   let failed = 0;

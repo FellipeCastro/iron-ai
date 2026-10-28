@@ -6,7 +6,9 @@ import { db, routineDays, sessions, telegramLinks } from "@/db";
 import { caloriesOf, recordsByExercise } from "@/lib/engine/reports";
 import { localTime } from "@/lib/engine/reminders";
 import { dailyMessageLimit, messagesToday } from "@/lib/limits";
+import { findSubscription, hasAccess } from "@/lib/services/access";
 import { loadRoutine } from "@/lib/services/routine";
+import { planOf } from "@/lib/stripe";
 import { ensureUser } from "@/lib/services/users";
 import { loadLog, loadTargets, nextRoutineDay } from "@/lib/services/workout";
 import type { CloseReason, DayLetter, RoutineDay, SessionExercise, Settings, WorkoutSession } from "./types";
@@ -26,7 +28,7 @@ export const loadUserData = cache(async () => {
   const now = new Date();
   const timeZone = user.timezone;
 
-  const [routine, log, closed, link] = await Promise.all([
+  const [routine, log, closed, link, subscription] = await Promise.all([
     loadRoutine(user.id),
     loadLog(user.id),
     db
@@ -36,6 +38,7 @@ export const loadUserData = cache(async () => {
       .where(and(eq(sessions.userId, user.id), isNotNull(sessions.endedAt)))
       .orderBy(desc(sessions.startedAt)),
     db.query.telegramLinks.findFirst({ where: eq(telegramLinks.userId, user.id) }),
+    findSubscription(user.id),
   ]);
 
   const routineIds = routine?.days.flatMap((d) => d.exercises.map((e) => e.exerciseId)) ?? [];
@@ -113,6 +116,14 @@ export const loadUserData = cache(async () => {
     trainingDays: user.trainingDays,
     weightIncrementKg: user.weightIncrementKg,
     usage: { today: usedToday, limit: dailyMessageLimit() },
+    billing: {
+      status: subscription?.status ?? null,
+      hasAccess: hasAccess(subscription),
+      plan: subscription ? planOf(subscription.priceId) : null,
+      trialEnd: subscription?.status === "trialing" ? (subscription.trialEnd?.toISOString() ?? null) : null,
+      currentPeriodEnd: subscription?.currentPeriodEnd.toISOString() ?? null,
+      cancelAtPeriodEnd: subscription?.cancelAtPeriodEnd ?? false,
+    },
   };
 
   return {

@@ -3,15 +3,15 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { createTelegramLinkAction, deleteAccountAction, disconnectTelegramAction, saveSettingsAction } from "@/app/(app)/actions";
+import { deleteAccountAction, saveSettingsAction } from "@/app/(app)/actions";
 import type { Settings } from "@/lib/data/types";
 import { WEEKDAYS } from "@/lib/format";
 import { PRIVACY_URL, TERMS_URL } from "@/lib/routes";
-import { TelegramColorIcon } from "@/components/landing/icons";
+import { BillingCard } from "./billing-card";
 import { FeedbackButton } from "./feedback-button";
-import { CopyIcon } from "./icons";
+import { TelegramCard } from "./telegram-card";
 import { useToast } from "./toast";
-import { Badge, Card, CardTitle, buttonDanger, buttonPrimary, buttonSecondary, inputBase } from "./ui";
+import { Card, CardTitle, buttonDanger, buttonPrimary, buttonSecondary, inputBase } from "./ui";
 
 const TIMEZONES = [
   { value: "America/Sao_Paulo", label: "Brasília (GMT−3)" },
@@ -24,9 +24,7 @@ const TIMEZONES = [
 const INCREMENTS = [1, 2, 2.5, 5];
 const CONFIRM_WORD = "EXCLUIR";
 
-export function SettingsForm({ initial, linkedSince }: { initial: Settings; linkedSince: string | null }) {
-  const [telegram, setTelegram] = useState(initial.telegram);
-  const [deepLink, setDeepLink] = useState<string | null>(null);
+export function SettingsForm({ initial, linkedSince, checkout }: { initial: Settings; linkedSince: string | null; checkout?: string }) {
   const [prefs, setPrefs] = useState({
     timezone: initial.timezone,
     reminderTime: initial.reminderTime,
@@ -49,24 +47,6 @@ export function SettingsForm({ initial, linkedSince }: { initial: Settings; link
     }));
   }
 
-  function generateLink() {
-    startTransition(async () => {
-      const result = await createTelegramLinkAction();
-      if (result.ok) setDeepLink(result.data.url);
-      else showToast(result.error);
-    });
-  }
-
-  function disconnect() {
-    startTransition(async () => {
-      const result = await disconnectTelegramAction();
-      if (!result.ok) return showToast(result.error);
-      setTelegram({ connected: false, username: null, linkedAt: null });
-      setDeepLink(null);
-      showToast("Telegram desconectado");
-    });
-  }
-
   function savePrefs() {
     startTransition(async () => {
       const result = await saveSettingsAction(prefs);
@@ -86,65 +66,7 @@ export function SettingsForm({ initial, linkedSince }: { initial: Settings; link
 
   return (
     <div className="mt-10 grid gap-6">
-      {/* Telegram */}
-      <Card>
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <TelegramColorIcon className="size-12" />
-            <div>
-              <h2 className="text-[20px] font-bold">Telegram</h2>
-              <p className="text-[14px] text-[#5b5b66]">
-                {telegram.connected
-                  ? `${telegram.username}${linkedSince ? ` · conectado desde ${linkedSince}` : ""}`
-                  : "Conecte para registrar séries pelo chat."}
-              </p>
-            </div>
-          </div>
-          {telegram.connected ? <Badge tone="good">● Conectado</Badge> : <Badge tone="warn">Não conectado</Badge>}
-        </div>
-
-        {telegram.connected ? (
-          <div className="mt-6 flex flex-wrap items-center justify-between gap-4 rounded-[20px] bg-[#f9f9fb] px-5 py-4">
-            <p className="text-[14px] text-[#3f3f46]">
-              Uso hoje:{" "}
-              <span className="font-semibold text-[#111]">
-                {initial.usage.today} de {initial.usage.limit}
-              </span>{" "}
-              mensagens
-            </p>
-            <button type="button" disabled={pending} className={`${buttonSecondary} h-10!`} onClick={disconnect}>
-              Desconectar
-            </button>
-          </div>
-        ) : deepLink ? (
-          <div className="mt-6 rounded-[20px] bg-[#f9f9fb] p-5">
-            <p className="text-[14px] text-[#3f3f46]">
-              Abra o link abaixo no celular e toque em “Começar”. Ele vale por 15 minutos e só pode ser usado uma vez.
-            </p>
-            <div className="mt-4 flex flex-wrap gap-3">
-              <a href={deepLink} target="_blank" rel="noreferrer" className={buttonPrimary}>
-                Abrir no Telegram
-              </a>
-              <button
-                type="button"
-                className={buttonSecondary}
-                onClick={() => navigator.clipboard.writeText(deepLink).then(() => showToast("Link copiado"))}
-              >
-                <CopyIcon className="size-4" /> Copiar link
-              </button>
-              <button type="button" className={buttonSecondary} onClick={() => router.refresh()}>
-                Já conectei
-              </button>
-            </div>
-          </div>
-        ) : (
-          <button type="button" onClick={generateLink} disabled={pending} className={`${buttonPrimary} mt-6`}>
-            Conectar Telegram
-          </button>
-        )}
-      </Card>
-
-      {/* Preferences */}
+            {/* Preferences */}
       <Card>
         <CardTitle title="Dias e horário de treino" subtitle="Avisamos no Telegram na hora do seu treino, nos dias escolhidos." />
 
@@ -230,6 +152,10 @@ export function SettingsForm({ initial, linkedSince }: { initial: Settings; link
           )}
         </div>
       </Card>
+
+      <BillingCard billing={initial.billing} timezone={initial.timezone} checkout={checkout} />
+
+      <TelegramCard telegram={initial.telegram} linkedSince={linkedSince} usage={initial.usage} />
 
       <Card>
         <CardTitle title="Feedback" subtitle="Encontrou um problema ou tem uma ideia? Conte pra gente, cada mensagem é lida." />

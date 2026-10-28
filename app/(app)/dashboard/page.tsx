@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { Badge, Card, CardTitle, DayBadge, PageHeader, StatTile, buttonPrimary } from "@/components/app/ui";
+import { TelegramConnect } from "@/components/app/telegram-connect";
 import { BarChart } from "@/components/charts/bar-chart";
 import { ArrowRightIcon, TelegramColorIcon } from "@/components/landing/icons";
 import { getDashboard } from "@/lib/data";
@@ -35,23 +36,21 @@ export default async function DashboardPage() {
         }
       />
 
-      <Link
-        href={telegram.connected && botUrl ? botUrl : SETTINGS_URL}
-        {...(telegram.connected && botUrl ? { target: "_blank", rel: "noreferrer" } : {})}
-        className="mt-5 inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-[14px] font-medium shadow-[0_8px_30px_rgba(0,0,0,0.04)] transition-opacity hover:opacity-80"
-      >
-        <TelegramColorIcon className="size-5" />
-        {telegram.connected ? (
-          <>
-            Telegram conectado
-            {telegram.username?.startsWith("@") ? ` · ${telegram.username}` : ""}
-            <span className="text-[#5b5b66]">— abrir conversa</span>
-          </>
-        ) : (
-          "Conectar Telegram"
-        )}
-        <ArrowRightIcon className="size-4" />
-      </Link>
+      {telegram.connected ? (
+        <Link
+          href={botUrl ?? SETTINGS_URL}
+          {...(botUrl ? { target: "_blank", rel: "noreferrer" } : {})}
+          className="mt-5 inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-[14px] font-medium shadow-[0_8px_30px_rgba(0,0,0,0.04)] transition-opacity hover:opacity-80"
+        >
+          <TelegramColorIcon className="size-5" />
+          Telegram conectado
+          {telegram.username?.startsWith("@") ? ` · ${telegram.username}` : ""}
+          <span className="text-[#5b5b66]">— abrir conversa</span>
+          <ArrowRightIcon className="size-4" />
+        </Link>
+      ) : (
+        <TelegramConnect />
+      )}
 
       <div className="mt-6 grid gap-6 lg:grid-cols-3">
         {/* Next workout */}

@@ -4,7 +4,7 @@ Assistente de treino no Telegram + site Next.js (painel, rotina, histórico). St
 
 ## Rodando o projeto localmente
 
-Abra **3 terminais** na raiz do projeto, um para cada processo:
+Abra **4 terminais** na raiz do projeto, um para cada processo:
 
 ```bash
 # Terminal 1 — site Next.js (http://localhost:3000)
@@ -18,7 +18,12 @@ ngrok http 3000
 
 ## Ou 
 ngrok http --url=embassy-ambition-wager.ngrok-free.dev 3000
+
+# Terminal 4 — encaminha os webhooks do Stripe para o site local
+stripe listen --forward-to localhost:3000/api/webhooks/stripe
 ```
+
+O `stripe listen` imprime um segredo `whsec_...`: ele vai em `STRIPE_WEBHOOK_SECRET` no `.env.local` (reinicie o `npm run dev` ao trocar). Requer o [Stripe CLI](https://docs.stripe.com/stripe-cli) e `stripe login` (a sessão expira; se der 401 "Expired API Key", faça login de novo).
 
 A versão do CLI (`trigger.dev@4.8.1`) deve ser a mesma de `@trigger.dev/sdk` no `package.json`.
 
@@ -58,6 +63,12 @@ TELEGRAM_BOT_USERNAME=               # nome do bot sem @, para o link t.me/<bot>
 TELEGRAM_WEBHOOK_SECRET=             # 16–256 chars [A-Za-z0-9_-]; ex.: openssl rand -hex 32
 OPENAI_API_KEY=                      # platform.openai.com → API keys
 
+STRIPE_SECRET_KEY=                   # Stripe → Developers → API keys (sk_test_... em dev; prefira uma chave restrita rk_...)
+NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=  # Stripe → Developers → API keys (pk_test_...)
+STRIPE_WEBHOOK_SECRET=               # whsec_... do `stripe listen` (dev) ou do endpoint de webhook (prod)
+STRIPE_PRICE_MONTHLY=                # price_... do plano mensal (R$ 19,90)
+STRIPE_PRICE_ANNUAL=                 # price_... do plano anual (R$ 199,00)
+
 # Opcionais
 OPENAI_PARSER_MODEL=gpt-5.4-mini     # modelo do parser (precisa de Structured Outputs)
 OPENAI_FALLBACK_MODEL=gpt-5.5        # usado se o principal estiver fora do ar
@@ -77,6 +88,8 @@ SENTRY_AUTH_TOKEN=                   # só no build (Vercel/CI) para enviar sour
 ```
 
 No Trigger.dev Cloud (ambiente **prod**), cadastre as mesmas variáveis usadas pelas tasks: `DATABASE_URL`, `OPENAI_API_KEY`, `TELEGRAM_BOT_TOKEN`, `NEXT_PUBLIC_SITE_URL`, as opcionais da OpenAI e `NEXT_PUBLIC_SENTRY_DSN` / `NEXT_PUBLIC_SENTRY_ENVIRONMENT` (erros e logs das tasks vão para o mesmo projeto do Sentry, via `trigger/init.ts`). Em dev, o `trigger.dev dev` lê o `.env` local.
+
+Os planos e o portal de cobrança do Stripe precisam existir na conta (produto com dois preços recorrentes e o Customer Portal configurado); os ids dos preços vão nas variáveis `STRIPE_PRICE_*`.
 
 Se o banco estiver vazio, aplique as migrações e o catálogo de exercícios:
 
@@ -103,6 +116,23 @@ npm test          # vitest: motor de progressão, sessão, recordes, relatórios
 
 O CI (`.github/workflows/ci.yml`) roda os três em cada push/PR.
 
+## Assinatura (Stripe)
+
+Todo acesso exige assinatura: 14 dias grátis (cartão no Checkout), depois R$ 19,90/mês ou R$ 199,00/ano.
+
+```
+Login/cadastro → /assinar (escolhe Mensal ou Anual) → Stripe Checkout → /assinar/sucesso → painel
+Configurações → "Gerenciar assinatura" → Customer Portal (cancelar, trocar plano, cartão, faturas)
+```
+
+- O Stripe é a fonte da verdade: `POST /api/webhooks/stripe` ([app/api/webhooks/stripe/route.ts](app/api/webhooks/stripe/route.ts)) valida a assinatura e todo evento vira `syncSubscription`, que relê a assinatura no Stripe e grava em `subscriptions`. Eventos repetidos ou fora de ordem são seguros.
+- Têm acesso os status `trialing`, `active` e `past_due`. Sem acesso: o painel redireciona para `/assinar`, o bot responde pedindo a assinatura e os lembretes (`tick`) não são enviados.
+- Eventos assinados no endpoint: `customer.subscription.created|updated|deleted`, `checkout.session.completed`, `invoice.paid`, `invoice.payment_failed`.
+- Excluir a conta apaga também o customer no Stripe (cancela a cobrança).
+- Teste em dev com o cartão `4242 4242 4242 4242`. Com o `stripe listen` no ar, `stripe trigger customer.subscription.updated` também funciona.
+- Produção: crie o endpoint `https://<dominio>/api/webhooks/stripe` com os eventos acima, use as chaves `live`, ajuste o `default_return_url` do portal e cadastre as variáveis `STRIPE_*` no host do site (as tasks do Trigger.dev só leem o banco, não precisam delas).
+- Se as migrações novas não foram aplicadas (`subscriptions`, `users.stripe_customer_id`), o login quebra com erro de coluna inexistente: rode `npm run db:migrate`.
+
 ## Como o bot funciona
 
 ```
@@ -116,7 +146,7 @@ Telegram → POST /api/telegram/webhook   valida o secret, aplica os limites (60
 
 - Baixa confiança (< 0,7) ou exercício ambíguo ⇒ botões de confirmação/escolha; nada é gravado antes.
 - Correções anulam a série antiga e gravam uma nova (log imutável); as metas são recalculadas do histórico inteiro.
-- `tick` (a cada 15 min): fecha sessões paradas há 90 min e manda lembretes nos dias/horário de cada usuário.
+- `tick` (a cada 15 min): fecha sessões paradas há 90 min e manda lembretes nos dias/horário de cada usuário com assinatura ativa.
 - `purge` (diário): apaga texto bruto das mensagens após 30 dias, tokens usados/expirados e contadores antigos.
 
 ## Custos de IA

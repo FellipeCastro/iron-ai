@@ -22,7 +22,10 @@ const RECORD_LABEL: Record<PrKind, string> = { weight: "🏆 recorde de carga", 
 export const notLinked = () =>
   `Olá! Eu sou o <b>Iron AI</b> 💪\n\nPara começar, crie sua conta e toque em <b>Conectar Telegram</b> em ${link(SETTINGS_URL, "Configurações")}. O link abre esta conversa já vinculada.`;
 
-export const linkInvalid = () => `Esse link de conexão expirou ou já foi usado. Gere um novo em ${link(SETTINGS_URL, "Configurações")}.`;
+export const subscriptionRequired = () =>
+  `Para continuar usando o <b>Iron AI</b>, ative sua assinatura em ${link(SETTINGS_URL, "Configurações")}. Você tem 14 dias grátis e pode cancelar quando quiser. 💪`;
+
+export const linkInvalid =() => `Esse link de conexão expirou ou já foi usado. Gere um novo em ${link(SETTINGS_URL, "Configurações")}.`;
 
 export const linkChatTaken = () => "Este Telegram já está conectado a outra conta do Iron AI. Desconecte por lá antes de vincular aqui.";
 
@@ -73,20 +76,22 @@ const WEEKDAY_NAMES = ["segunda", "terça", "quarta", "quinta", "sexta", "sábad
 const formatClock = (time: string) => time.slice(0, 5).replace(":", "h").replace(/h00$/, "h");
 
 export const askDays = (empty = false) =>
-  `${empty ? "Escolha pelo menos um dia. " : ""}Quais dias da semana você treina? Toque nos dias e depois em <b>Confirmar dias</b>.`;
+  empty
+    ? "Não entendi os dias. Me mande assim: <i>segunda, quarta e sexta</i> ou <i>segunda a sexta</i>."
+    : "Quais dias da semana você treina? Ex.: <i>segunda, quarta e sexta</i> ou <i>segunda a sexta</i>.";
 
 export const askTime = (retry = false) =>
   retry
     ? "Não entendi o horário. Me mande assim: <i>18:30</i> ou <i>7h</i>."
-    : "Que horas você costuma treinar? Eu te lembro nesse horário, nos dias escolhidos. Ex.: <i>18:30</i> ou <i>7h</i>.";
+    : "Que horas você costuma treinar? Ex.: <i>18:30</i> ou <i>7h</i>.";
 
 export const onboardingDone = (days: number[], time: string | null) =>
   [
     "Tudo pronto! ✅",
     `🗓️ Dias: ${days.map((d) => WEEKDAY_NAMES[d - 1]).join(", ")}`,
-    time ? `⏰ Lembrete às ${formatClock(time)}` : "⏰ Sem lembrete (você pode ligar em Configurações)",
+    time ? `⏰ Treino às ${formatClock(time)}` : "⏰ Sem horário definido (você pode definir em Configurações)",
     "",
-    howToLog(),
+    "Quando for treinar, é só me mandar o exercício, as repetições e o peso que eu registro para você. 💪",
   ].join("\n");
 
 // ---------- Logging ----------
@@ -145,16 +150,8 @@ export const unknownExercise = (query: string) =>
 export const cancelled = () => "Ok, não registrei nada.";
 export const expiredAction = () => "Essa ação não está mais disponível.";
 
-export const corrected = (
-  it: { name: string; setPosition: number; from: { weight: number; reps: number }; to: { weight: number; reps: number } },
-  target: { weight: number; reps: number } | null,
-) =>
-  [
-    `✏️ <b>${esc(it.name)}</b> — ${ordinal(it.setPosition)} corrigida: ${load(it.from.weight, it.from.reps)} → <b>${load(it.to.weight, it.to.reps)}</b>`,
-    target ? `    ↳ próxima meta da ${ordinal(it.setPosition)}: ${load(target.weight, target.reps)}` : "",
-  ]
-    .filter(Boolean)
-    .join("\n");
+export const corrected = (it: { name: string; setPosition: number; from: { weight: number; reps: number }; to: { weight: number; reps: number } }) =>
+  `✏️ <b>${esc(it.name)}</b> — ${ordinal(it.setPosition)} corrigida: ${load(it.from.weight, it.from.reps)} → <b>${load(it.to.weight, it.to.reps)}</b>`;
 
 export const deleted = (it: { name: string; setPosition: number; weight: number; reps: number }) =>
   `🗑️ Removida: <b>${esc(it.name)}</b> — ${ordinal(it.setPosition)}: ${load(it.weight, it.reps)}`;

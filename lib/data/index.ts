@@ -1,5 +1,7 @@
+import { redirect } from "next/navigation";
 import { isStagnant } from "@/lib/engine/stagnation";
 import { dateKey, estimate1rm, estimateCalories, formatDate } from "@/lib/format";
+import { CHECKOUT_URL } from "@/lib/routes";
 import { loadCatalog } from "@/lib/services/routine";
 import { currentAppUser, loadUserData } from "./load";
 import type { ExercisePoint, ExerciseRef, ExerciseSummary, PersonalRecord, Routine, Settings, WorkoutSession } from "./types";
@@ -8,8 +10,10 @@ export type * from "./types";
 
 // Read model for the (app) pages: view models derived from the signed-in user's data (./load.ts).
 
+/** View-model source for every page except Settings: without a trial or subscription, the user is sent straight to Checkout. */
 async function load() {
   const data = await loadUserData();
+  if (!data.settings.billing.hasAccess) redirect(CHECKOUT_URL);
   return { ...data, today: dateKey(data.now, data.timeZone) };
 }
 
@@ -186,8 +190,9 @@ export async function getExerciseDetail(id: string) {
   };
 }
 
+/** Not gated: this is where a user without access subscribes. */
 export async function getSettings(): Promise<Settings> {
-  return (await load()).settings;
+  return (await loadUserData()).settings;
 }
 
 export async function getCatalog(): Promise<ExerciseRef[]> {

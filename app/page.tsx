@@ -5,6 +5,7 @@ import { HeaderAuth } from "@/components/brand/header-auth";
 import { Logo } from "@/components/brand/logo";
 import { CtaBadges, SIGN_IN_URL } from "@/components/landing/cta-badges";
 import { FeatureShowcase } from "@/components/landing/feature-showcase";
+import { ANNUAL_PRICE, MONTHLY_PRICE, Pricing, TRIAL_DAYS } from "@/components/landing/pricing";
 import {
   ArrowRightIcon,
   ChartUpIcon,
@@ -24,9 +25,7 @@ import { PRIVACY_URL, TERMS_URL } from "@/lib/routes";
 const navLinks = [
   { label: "Como funciona", href: "#como-funciona" },
   { label: "Recursos", href: "#recursos" },
-  { label: "Vantagens", href: "#vantagens" },
-  { label: "Progressão", href: "#progressao" },
-  { label: "Conversas", href: "#conversas" },
+  { label: "Preços", href: "#precos" },
   { label: "FAQ", href: "#faq" },
 ];
 
@@ -96,8 +95,16 @@ const conversations = [
 
 const faqs = [
   {
-    q: "O Iron AI é grátis mesmo?",
-    a: "Sim. O Iron AI é gratuito. Existe apenas um limite diário de mensagens para manter o serviço estável para todo mundo.",
+    q: "Quanto custa e como funciona o teste grátis?",
+    a: `Você testa o Iron AI por ${TRIAL_DAYS} dias grátis, com todos os recursos liberados. Depois, o plano mensal custa R$ 19,90 por mês e o anual R$ 199,00 por ano (equivale a R$ 16,58 por mês).`,
+  },
+  {
+    q: "Posso cancelar quando quiser?",
+    a: "Sim. Não há fidelidade: você cancela quando quiser. E, se preferir, pode excluir sua conta e todos os seus dados em Configurações, no painel web.",
+  },
+  {
+    q: "Existe limite de mensagens?",
+    a: "Sim, para manter o serviço estável: até 60 mensagens de texto por dia e 1.000 por mês no bot. Um treino completo costuma usar bem menos que isso, e toques em botões não contam.",
   },
   {
     q: "Como conecto minha conta ao Telegram?",
@@ -134,6 +141,7 @@ const footerColumns = [
   {
     title: "Produto",
     links: [
+      { label: "Preços", href: "#precos" },
       { label: "FAQ", href: "#faq" },
       { label: "Contato", href: "#" },
       { label: "Painel web", href: SIGN_IN_URL },
@@ -162,7 +170,10 @@ const jsonLd = {
       operatingSystem: "Web, Telegram",
       inLanguage: "pt-BR",
       url: siteUrl(),
-      offers: { "@type": "Offer", price: "0", priceCurrency: "BRL" },
+      offers: [
+        { "@type": "Offer", name: "Mensal", price: MONTHLY_PRICE.toFixed(2), priceCurrency: "BRL" },
+        { "@type": "Offer", name: "Anual", price: ANNUAL_PRICE.toFixed(2), priceCurrency: "BRL" },
+      ],
     },
     {
       "@type": "FAQPage",
@@ -214,7 +225,7 @@ export default function Home() {
               ))}
             </div>
             <span className="text-[13px] font-medium sm:text-[14px]">
-              Seu contato inteligente de treino <StarIcon className="-mt-1 inline size-4" /> 100% grátis
+              Seu contato inteligente de treino <StarIcon className="-mt-1 inline size-4" /> {TRIAL_DAYS} dias grátis
             </span>
           </div>
           <h1 className="mt-6 text-[36px] leading-[46px] font-medium sm:text-[48px] sm:leading-[64px] tracking-[-0.01em]">
@@ -361,6 +372,9 @@ export default function Home() {
         </div>
       </section>
 
+      {/* Pricing */}
+      <Pricing />
+
       {/* FAQ */}
       <section id="faq" className="scroll-mt-20 bg-[linear-gradient(180deg,#f4f9f9,#f9fcf5)] px-6 pt-[134px] pb-8">
         <h2 className="text-center text-[32px] leading-tight sm:text-[44px] font-medium tracking-[-0.01em] lg:text-[48px]">Perguntas frequentes</h2>
@@ -425,7 +439,7 @@ export default function Home() {
         <div className="mx-auto grid max-w-[1280px] gap-10 px-6 pt-7 pb-4 md:grid-cols-3 lg:px-4">
           <div>
             <Logo className="[&_img:first-child]:h-[37px] [&_img:last-child]:h-[29px]" />
-            <p className="mt-6 text-[14px] text-[#3f3f46]">Comece a usar o Iron AI</p>
+            <p className="mt-6 text-[14px] text-[#3f3f46]">Teste o Iron AI por {TRIAL_DAYS} dias grátis</p>
             <CtaBadges size="sm" className="mt-4" />
           </div>
           {footerColumns.map((column) => (

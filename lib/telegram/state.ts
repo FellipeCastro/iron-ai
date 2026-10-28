@@ -34,9 +34,9 @@ const Pending = z.discriminatedUnion("kind", [
   }),
   // Routine parsed from chat, waiting for "Salvar rotina".
   z.object({ kind: z.literal("routine"), id: z.string(), days: RoutineDraft }),
-  // Onboarding step 2: weekdays (ISO, 1 = Monday) toggled with buttons, saved on "Confirmar".
-  z.object({ kind: z.literal("days"), id: z.string(), days: z.array(z.number().int().min(1).max(7)) }),
-  // Onboarding step 3: waiting for the training time as text ("18:30"); the button skips the reminder.
+  // Onboarding step 2: waiting for the training weekdays as text ("segunda, quarta e sexta").
+  z.object({ kind: z.literal("days"), id: z.string() }),
+  // Onboarding step 3: waiting for the training time as text ("18:30"), or "sem lembrete".
   z.object({ kind: z.literal("time"), id: z.string() }),
   // Session just closed: "Confirmar" keeps the duration, "Editar" waits for the real one as text.
   z.object({ kind: z.literal("duration"), id: z.string(), sessionId: z.string(), minutes: z.number() }),
@@ -54,19 +54,14 @@ export function readChatState(raw: unknown): ChatState {
 
 export const newPendingId = () => Math.random().toString(36).slice(2, 8);
 
-// Callback data (≤ 64 bytes): "ok:<id>", "no:<id>", "ed:<id>", "sk:<id>", "p:<id>:<index>", "d:<id>:<weekday>".
-export type Callback =
-  | { action: "ok" | "no" | "edit" | "skip"; id: string }
-  | { action: "pick"; id: string; index: number }
-  | { action: "day"; id: string; day: number };
+// Callback data (≤ 64 bytes): "ok:<id>", "no:<id>", "ed:<id>", "p:<id>:<index>".
+export type Callback = { action: "ok" | "no" | "edit"; id: string } | { action: "pick"; id: string; index: number };
 
 export function parseCallback(data: string | undefined): Callback | null {
   const [action, id, index] = (data ?? "").split(":");
   if (!id) return null;
   if (action === "ok" || action === "no") return { action, id };
   if (action === "ed") return { action: "edit", id };
-  if (action === "sk") return { action: "skip", id };
   if (action === "p" && /^\d+$/.test(index ?? "")) return { action: "pick", id, index: Number(index) };
-  if (action === "d" && /^[1-7]$/.test(index ?? "")) return { action: "day", id, day: Number(index) };
   return null;
 }

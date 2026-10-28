@@ -6,8 +6,9 @@ import type { Intent } from "@/lib/ai/schemas";
 import { durationPrompt } from "@/lib/bot/duration";
 import { parseDurationInput } from "@/lib/engine/duration";
 import { matchExercise, type MatchCandidate } from "@/lib/engine/match";
-import { parseTimeInput } from "@/lib/engine/reminders";
+import { isNoReminder, parseTimeInput, parseWeekdaysInput } from "@/lib/engine/reminders";
 import { BudgetExceededError, UserBudgetExceededError } from "@/lib/limits";
+import { userHasAccess } from "@/lib/services/access";
 import { loadCatalog, loadDay, loadRoutine, ensureCustomExercise, saveRoutine, type Routine, type RoutineDayFull } from "@/lib/services/routine";
 import * as reports from "@/lib/services/reports";
 import { consumeLinkToken, findByChat } from "@/lib/services/users";
@@ -24,7 +25,7 @@ import {
   type ClosedSession,
 } from "@/lib/services/workout";
 import { answerCallbackQuery, editMessageText, sendMessage, sendTyping, type InlineKeyboard, type TgUpdate } from "@/lib/telegram/client";
-import { confirmKeyboard, daysKeyboard, pickKeyboard, skipKeyboard } from "@/lib/telegram/keyboards";
+import { confirmKeyboard, pickKeyboard } from "@/lib/telegram/keyboards";
 import * as render from "@/lib/telegram/render";
 import { newPendingId, parseCallback, readChatState, type ChatState, type Pending, type RoutineDraft } from "@/lib/telegram/state";
 
@@ -96,6 +97,12 @@ export async function handleUpdate(update: TgUpdate, opts: HandleOptions): Promi
       await finish("ignored");
       return { status: "ignored", kind: "callback" };
     }
+    if (!(await userHasAccess(link.userId))) {
+      await answerCallbackQuery(callback.id).catch(() => undefined);
+      await finish("ignored");
+      await sendMessage(chat.id, render.subscriptionRequired());
+      return { status: "ignored", kind: "callback", userId: link.userId };
+    }
     const ctx = await loadCtx(chat.id, link.user, link.chatState);
     const outs = await handleCallback(ctx, callback.data);
     await finish("processed");
@@ -129,6 +136,13 @@ export async function handleUpdate(update: TgUpdate, opts: HandleOptions): Promi
     await finish("ignored");
     await sendMessage(chat.id, render.notLinked());
     return { status: "ignored", kind: "message" };
+  }
+
+  // No trial or subscription: nothing runs (and no model call is paid for). Linking above still works.
+  if (!(await userHasAccess(link.userId))) {
+    await finish("ignored");
+    await sendMessage(chat.id, render.subscriptionRequired());
+    return { status: "ignored", kind: "message", userId: link.userId };
   }
 
   const ctx = await loadCtx(chat.id, link.user, link.chatState);
@@ -375,7 +389,7 @@ async function apply(ctx: Ctx, intent: Intent, ids: Record<string, string>): Pro
         { exerciseId: ids.x ?? null, setNumber: intent.set_number },
         { weight: intent.weight_kg, reps: intent.reps },
       );
-      return [{ text: result ? render.corrected(result.item, result.target) : render.nothingToCorrect() }];
+      return [{ text: result ? render.corrected(result.item) : render.nothingToCorrect() }];
     }
     case "delete_set": {
       const result = await deleteSet(ctx.user, { exerciseId: ids.x ?? null, setNumber: intent.set_number });
@@ -424,9 +438,16 @@ async function finishWorkout(ctx: Ctx): Promise<Out[]> {
 
 /** Text typed while a step is waiting for it. Returns null when the message is not meant for that step. */
 async function handleAwaitedText(ctx: Ctx, pending: Pending, text: string): Promise<Out[] | null> {
+  if (pending.kind === "days") {
+    const days = parseWeekdaysInput(text);
+    if (!days) return [{ text: render.askDays(true) }];
+    await db.update(users).set({ trainingDays: days }).where(eq(users.id, ctx.user.id));
+    return askTime(ctx);
+  }
   if (pending.kind === "time") {
+    if (isNoReminder(text)) return finishOnboarding(ctx, null);
     const time = parseTimeInput(text);
-    if (!time) return [{ text: render.askTime(true), keyboard: skipKeyboard(pending.id, "Sem lembrete") }];
+    if (!time) return [{ text: render.askTime(true) }];
     return finishOnboarding(ctx, time);
   }
   if (pending.kind === "duration_edit") {
@@ -471,15 +492,13 @@ async function saveRoutineDraft(ctx: Ctx, days: RoutineDraft): Promise<Out[]> {
   }
   await saveRoutine(ctx.user.id, input);
   // Onboarding continues: weekdays, then the training time.
-  const id = newPendingId();
-  await saveState(ctx, { pending: { kind: "days", id, days: [] } });
-  return [{ text: render.routineSaved(days[0].title) }, { text: render.askDays(), keyboard: daysKeyboard(id, []) }];
+  await saveState(ctx, { pending: { kind: "days", id: newPendingId() } });
+  return [{ text: render.routineSaved(days[0].title) }, { text: render.askDays() }];
 }
 
 async function askTime(ctx: Ctx): Promise<Out[]> {
-  const id = newPendingId();
-  await saveState(ctx, { pending: { kind: "time", id } });
-  return [{ text: render.askTime(), keyboard: skipKeyboard(id, "Sem lembrete") }];
+  await saveState(ctx, { pending: { kind: "time", id: newPendingId() } });
+  return [{ text: render.askTime() }];
 }
 
 /** Last onboarding step: stores the time (null = no reminder) and closes the flow. */
@@ -496,21 +515,8 @@ async function handleCallback(ctx: Ctx, data: string | undefined): Promise<Out[]
   const pending: Pending | null = ctx.state.pending;
   if (!cb || !pending || pending.id !== cb.id) return [{ text: render.expiredAction() }];
 
-  // Weekday step: toggles keep the step open and redraw the keyboard in place.
-  if (pending.kind === "days") {
-    if (cb.action === "day") {
-      const days = pending.days.includes(cb.day) ? pending.days.filter((d) => d !== cb.day) : [...pending.days, cb.day].sort();
-      await saveState(ctx, { pending: { ...pending, days } });
-      return [{ text: render.askDays(), keyboard: daysKeyboard(pending.id, days) }];
-    }
-    if (cb.action === "ok") {
-      if (!pending.days.length) return [{ text: render.askDays(true), keyboard: daysKeyboard(pending.id, []) }];
-      await db.update(users).set({ trainingDays: pending.days }).where(eq(users.id, ctx.user.id));
-      return askTime(ctx);
-    }
-    return [{ text: render.expiredAction() }];
-  }
-  if (pending.kind === "time") return cb.action === "skip" ? finishOnboarding(ctx, null) : [{ text: render.expiredAction() }];
+  // Weekday and time steps are answered with text, never buttons.
+  if (pending.kind === "days" || pending.kind === "time") return [{ text: render.expiredAction() }];
 
   await saveState(ctx, { pending: null });
   if (pending.kind === "duration" || pending.kind === "duration_edit") {

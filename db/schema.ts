@@ -57,7 +57,28 @@ export const users = pgTable("users", {
   // ISO weekdays: 1 = Monday … 7 = Sunday.
   trainingDays: smallint("training_days").array().notNull().default(sql`'{}'::smallint[]`),
   weightIncrementKg: kg("weight_increment_kg").notNull().default(2.5),
+  // Set the first time the user opens Checkout; webhooks map Stripe events back to the user through it.
+  stripeCustomerId: text("stripe_customer_id").unique(),
   createdAt: createdAt(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow()
+    .$onUpdate(() => new Date()),
+});
+
+// Local copy of the user's Stripe subscription, rewritten from Stripe on every subscription event.
+// One row per user: a new subscription replaces a finished one (see syncSubscription).
+export const subscriptions = pgTable("subscriptions", {
+  userId: uuid("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  stripeSubscriptionId: text("stripe_subscription_id").notNull().unique(),
+  // Stripe's status string: trialing, active, past_due, canceled, unpaid, incomplete, ...
+  status: text("status").notNull(),
+  priceId: text("price_id").notNull(),
+  currentPeriodEnd: timestamp("current_period_end", { withTimezone: true }).notNull(),
+  trialEnd: timestamp("trial_end", { withTimezone: true }),
+  cancelAtPeriodEnd: boolean("cancel_at_period_end").notNull().default(false),
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .notNull()
     .defaultNow()
@@ -303,9 +324,14 @@ export const aiUsageUser = pgTable(
 
 export const usersRelations = relations(users, ({ one, many }) => ({
   telegramLink: one(telegramLinks),
+  subscription: one(subscriptions),
   routines: many(routines),
   sessions: many(sessions),
   customExercises: many(exercises),
+}));
+
+export const subscriptionsRelations = relations(subscriptions, ({ one }) => ({
+  user: one(users, { fields: [subscriptions.userId], references: [users.id] }),
 }));
 
 export const telegramLinksRelations = relations(telegramLinks, ({ one }) => ({
@@ -343,6 +369,7 @@ export const setEntriesRelations = relations(setEntries, ({ one }) => ({
 }));
 
 export type User = typeof users.$inferSelect;
+export type Subscription = typeof subscriptions.$inferSelect;
 export type TelegramLink = typeof telegramLinks.$inferSelect;
 export type Exercise = typeof exercises.$inferSelect;
 export type Session = typeof sessions.$inferSelect;

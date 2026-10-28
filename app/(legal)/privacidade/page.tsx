@@ -63,6 +63,11 @@ const sections: LegalSection[] = [
               "Você, pelo Telegram",
             ],
             [
+              <Strong key="b">Assinatura</Strong>,
+              "Identificador do seu cadastro na Stripe, plano contratado, situação da assinatura (teste, ativa, pagamento pendente, cancelada) e datas de teste e de renovação. O e-mail e o nome da conta são enviados à Stripe para criar o cadastro de cobrança. Os dados do cartão são informados direto à Stripe e nunca passam pelos nossos servidores.",
+              "Você, ao assinar / Stripe",
+            ],
+            [
               <Strong key="o">Uso e operação</Strong>,
               "Contador diário de mensagens, registro de lembretes enviados, registros técnicos de erros e desempenho e, se você enviar, o conteúdo do formulário de feedback.",
               "Gerados pelo serviço / você",
@@ -71,7 +76,7 @@ const sections: LegalSection[] = [
         />
         <p>
           Não pedimos e não precisamos de dados como peso corporal, medidas, condições de saúde, localização, contatos ou
-          documentos. Mensagens que não são texto (fotos, áudios, figurinhas) não são lidas pelo bot. Por favor, não envie
+          documentos (o pagamento é tratado pela Stripe). Mensagens que não são texto (fotos, áudios, figurinhas) não são lidas pelo bot. Por favor, não envie
           informações sensíveis no chat.
         </p>
       </>
@@ -87,6 +92,12 @@ const sections: LegalSection[] = [
             <Strong>Prestar o serviço</Strong> — registrar séries, calcular a progressão (8 a 12 repetições), montar o próximo
             treino, gerar resumos, relatórios e gráficos e enviar lembretes nos dias e horário que você escolheu. Base legal:
             execução de contrato (art. 7º, V, da LGPD).
+          </li>
+          <li>
+            <Strong>Cobrar a assinatura</Strong> — criar seu cadastro de cobrança, iniciar o teste grátis, cobrar os planos,
+            liberar ou bloquear o acesso conforme a situação da assinatura e permitir que você a gerencie. Base legal:
+            execução de contrato; para guardar registros de cobrança, cumprimento de obrigação legal ou regulatória
+            (art. 7º, II).
           </li>
           <li>
             <Strong>Vincular o Telegram à sua conta</Strong> — por meio de um link de uso único que expira em 15 minutos. Base
@@ -145,7 +156,12 @@ const sections: LegalSection[] = [
           head={["Prestador", "Para quê", "Dados envolvidos"]}
           rows={[
             [<Strong key="1">Clerk</Strong>, "Cadastro, login e sessão", "Dados da conta e cookies de sessão"],
-            [<Strong key="2">Neon</Strong>, "Banco de dados", "Preferências, vínculo do Telegram, treino e mensagens"],
+            [
+              <Strong key="s">Stripe</Strong>,
+              "Pagamentos, cobrança recorrente e portal de gerenciamento da assinatura",
+              "E-mail, nome, dados de pagamento informados por você à Stripe e histórico de cobranças; a Stripe também trata dados para prevenção a fraudes",
+            ],
+            [<Strong key="2">Neon</Strong>, "Banco de dados", "Preferências, vínculo do Telegram, treino, mensagens e situação da assinatura"],
             [<Strong key="3">Trigger.dev</Strong>, "Processamento das mensagens e tarefas agendadas", "Texto da mensagem, ID do chat e @usuário durante o processamento"],
             [<Strong key="4">OpenAI</Strong>, "Interpretação do texto das mensagens", "Texto da mensagem e o contexto de treino descrito acima"],
             [<Strong key="5">Telegram</Strong>, "Canal de conversa com o bot", "Mensagens trocadas com o bot"],
@@ -184,7 +200,7 @@ const sections: LegalSection[] = [
     content: (
       <>
         <p>
-          Usamos apenas os cookies necessários para manter você conectado, definidos pelo nosso provedor de autenticação (Clerk).
+          Usamos apenas os cookies necessários para manter você conectado, definidos pelo nosso provedor de autenticação (Clerk). Ao pagar, a página da Stripe também usa cookies próprios para processar o pagamento e prevenir fraudes, conforme a política dela.
           Não usamos cookies de publicidade nem ferramentas de analytics de marketing.
         </p>
         <p>
@@ -207,6 +223,11 @@ const sections: LegalSection[] = [
           ["Links de vinculação do Telegram", "Válidos por 15 minutos; apagados após o uso ou até 1 dia depois de expirar. Só guardamos um hash, nunca o link"],
           ["Conta, preferências, rotina, histórico de treino e metas", "Enquanto sua conta existir"],
           ["Vínculo do Telegram", "Até você desconectar ou excluir a conta"],
+          ["Situação da assinatura e identificador na Stripe", "Enquanto sua conta existir"],
+          [
+            "Registros de pagamento e faturas na Stripe",
+            "A Stripe os mantém pelo prazo exigido por lei e por regras de prevenção a fraudes, mesmo depois que você exclui a conta",
+          ],
           [
             "Registros técnicos e feedback no Sentry",
             <>
@@ -237,13 +258,14 @@ const sections: LegalSection[] = [
           </li>
           <li>
             <Strong>Excluir sua conta</Strong> — em Configurações, “Excluir conta”. A exclusão é definitiva e imediata: apagamos
-            sua rotina, histórico, metas, exercícios personalizados, mensagens, contadores e o vínculo com o Telegram, e
+            sua rotina, histórico, metas, exercícios personalizados, mensagens, contadores e o vínculo com o Telegram, cancelamos a assinatura, excluímos seu cadastro na Stripe e
             removemos seu login no provedor de autenticação. Não é possível desfazer.
           </li>
         </List>
         <Callout>
           Registros técnicos já enviados ao Sentry (que não contêm o texto das suas mensagens) seguem o prazo de retenção do
-          Sentry e não são apagados pela exclusão da conta.
+          Sentry e não são apagados pela exclusão da conta. O mesmo vale para os registros de pagamento que a Stripe é
+          obrigada a manter por lei.
         </Callout>
         <p>
           Você também pode exercer os demais direitos do art. 18 da LGPD — confirmação e acesso, portabilidade, informação sobre
@@ -262,7 +284,8 @@ const sections: LegalSection[] = [
         <p>Adotamos medidas técnicas para proteger seus dados, entre elas:</p>
         <List>
           <li>Login e senhas gerenciados por um provedor especializado em autenticação; não armazenamos senhas.</li>
-          <li>O webhook do Telegram só aceita requisições com um segredo compartilhado, e o do provedor de autenticação, com assinatura verificada.</li>
+          <li>O webhook do Telegram só aceita requisições com um segredo compartilhado, e os do provedor de autenticação e da Stripe, com assinatura verificada.</li>
+          <li>Os dados do cartão são recebidos apenas pela Stripe, que segue o padrão de segurança PCI DSS; nós só guardamos o identificador do cadastro e a situação da assinatura.</li>
           <li>Links de vinculação do Telegram são de uso único, expiram em 15 minutos e são guardados apenas como hash.</li>
           <li>Cada página e ação do painel confere quem é o usuário conectado antes de ler ou alterar dados.</li>
           <li>Comunicação com o site e com os prestadores por conexões criptografadas (HTTPS).</li>
@@ -311,7 +334,7 @@ export default function PrivacyPage() {
     <LegalPage
       eyebrow="Legal"
       title="Política de privacidade"
-      updatedAt="25 de outubro de 2026"
+      updatedAt="28 de outubro de 2026"
       intro={
         <p>
           Esta política explica, de forma direta, quais dados o Iron AI trata quando você usa o site e o bot no Telegram, para

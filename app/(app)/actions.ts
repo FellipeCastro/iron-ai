@@ -10,6 +10,7 @@ import { db, users } from "@/db";
 import { currentAppUser } from "@/lib/data/load";
 import { MAX_DURATION_MIN } from "@/lib/engine/duration";
 import { DAY_LETTERS, MAX_PLANNED_SETS, renameExerciseForUser, saveRoutine } from "@/lib/services/routine";
+import { createCheckoutUrl, createPortalUrl, deleteStripeCustomer } from "@/lib/services/billing";
 import { createLinkToken, unlinkTelegram } from "@/lib/services/users";
 import { deleteSetById, editSetById, setSessionDuration } from "@/lib/services/workout";
 
@@ -179,10 +180,49 @@ export async function disconnectTelegramAction(): Promise<ActionResult> {
   });
 }
 
+const CheckoutInput = z.object({ plan: z.enum(["monthly", "annual"]) });
+
+/** Stripe Checkout (free trial included) for the chosen plan; the client redirects to the returned URL. */
+export async function startCheckoutAction(input: z.input<typeof CheckoutInput>): Promise<ActionResult<{ url: string }>> {
+  return traced("startCheckoutAction", async () => {
+    const user = await currentAppUser();
+    const parsed = CheckoutInput.safeParse(input);
+    if (!parsed.success) return fail("Plano inválido.");
+    try {
+      const url = await createCheckoutUrl(user, parsed.data.plan);
+      Sentry.logger.info("Checkout started", { user_id: user.id, plan: parsed.data.plan });
+      return { ok: true, data: { url } };
+    } catch (err) {
+      Sentry.captureException(err, { tags: { action: "start_checkout" } });
+      return fail("Não foi possível abrir o pagamento. Tente de novo.");
+    }
+  });
+}
+
+/** Stripe Customer Portal: cancel, switch plan, update the card, invoices. */
+export async function openBillingPortalAction(): Promise<ActionResult<{ url: string }>> {
+  return traced("openBillingPortalAction", async () => {
+    const user = await currentAppUser();
+    try {
+      return { ok: true, data: { url: await createPortalUrl(user) } };
+    } catch (err) {
+      Sentry.captureException(err, { tags: { action: "open_billing_portal" } });
+      return fail("Não foi possível abrir o gerenciamento da assinatura. Tente de novo.");
+    }
+  });
+}
+
 /** Hard delete: every user table cascades from `users`; then the Clerk account goes too. */
 export async function deleteAccountAction(): Promise<ActionResult> {
   return traced("deleteAccountAction", async () => {
     const user = await currentAppUser();
+    // Billing first: if Stripe fails, nothing was deleted yet and the user can retry.
+    try {
+      await deleteStripeCustomer(user);
+    } catch (err) {
+      Sentry.captureException(err, { tags: { action: "delete_account_billing" } });
+      return fail("Não conseguimos cancelar sua assinatura. Tente de novo.");
+    }
     await db.delete(users).where(eq(users.id, user.id));
     try {
       const clerk = await clerkClient();
