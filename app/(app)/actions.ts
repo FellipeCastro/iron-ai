@@ -11,6 +11,7 @@ import { currentAppUser } from "@/lib/data/load";
 import { MAX_DURATION_MIN } from "@/lib/engine/duration";
 import { DAY_LETTERS, MAX_PLANNED_SETS, renameExerciseForUser, saveRoutine } from "@/lib/services/routine";
 import { createCheckoutUrl, createPortalUrl, deleteStripeCustomer } from "@/lib/services/billing";
+import { userHasAccess } from "@/lib/services/access";
 import { createLinkToken, unlinkTelegram } from "@/lib/services/users";
 import { deleteSetById, editSetById, setSessionDuration } from "@/lib/services/workout";
 
@@ -21,6 +22,18 @@ import { deleteSetById, editSetById, setSessionDuration } from "@/lib/services/w
 export type ActionResult<T = undefined> = { ok: true; data: T } | { ok: false; error: string };
 
 const fail = (error: string): ActionResult<never> => ({ ok: false, error });
+
+const SUBSCRIPTION_REQUIRED = "Sua assinatura não está ativa. Assine para continuar.";
+
+/**
+ * The signed-in user, or null without access. The pages redirect, but Server Actions are reachable by direct
+ * POST, so every action that changes training data checks the subscription itself. Settings, Telegram linking,
+ * Checkout, the billing portal and account deletion stay open so a lapsed user can fix billing or leave.
+ */
+async function subscriber() {
+  const user = await currentAppUser();
+  return (await userHasAccess(user.id)) ? user : null;
+}
 
 /**
  * Server Actions are not traced automatically: this gives each one a named span, joined to the browser
@@ -54,7 +67,8 @@ export type RenamedExercises = Record<string, { id: string; name: string }>;
 
 export async function saveRoutineAction(input: z.input<typeof RoutineInput>): Promise<ActionResult<RenamedExercises>> {
   return traced("saveRoutineAction", async () => {
-    const user = await currentAppUser();
+    const user = await subscriber();
+    if (!user) return fail(SUBSCRIPTION_REQUIRED);
     const parsed = RoutineInput.safeParse(input);
     if (!parsed.success) return fail("Rotina inválida. Confira os treinos e tente de novo.");
     const renamed: RenamedExercises = {};
@@ -89,7 +103,8 @@ const DurationInput = z.object({ sessionId: z.uuid(), minutes: z.number().int().
 
 export async function updateSessionDurationAction(input: z.input<typeof DurationInput>): Promise<ActionResult> {
   return traced("updateSessionDurationAction", async () => {
-    const user = await currentAppUser();
+    const user = await subscriber();
+    if (!user) return fail(SUBSCRIPTION_REQUIRED);
     const parsed = DurationInput.safeParse(input);
     if (!parsed.success) return fail("Duração inválida. Use entre 1 e 600 minutos.");
     if (!(await setSessionDuration(user.id, parsed.data.sessionId, parsed.data.minutes))) return fail("Treino não encontrado.");
@@ -103,7 +118,8 @@ const SetEditInput = z.object({ setId: z.uuid(), weight: z.number().min(0).max(1
 
 export async function updateSetAction(input: z.input<typeof SetEditInput>): Promise<ActionResult> {
   return traced("updateSetAction", async () => {
-    const user = await currentAppUser();
+    const user = await subscriber();
+    if (!user) return fail(SUBSCRIPTION_REQUIRED);
     const parsed = SetEditInput.safeParse(input);
     if (!parsed.success) return fail("Valores inválidos. Carga até 1000 kg e de 1 a 100 repetições.");
     const { setId, weight, reps } = parsed.data;
@@ -116,7 +132,8 @@ export async function updateSetAction(input: z.input<typeof SetEditInput>): Prom
 
 export async function deleteSetAction(input: { setId: string }): Promise<ActionResult<{ sessionEmpty: boolean }>> {
   return traced("deleteSetAction", async () => {
-    const user = await currentAppUser();
+    const user = await subscriber();
+    if (!user) return fail(SUBSCRIPTION_REQUIRED);
     const parsed = z.object({ setId: z.uuid() }).safeParse(input);
     if (!parsed.success) return fail("Série inválida.");
     const result = await deleteSetById(user, parsed.data.setId);

@@ -127,7 +127,8 @@ Configurações → "Gerenciar assinatura" → Customer Portal (cancelar, trocar
 
 - O Stripe é a fonte da verdade: `POST /api/webhooks/stripe` ([app/api/webhooks/stripe/route.ts](app/api/webhooks/stripe/route.ts)) valida a assinatura e todo evento vira `syncSubscription`, que relê a assinatura no Stripe e grava em `subscriptions`. Eventos repetidos ou fora de ordem são seguros.
 - Têm acesso os status `trialing`, `active` e `past_due`. Sem acesso: o painel redireciona para `/assinar`, o bot responde pedindo a assinatura e os lembretes (`tick`) não são enviados.
-- Eventos assinados no endpoint: `customer.subscription.created|updated|deleted`, `checkout.session.completed`, `invoice.paid`, `invoice.payment_failed`.
+- Eventos assinados no endpoint: `customer.subscription.created|updated|deleted`, `checkout.session.completed`, `invoice.paid`, `invoice.payment_failed` e, para risco, `charge.dispute.created`, `charge.refunded`, `radar.early_fraud_warning.created`.
+- Risco: disputa aberta ou reembolso total cancelam a assinatura na hora e avisam no Sentry; o alerta de fraude (EFW) só avisa, e reembolsar antes de virar disputa é decisão sua.
 - Excluir a conta apaga também o customer no Stripe (cancela a cobrança).
 - Teste em dev com o cartão `4242 4242 4242 4242`. Com o `stripe listen` no ar, `stripe trigger customer.subscription.updated` também funciona.
 - Produção: crie o endpoint `https://<dominio>/api/webhooks/stripe` com os eventos acima, use as chaves `live`, ajuste o `default_return_url` do portal e cadastre as variáveis `STRIPE_*` no host do site (as tasks do Trigger.dev só leem o banco, não precisam delas).

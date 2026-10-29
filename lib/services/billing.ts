@@ -107,6 +107,20 @@ export async function syncSubscription(subscriptionId: string) {
   return true;
 }
 
+/**
+ * Stops billing a customer after a dispute or a full refund: cancels every live subscription right away and
+ * syncs the result so access ends now. Returns how many subscriptions were cancelled.
+ */
+export async function cancelCustomerSubscriptions(customerId: string) {
+  const open = await stripe().subscriptions.list({ customer: customerId, limit: 10 });
+  const live = open.data.filter((s) => ACCESS_STATUSES.includes(s.status));
+  for (const sub of live) {
+    await stripe().subscriptions.cancel(sub.id);
+    await syncSubscription(sub.id);
+  }
+  return live.length;
+}
+
 function randomLetters(length: number) {
   return Array.from(randomBytes(length), (b) => String.fromCharCode(97 + (b % 26))).join("");
 }
