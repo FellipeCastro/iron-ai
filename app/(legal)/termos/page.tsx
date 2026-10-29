@@ -23,7 +23,7 @@ const sections: LegalSection[] = [
     content: (
       <p>
         Estes Termos de serviço regem o uso do Iron AI — o site, o painel web e o bot no Telegram (o “Serviço”) — oferecido por{" "}
-        <Placeholder>NOME OU RAZÃO SOCIAL DO RESPONSÁVEL</Placeholder>, <Placeholder>CPF/CNPJ</Placeholder> (“nós”). Ao criar
+        Fellipe da Silva Castro. Ao criar
         uma conta ou usar o Serviço, você concorda com estes termos e com a{" "}
         <Link href={PRIVACY_URL} className={linkClass}>
           Política de privacidade
@@ -56,7 +56,7 @@ const sections: LegalSection[] = [
     title: "Quem pode usar",
     content: (
       <p>
-        Para usar o Serviço você precisa ter pelo menos <Placeholder>18</Placeholder> anos e capacidade para aceitar estes
+        Para usar o Serviço você precisa ter pelo menos 18 anos e capacidade para aceitar estes
         termos. Para usar o bot, você também precisa de uma conta no Telegram.
       </p>
     ),
@@ -123,7 +123,7 @@ const sections: LegalSection[] = [
           <li>
             <Strong>Reembolso:</Strong> se você contratou pela internet, pode se arrepender em até 7 dias corridos contados da
             cobrança, com devolução do valor (art. 49 do Código de Defesa do Consumidor). Escreva para{" "}
-            <Placeholder>E-MAIL DE CONTATO</Placeholder>. Fora desse prazo, cobranças já feitas não são reembolsadas, salvo
+            fehcastru@gmail.com. Fora desse prazo, cobranças já feitas não são reembolsadas, salvo
             cobrança indevida ou quando a lei exigir.
           </li>
           <li>
@@ -319,7 +319,7 @@ const sections: LegalSection[] = [
     title: "Contato",
     content: (
       <p>
-        Dúvidas sobre estes termos: <Placeholder>E-MAIL DE CONTATO</Placeholder>.
+        Dúvidas sobre estes termos: fehcastru@gmail.com.
       </p>
     ),
   },

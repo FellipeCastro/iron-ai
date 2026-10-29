@@ -212,7 +212,7 @@ export default function Home() {
       {/* Hero */}
       <section className="mx-auto grid max-w-[1440px] items-center gap-10 px-6 pt-10 pb-24 lg:min-h-[820px] lg:grid-cols-[1fr_700px] lg:px-0 lg:pt-0 lg:pb-0 lg:pl-[105px]">
         <div className="lg:-mt-[150px]">
-          <div className="inline-flex items-center gap-2.5 rounded-full border border-[#e3e3e3] bg-white py-1 pr-3 pl-2">
+          <div className="hidden items-center gap-2.5 rounded-full sm:inline-flex border border-[#e3e3e3] bg-white py-1 pr-3 pl-2">
             <div className="flex -space-x-2">
               {[
                 ["💪", "bg-[#fde68a]"],
@@ -225,11 +225,11 @@ export default function Home() {
               ))}
             </div>
             <span className="text-[13px] font-medium sm:text-[14px]">
-              Seu contato inteligente de treino <StarIcon className="-mt-1 inline size-4" /> {TRIAL_DAYS} dias grátis
+              Seu contato inteligente de treino <StarIcon className="-mt-1 inline size-4" />
             </span>
           </div>
-          <h1 className="mt-6 text-[36px] leading-[46px] font-medium sm:text-[48px] sm:leading-[64px] tracking-[-0.01em]">
-            <span className="font-bold">Um contato inteligente</span>
+          <h1 className="text-[44px] leading-[52px] font-medium sm:mt-6 sm:text-[48px] sm:leading-[64px] tracking-[-0.01em]">
+            <span className="font-bold">Seu contato inteligente</span>
             <br />
             que organiza
             <br />
@@ -240,6 +240,40 @@ export default function Home() {
             Telegram, e ele registra, calcula a próxima meta e acompanha sua evolução.
           </p>
           <CtaBadges className="mt-6" />
+        </div>
+
+        <div className="relative -mx-4 -mb-12 aspect-[1/1.12] overflow-x-clip lg:hidden">
+          <Image
+            src="/assets/image-01.png"
+            alt="Conversa com o Iron AI registrando uma série de supino"
+            width={703}
+            height={1440}
+            priority
+            className="absolute top-8 left-[5%] w-[46%] -rotate-[3deg] drop-shadow-[0_20px_30px_rgba(0,0,0,0.18)]"
+          />
+          <svg
+            viewBox="0 0 120 80"
+            className="absolute top-[150px] left-[40%] w-[52px]"
+            fill="none"
+            stroke="#111"
+            strokeWidth={1.6}
+            strokeLinecap="round"
+            aria-hidden
+          >
+            <path d="M2 18c18 10 32 30 52 34 14 3 14-14 8-28-6-14-16-14-16 2 0 18 16 34 40 36 12 1 22-2 30-6" />
+            <path d="M108 50l9 5-9 5" />
+          </svg>
+          <Image
+            src="/assets/image-02.png"
+            alt="Plano de treino do dia enviado pelo Iron AI"
+            width={703}
+            height={1440}
+            priority
+            className="absolute top-2 right-[5%] w-[48%] rotate-[4deg] drop-shadow-[0_20px_30px_rgba(0,0,0,0.18)]"
+          />
+          <Chip title="Supino reto" value="25kg" className="top-0 right-[26%]" />
+          <Chip title="Meta" value="11 reps" className="top-[70px] left-[38%]" />
+          <Chip title="Séries" value="3" className="top-[40px] right-[3%]" />
         </div>
 
         <div className="relative hidden h-[640px] lg:block">
