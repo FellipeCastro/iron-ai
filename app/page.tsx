@@ -29,36 +29,43 @@ const navLinks = [
   { label: "FAQ", href: "#faq" },
 ];
 
+// Background photos live in public/assets/gym/ (gym, weights, training; no people's portraits).
 const chatCards = [
   {
     title: "Registro por texto livre",
     text: "Mande “supino reto 1 série 10kg” e pronto: a série fica salva no seu histórico.",
-    height: "min-h-[320px]",
+    height: "h-[460px] md:h-[549px]",
+    photo: "/assets/gym/01.jpg",
   },
   {
     title: "Plano do dia no seu horário",
     text: "No dia de treino, o Iron AI te avisa com o plano completo: exercícios, séries, reps e carga de hoje.",
-    height: "min-h-[360px]",
+    height: "h-[460px] md:h-[577px]",
+    photo: "/assets/gym/02.jpg",
   },
   {
     title: "Evolução em segundos",
     text: "Pergunte “evolução no supino reto” e receba o gráfico com carga atual, 1RM estimado e calorias gastas no período.",
-    height: "min-h-[340px]",
+    height: "h-[460px] md:h-[577px]",
+    photo: "/assets/gym/03.jpg",
   },
   {
     title: "Errou? Ele corrige",
     text: "É só mandar “errei, foi 25kg” que a série é corrigida 🔥",
-    height: "min-h-[300px]",
+    height: "h-[460px] md:h-[579px]",
+    photo: "/assets/gym/04.jpg",
   },
   {
     title: "Metas automáticas",
     text: "Bateu a meta? +1 rep 😮",
-    height: "min-h-[260px]",
+    height: "h-[460px] md:h-[579px]",
+    photo: "/assets/gym/05.jpg",
   },
   {
     title: "Resumo de progressão",
     text: "Carga, repetições e calorias comparadas no período. Simples, rápido e sem planilha.",
-    height: "min-h-[320px]",
+    height: "h-[460px] md:h-[579px]",
+    photo: "/assets/gym/06.jpg",
   },
 ];
 
@@ -316,17 +323,21 @@ export default function Home() {
         <h2 className="text-center text-[32px] leading-tight sm:text-[44px] font-medium tracking-[-0.01em] lg:text-[48px]">
           Um contato inteligente, do jeito que você já fala 👀
         </h2>
-        <div className="mt-[90px] grid gap-[21px] md:grid-cols-3">
+        <div className="mt-[90px] grid gap-x-[22px] gap-y-[15px] md:grid-cols-3">
           {[0, 1, 2].map((col) => (
-            <div key={col} className={`flex flex-col gap-[21px] ${col === 1 ? "" : "md:mt-[80px]"}`}>
+            <div key={col} className={`flex flex-col gap-[15px] ${col === 1 ? "" : "md:mt-[80px]"}`}>
+              {/* Heights and stagger follow design/landing-page-example.png (1440px wide). */}
               {[chatCards[col], chatCards[col + 3]].map((card) => (
                 <article
                   key={card.title}
-                  className={`flex flex-col justify-end rounded-[24px] border border-white/10 bg-[#2d2935] px-8 pt-10 pb-9 text-white shadow-[0_10px_30px_rgba(0,0,0,0.25)] ${card.height}`}
+                  style={{ backgroundImage: `linear-gradient(180deg, rgba(30,26,36,0.05) 30%, rgba(30,26,36,0.55) 100%), url(${card.photo})` }}
+                  className={`flex flex-col justify-end overflow-hidden rounded-[24px] bg-[#2d2935] bg-cover bg-bottom p-4 text-white shadow-[0_10px_30px_rgba(0,0,0,0.25)] ${card.height}`}
                 >
-                  <span className="block text-[48px] leading-8 font-black text-white/70">&ldquo;</span>
-                  <h3 className="mt-3 text-[26px] leading-8 font-bold">{card.title}</h3>
-                  <p className="mt-3 text-[16px] leading-6 font-medium text-[#d4d4d8]">{card.text}</p>
+                  <div className="rounded-[16px] border border-white/20 bg-white/10 px-6 pt-4 pb-5 backdrop-blur-xl backdrop-saturate-150">
+                    <span className="block text-[30px] leading-6 font-black text-[#60a5fa]">&ldquo;</span>
+                    <h3 className="mt-1 text-[20px] leading-6 font-bold">{card.title}</h3>
+                    <p className="mt-1.5 text-[14px] leading-5 font-medium text-white/85">{card.text}</p>
+                  </div>
                 </article>
               ))}
             </div>
@@ -364,11 +375,9 @@ export default function Home() {
         <div>
           <p className="text-[14px] font-medium tracking-[0.08em] text-[#f43f5e] uppercase">Novo recurso</p>
           <h2 className="mt-6 text-[34px] leading-[44px] font-semibold sm:text-[48px] sm:leading-[60px] tracking-[-0.01em] text-[#1f2433]">
-            Progressão automática
-            <br />
-            de 8 a 12 reps, sem
-            <br />
-            planilha! 📈💪
+            Progressão automática,
+            <br /> 
+            sem planilha! 📈💪
           </h2>
           <p className="mt-8 text-[18px] text-[#475569]">Você só treina, a conta é com a gente :)</p>
         </div>

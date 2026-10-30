@@ -8,22 +8,27 @@ import { estimateCalories } from "@/lib/format";
 const l = (weight: number, reps: number) => ({ weight, reps });
 
 describe("markRecords", () => {
-  it("a lone set is the record", () => expect(markRecords([l(50, 10)])).toEqual(["weight"]));
+  const s = (sessionId: string, weight: number, reps: number) => ({ sessionId, weight, reps });
 
-  it("the first set is a baseline when asked", () => expect(markRecords([l(50, 10)], { includeFirst: false })).toEqual([null]));
+  it("a lone set is the record", () => expect(markRecords([s("a", 50, 10)])).toEqual(["weight"]));
 
-  it("only the heaviest set is the record; the previous one becomes a regular set", () => {
-    expect(markRecords([l(50, 10), l(52.5, 6)])).toEqual([null, "weight"]);
-    expect(markRecords([l(70, 11), l(90, 11), l(110, 9)])).toEqual([null, null, "weight"]);
+  it("the first session is a baseline when asked", () => expect(markRecords([s("a", 50, 10)], { includeFirst: false })).toEqual([null]));
+
+  it("one record per session: its best set", () => {
+    expect(markRecords([s("a", 70, 11), s("a", 90, 11), s("a", 110, 9)])).toEqual([null, null, "weight"]);
+  });
+
+  it("a later record does not take the earlier one away", () => {
+    expect(markRecords([s("a", 50, 10), s("b", 52.5, 6), s("c", 60, 5)])).toEqual(["weight", "weight", "weight"]);
   });
 
   it("more reps at the same load is a reps record", () => {
-    expect(markRecords([l(50, 10), l(50, 11)])).toEqual([null, "reps"]);
+    expect(markRecords([s("a", 50, 10), s("b", 50, 11)])).toEqual(["weight", "reps"]);
   });
 
-  it("a lighter set with more reps is not a record", () => expect(markRecords([l(52.5, 8), l(50, 11)])).toEqual(["weight", null]));
-
-  it("matching the best is not a new record", () => expect(markRecords([l(50, 10), l(50, 10), l(45, 15)])).toEqual(["weight", null, null]));
+  it("a session that does not beat the best has no record", () => {
+    expect(markRecords([s("a", 52.5, 8), s("b", 50, 11), s("c", 52.5, 8)])).toEqual(["weight", null, null]);
+  });
 });
 
 it("bestSet prefers load, then reps", () => {
