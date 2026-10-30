@@ -86,7 +86,7 @@ function recordsFor(log: LogRow[], ids: Set<string>) {
   const byExercise = new Map<string, LogRow[]>();
   for (const s of log) byExercise.set(s.exerciseId, [...(byExercise.get(s.exerciseId) ?? []), s]);
   for (const list of byExercise.values()) {
-    const kinds = markRecords(list);
+    const kinds = markRecords(list, { includeFirst: false });
     list.forEach((s, i) => ids.has(s.id) && result.set(s.id, kinds[i]));
   }
   return result;

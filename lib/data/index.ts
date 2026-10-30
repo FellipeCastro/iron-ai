@@ -27,10 +27,12 @@ function exercisePoints(sessions: WorkoutSession[], id: string): ExercisePoint[]
     .flatMap((s) => {
       const ex = s.exercises.find((e) => e.id === id);
       if (!ex) return [];
+      const maxWeight = Math.max(...ex.sets.map((x) => x.weight));
       return [
         {
           date: s.startedAt,
-          maxWeight: Math.max(...ex.sets.map((x) => x.weight)),
+          maxWeight,
+          maxWeightReps: Math.max(...ex.sets.filter((x) => x.weight === maxWeight).map((x) => x.reps)),
           bestE1rm: Math.max(...ex.sets.map((x) => estimate1rm(x.weight, x.reps))),
           calories: estimateCalories(ex.sets.reduce((sum, x) => sum + x.weight * x.reps, 0)),
         },

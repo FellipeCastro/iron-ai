@@ -8,15 +8,22 @@ import { estimateCalories } from "@/lib/format";
 const l = (weight: number, reps: number) => ({ weight, reps });
 
 describe("markRecords", () => {
-  it("first set is never a record", () => expect(markRecords([l(50, 10)])).toEqual([null]));
+  it("a lone set is the record", () => expect(markRecords([l(50, 10)])).toEqual(["weight"]));
 
-  it("heavier load is a weight record", () => expect(markRecords([l(50, 10), l(52.5, 6)])).toEqual([null, "weight"]));
+  it("the first set is a baseline when asked", () => expect(markRecords([l(50, 10)], { includeFirst: false })).toEqual([null]));
 
-  it("more reps at a known load is a reps record", () => {
-    expect(markRecords([l(50, 10), l(52.5, 8), l(50, 11)])).toEqual([null, "weight", "reps"]);
+  it("only the heaviest set is the record; the previous one becomes a regular set", () => {
+    expect(markRecords([l(50, 10), l(52.5, 6)])).toEqual([null, "weight"]);
+    expect(markRecords([l(70, 11), l(90, 11), l(110, 9)])).toEqual([null, null, "weight"]);
   });
 
-  it("matching a previous best is not a record", () => expect(markRecords([l(50, 10), l(50, 10), l(45, 15)])).toEqual([null, null, null]));
+  it("more reps at the same load is a reps record", () => {
+    expect(markRecords([l(50, 10), l(50, 11)])).toEqual([null, "reps"]);
+  });
+
+  it("a lighter set with more reps is not a record", () => expect(markRecords([l(52.5, 8), l(50, 11)])).toEqual(["weight", null]));
+
+  it("matching the best is not a new record", () => expect(markRecords([l(50, 10), l(50, 10), l(45, 15)])).toEqual(["weight", null, null]));
 });
 
 it("bestSet prefers load, then reps", () => {
@@ -50,7 +57,7 @@ describe("reports", () => {
     const summary = sessionSummary("s3", history, [{ exerciseId: "supino", setPosition: 1, before: l(50, 12), after: l(52.5, 9) }]);
     expect(summary.setCount).toBe(2);
     expect(summary.calories).toBeCloseTo(estimateCalories(52.5 * 8 + 50 * 12));
-    expect(summary.records.map((r) => r.record)).toEqual(["weight", "reps"]);
+    expect(summary.records.map((r) => r.record)).toEqual(["weight"]);
     expect(summary.loadUps).toBe(1);
   });
 

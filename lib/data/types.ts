@@ -44,6 +44,7 @@ export type WorkoutSession = {
 export type ExercisePoint = {
   date: string; // ISO
   maxWeight: number;
+  maxWeightReps: number; // reps done at maxWeight (best of ties)
   bestE1rm: number;
   calories: number;
 };

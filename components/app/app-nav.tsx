@@ -3,25 +3,23 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Suspense } from "react";
-import { APP_NAV, DASHBOARD_URL, EXERCISES_URL, HISTORY_URL, ROUTINE_URL, SETTINGS_URL } from "@/lib/routes";
-import { CalendarIcon, HomeIcon, ListIcon, SlidersIcon, TrendIcon } from "./icons";
+import { APP_NAV, DASHBOARD_URL, ROUTINE_URL, SETTINGS_URL } from "@/lib/routes";
+import { HomeIcon, ListIcon, SlidersIcon } from "./icons";
 
 const NAV_ICON = {
   [DASHBOARD_URL]: HomeIcon,
   [ROUTINE_URL]: ListIcon,
-  [HISTORY_URL]: CalendarIcon,
-  [EXERCISES_URL]: TrendIcon,
   [SETTINGS_URL]: SlidersIcon,
 } as const;
 
-// Shorter labels so five tabs fit a 360px screen.
-const TAB_LABEL: Record<string, string> = { [SETTINGS_URL]: "Ajustes" };
+const isActive = (pathname: string | null, match: readonly string[]) =>
+  !!pathname && match.some((href) => pathname === href || pathname.startsWith(`${href}/`));
 
 function NavLinks({ pathname, className }: { pathname: string | null; className: string }) {
   return (
     <nav className={`flex items-center gap-1 ${className}`}>
       {APP_NAV.map((item) => {
-        const active = !!pathname && (pathname === item.href || pathname.startsWith(`${item.href}/`));
+        const active = isActive(pathname, item.match);
         return (
           <Link
             key={item.href}
@@ -54,9 +52,9 @@ export function AppNav({ className = "" }: { className?: string }) {
 
 function TabLinks({ pathname }: { pathname: string | null }) {
   return (
-    <ul className="mx-auto grid max-w-[520px] grid-cols-5">
+    <ul className="mx-auto grid max-w-[520px] grid-cols-3">
       {APP_NAV.map((item) => {
-        const active = !!pathname && (pathname === item.href || pathname.startsWith(`${item.href}/`));
+        const active = isActive(pathname, item.match);
         const Icon = NAV_ICON[item.href as keyof typeof NAV_ICON];
         return (
           <li key={item.href}>
@@ -70,7 +68,7 @@ function TabLinks({ pathname }: { pathname: string | null }) {
               <span className={`flex h-7 w-12 items-center justify-center rounded-full transition-colors ${active ? "bg-black text-white" : ""}`}>
                 <Icon className="size-5" />
               </span>
-              {TAB_LABEL[item.href] ?? item.label}
+              {item.label}
             </Link>
           </li>
         );

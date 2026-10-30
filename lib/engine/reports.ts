@@ -27,10 +27,10 @@ function groupBy<T, K>(items: T[], key: (t: T) => K) {
 }
 
 /** Records per set for a whole history (chronological), keyed by the set object. */
-export function recordsByExercise<T extends ReportSet>(history: T[]) {
+export function recordsByExercise<T extends ReportSet>(history: T[], options?: { includeFirst?: boolean }) {
   const result = new Map<T, PrKind | null>();
   for (const sets of groupBy(history, (s) => s.exerciseId).values()) {
-    const kinds = markRecords(sets);
+    const kinds = markRecords(sets, options);
     sets.forEach((s, i) => result.set(s, kinds[i]));
   }
   return result;
@@ -40,7 +40,7 @@ export type TargetChange = { exerciseId: string; setPosition: number; before: Lo
 
 /** Post-workout summary. `history` holds every valid set up to and including this session. */
 export function sessionSummary<T extends ReportSet>(sessionId: string, history: T[], targetChanges: TargetChange[]) {
-  const records = recordsByExercise(history);
+  const records = recordsByExercise(history, { includeFirst: false });
   const sets = history.filter((s) => s.sessionId === sessionId);
   const exercises = [...groupBy(sets, (s) => s.exerciseId).values()].map((list) => ({
     exerciseId: list[0].exerciseId,

@@ -4,13 +4,18 @@ import { useState } from "react";
 import { LineChart } from "@/components/charts/line-chart";
 import { Card } from "./ui";
 
-export type ExerciseChartPoint = { t: number; label: string; maxWeight: number; bestE1rm: number; calories: number };
+export type ExerciseChartPoint = { t: number; label: string; maxWeight: number; maxWeightReps: number; bestE1rm: number; calories: number };
 
 const metrics = {
-  maxWeight: { label: "Carga máxima", unit: "kg", help: "A maior carga usada em cada treino." },
+  maxWeight: {
+    label: "Carga máxima",
+    unit: "kg",
+    help: "A maior carga usada em cada treino e as repetições feitas com ela.",
+    secondary: { key: "maxWeightReps", label: "Repetições", unit: "reps" },
+  },
   bestE1rm: { label: "1RM estimado", unit: "kg", help: "Quanto você levantaria em 1 repetição, estimado pela melhor série." },
   calories: { label: "Calorias", unit: "kcal", help: "Estimativa das calorias gastas neste exercício em cada treino." },
-} as const;
+} as const satisfies Record<string, { label: string; unit: string; help: string; secondary?: { key: keyof ExerciseChartPoint; label: string; unit: string } }>;
 
 const periods = [
   { label: "30 dias", days: 30 },
@@ -27,6 +32,7 @@ export function ExerciseChart({ points, now }: { points: ExerciseChartPoint[]; n
   const days = periods.find((p) => p.label === period)!.days;
   const visible = days === null ? points : points.filter((p) => p.t >= now - days * 86_400_000);
   const m = metrics[metric];
+  const secondary = "secondary" in m ? m.secondary : undefined;
 
   return (
     <Card>
@@ -39,8 +45,10 @@ export function ExerciseChart({ points, now }: { points: ExerciseChartPoint[]; n
         {visible.length >= 2 ? (
           <LineChart
             label={`${m.label} por treino`}
+            name={m.label}
             unit={m.unit}
-            points={visible.map((p) => ({ label: p.label, value: p[metric] }))}
+            secondary={secondary && { name: secondary.label, unit: secondary.unit }}
+            points={visible.map((p) => ({ label: p.label, value: p[metric], value2: secondary ? p[secondary.key] : undefined }))}
           />
         ) : (
           <p className="flex h-[260px] items-center justify-center rounded-[20px] bg-[#f9f9fb] text-[14px] text-[#5b5b66]">

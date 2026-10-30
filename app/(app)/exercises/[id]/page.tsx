@@ -58,6 +58,7 @@ export default async function ExercisePage({ params }: PageProps<"/exercises/[id
             t: Date.parse(p.date),
             label: formatDate(p.date, timeZone),
             maxWeight: p.maxWeight,
+            maxWeightReps: p.maxWeightReps,
             bestE1rm: p.bestE1rm,
             calories: p.calories,
           }))}

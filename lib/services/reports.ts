@@ -67,7 +67,7 @@ export async function weekReportText(user: User) {
       .from(sessions)
       .where(and(eq(sessions.userId, user.id), gte(sessions.startedAt, since))),
   ]);
-  const records = recordsByExercise(log);
+  const records = recordsByExercise(log, { includeFirst: false });
   const week = log.filter((s) => s.createdAt >= since);
   return render.weekReport({
     sessions: recent.length,

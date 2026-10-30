@@ -16,10 +16,9 @@ export const PRIVACY_URL = "/privacidade";
 export const exerciseUrl = (id: string) => `${EXERCISES_URL}/${id}`;
 export const sessionUrl = (id: string) => `${HISTORY_URL}/${id}`;
 
+/** "Treinos" lands on the routine; history and progress live under it, so they keep the tab active. */
 export const APP_NAV = [
-  { label: "Painel", href: DASHBOARD_URL },
-  { label: "Rotina", href: ROUTINE_URL },
-  { label: "Histórico", href: HISTORY_URL },
-  { label: "Evolução", href: EXERCISES_URL },
-  { label: "Configurações", href: SETTINGS_URL },
+  { label: "Painel", href: DASHBOARD_URL, match: [DASHBOARD_URL] },
+  { label: "Treinos", href: ROUTINE_URL, match: [ROUTINE_URL, HISTORY_URL, EXERCISES_URL] },
+  { label: "Configurações", href: SETTINGS_URL, match: [SETTINGS_URL] },
 ] as const;

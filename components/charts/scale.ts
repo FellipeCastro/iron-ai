@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 export const CHART = {
   series: "#3b82f6",
   seriesMuted: "#bfdbfe",
+  series2: "#f97316",
   grid: "#ececec",
   axis: "#8a8a94",
   surface: "#ffffff",
