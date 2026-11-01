@@ -3,12 +3,13 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Suspense } from "react";
-import { APP_NAV, DASHBOARD_URL, ROUTINE_URL, SETTINGS_URL } from "@/lib/routes";
-import { HomeIcon, ListIcon, SlidersIcon } from "./icons";
+import { APP_NAV, DASHBOARD_URL, EXERCISES_URL, ROUTINE_URL, SETTINGS_URL } from "@/lib/routes";
+import { HomeIcon, ListIcon, SlidersIcon, TrendIcon } from "./icons";
 
 const NAV_ICON = {
   [DASHBOARD_URL]: HomeIcon,
   [ROUTINE_URL]: ListIcon,
+  [EXERCISES_URL]: TrendIcon,
   [SETTINGS_URL]: SlidersIcon,
 } as const;
 
@@ -52,7 +53,7 @@ export function AppNav({ className = "" }: { className?: string }) {
 
 function TabLinks({ pathname }: { pathname: string | null }) {
   return (
-    <ul className="mx-auto grid max-w-[520px] grid-cols-3">
+    <ul className="mx-auto grid max-w-[520px] grid-cols-4">
       {APP_NAV.map((item) => {
         const active = isActive(pathname, item.match);
         const Icon = NAV_ICON[item.href as keyof typeof NAV_ICON];
