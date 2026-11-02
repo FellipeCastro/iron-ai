@@ -10,15 +10,11 @@ Abra **4 terminais** na raiz do projeto, um para cada processo:
 # Terminal 1 — site Next.js (http://localhost:3000)
 npm run dev
 
-
 # Terminal 2 — worker do Trigger.dev (executa as tasks em ./trigger)
 npx trigger.dev@4.8.1 dev
 
 # Terminal 3 — túnel público para os webhooks do Clerk e do Telegram
 ngrok http 3000
-
-## Ou 
-ngrok http --url=embassy-ambition-wager.ngrok-free.dev 3000
 
 # Terminal 4 — encaminha os webhooks do Stripe para o site local
 stripe listen --forward-to localhost:3000/api/webhooks/stripe
