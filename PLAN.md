@@ -53,12 +53,104 @@ trigger.config.ts, drizzle.config.ts
 - `reminder_log` (user_id, date, sent_at; unique) · `usage_counters` (user_id, date, count)
 
 ## Fases
-1. **Fundação**: instalar deps (clerk, drizzle-orm+drizzle-kit, @neondatabase/serverless, zod, openai, @trigger.dev/sdk, @sentry/nextjs, framer-motion, lucide-react, shadcn init, vitest); `proxy.ts` com clerkMiddleware; Sentry; envs; schema + migração + seed do catálogo (~150 exercícios).
-2. **Motor determinístico** (`lib/engine`, puro e testado): `nextTarget(set, hit)` (+1 rep; 12 ⇒ carga+incremento, reps=8; senão mantém), baseline na 1ª série, sessão (abrir/fechar/resumo), PRs (maior carga; melhor série na carga), estagnação (3 sessões sem progresso, mín. 4), rodízio do próximo treino, recomputação por exercício após correção. Testes unitários (vitest) cobrem as regras e bordas (série extra, carga maior com menos reps, correção em cascata).
-3. **Pipeline do Telegram**: webhook (valida `X-Telegram-Bot-Api-Secret-Token`, rate limit, enqueue com idempotencyKey/concurrencyKey) → task `handle-message`: onboarding conversacional da rotina, parser (`responses.parse` + `zodTextFormat`, união discriminada: `log_sets | correct_set | finish_workout | ask_report | setup_routine | clarify`), baixa confiança ⇒ botões/pergunta sem gravar, aplica engine, responde por templates; callbacks de botões; indicador "digitando".
-4. **Vínculo e site**: sign-up/sign-in; "Conectar Telegram" (token de uso único com expiração); dashboard (próximo treino, metas, PRs, métricas), rotina (editar), histórico, gráficos por exercício (Recharts via shadcn charts, dados tipados Zod), configurações (horário, dias, incremento, fuso), excluir conta (Neon cascade + Clerk `deleteUser` + desvincular).
-5. **Agendados**: `schedules.task` cron a cada 5 min — lembretes (fuso, dia, horário, sem sessão aberta, `reminder_log` unique) e fechamento por inatividade + resumo; relatórios por exercício/grupo (código, Telegram em texto + link ao site).
-6. **Qualidade e operação**: Sentry sem PII (scrubbing), teto de gasto OpenAI + alerta, purge de `messages` > 30 dias (cron diário), CI (lint, typecheck, vitest), deploy Vercel + trigger.dev Cloud (dev/prod), bots separados dev/prod, setWebhook script.
+Status conferido no código em 2026-11-01. `[x]` = implementado no repositório; `[ ]` = pendente ou sem evidência no repositório.
+
+### 1. Fundação
+- [x] Instalar as dependências: Clerk, drizzle-orm + drizzle-kit, @neondatabase/serverless, zod, openai, @trigger.dev/sdk, @sentry/nextjs, vitest (framer-motion, lucide-react e shadcn não foram usados; ver "Mudanças em relação ao plano original")
+- [x] `proxy.ts` com `clerkMiddleware`
+- [x] Sentry e variáveis de ambiente
+- [x] Schema e migrações (`drizzle/0000` a `0004`)
+- [x] Seed do catálogo pt-BR com aliases (94 exercícios; a estimativa era ~150)
+
+### 2. Motor determinístico (`lib/engine`)
+- [x] `nextTarget` (+1 rep; 12 ⇒ carga + incremento, reps = 8; senão mantém) e baseline na 1ª série
+- [x] Sessão (abrir, fechar, resumo)
+- [x] PRs (maior carga; melhor série na carga)
+- [x] Estagnação (3 sessões sem progresso, mín. 4)
+- [x] Rodízio do próximo treino
+- [x] Recomputação das metas após correção
+- [x] Testes unitários de progressão, sessão, recordes, lembretes e duração
+
+### 3. Pipeline do Telegram
+- [x] Webhook: valida `X-Telegram-Bot-Api-Secret-Token`, aplica rate limit e enfileira com `idempotencyKey`/`concurrencyKey`
+- [x] Task `telegram-handle-update` (`trigger/handle-message.ts`, com a lógica em `lib/bot/handle-update.ts`)
+- [x] Onboarding conversacional da rotina
+- [x] Parser com `responses.parse` + `zodTextFormat` e união discriminada de intenções
+- [x] Baixa confiança ⇒ botões/pergunta sem gravar
+- [x] Respostas por templates, callbacks de botões e indicador "digitando"
+
+### 4. Vínculo e site
+- [x] Sign-up/sign-in
+- [x] "Conectar Telegram" com token de uso único e expiração
+- [x] Dashboard (próximo treino, metas, PRs, métricas)
+- [x] Rotina (edição), histórico e gráficos por exercício
+- [x] Configurações (horário, dias, incremento, fuso)
+- [x] Excluir conta (Neon cascade, Clerk `deleteUser` e desvínculo)
+
+### 5. Agendados
+- [x] Cron `tick` com lembretes (fuso, dia, horário, sem sessão aberta, `reminder_log` unique)
+- [x] Fechamento por inatividade + resumo (`close-inactive-session`)
+- [x] Relatórios por exercício/grupo (código, Telegram em texto + link ao site)
+
+### 6. Qualidade e operação
+- [x] Sentry sem PII (scrubbing)
+- [x] Teto de gasto OpenAI + alerta
+- [x] Purge de `messages` > 30 dias (cron diário)
+- [x] CI (lint, typecheck, vitest)
+- [x] Script de `setWebhook` (`npm run telegram:webhook`)
+- [ ] Deploy Vercel + trigger.dev Cloud (dev/prod): sem evidência no repositório; confirmar
+- [ ] Bots separados dev/prod: documentado no README; configuração a confirmar
+
+### 7. Entregas fora do plano original
+**Assinatura (Stripe)**
+- [x] Checkout com 14 dias grátis, planos mensal e anual (`/assinar`, `/assinar/sucesso`)
+- [x] Webhook do Stripe sincronizando `subscriptions` e Customer Portal
+- [x] Controle de acesso no painel, no bot e nos lembretes (`lib/services/access.ts`)
+- [x] Tratamento de risco: disputa, reembolso total e alerta de fraude
+- [x] Acesso cortesia para contas anteriores à cobrança (`users.complimentary`)
+- [x] Exclusão do customer no Stripe ao excluir a conta
+
+**Bot e IA**
+- [x] Atalho de parsing sem LLM (`lib/ai/fast-parse.ts`, `FAST_PATH` off/shadow/on)
+- [x] Intenção `delete_set`
+- [x] Controle de custo: tetos diários por usuário e para o fallback, limite mensal de mensagens, tabelas `ai_usage` e `ai_usage_user`, preços em `lib/ai/pricing.ts`
+- [x] Matching de exercícios por nome/alias (`lib/engine/match.ts`)
+- [x] Confirmação e edição da duração do treino
+- [x] Onboarding com escolha de dias da semana e horário
+- [x] Comandos registrados no bot: `/treino`, `/terminei`, `/semana`, `/ajuda`
+
+**Site**
+- [x] Landing page completa (funcionalidades, showcase, preços) e sistema visual próprio
+- [x] Lista de exercícios (`/exercises`) e detalhe da sessão (`/history/[id]`)
+- [x] Edição e exclusão de séries, e edição da duração, no histórico
+- [x] Editor de rotina com arrastar e soltar (`@dnd-kit`) e renomeação de exercícios
+- [x] Desconectar Telegram
+- [x] Páginas de privacidade e termos
+- [x] Open Graph, `robots.txt` e `sitemap`
+- [x] Skeletons de carregamento e `global-error`
+- [x] Botão de feedback pelo Sentry
+
+**Infra e ferramentas**
+- [x] Webhook do Clerk com tasks de sincronização de usuários (`trigger/clerk-users.ts`)
+- [x] Rastreamento de ponta a ponta do webhook até as tasks (`lib/trace.ts`, `trigger/init.ts`)
+- [x] Script de usuário demo (`npm run db:seed-demo`)
+- [x] README com setup local, variáveis de ambiente e operação
+
+### 8. Pendências encontradas na conferência
+- [ ] Corrigir `npm run typecheck`: `tsc` acusa 4 erros porque o pacote `stripe` instalado em `node_modules` não traz arquivos `.d.ts`
+- [ ] Criar `scripts/export-golden.ts` e `scripts/eval-parser.ts`: `ai:export-golden` e `ai:eval` estão no `package.json` e no README, mas os arquivos não existem
+- [ ] Adicionar testes de `lib/engine/stagnation.ts` e `lib/engine/reports.ts`
+
+## Mudanças em relação ao plano original
+| Plano | Implementado |
+|---|---|
+| Grátis + rate limit | Assinatura paga com 14 dias grátis + rate limit |
+| 150 msg/dia | 60 msg/dia e 1.000 msg/mês, configuráveis por env |
+| Cron a cada 5 min | Cron a cada 15 min, para deixar o Neon dormir entre execuções |
+| Recharts via shadcn charts | Gráficos próprios em `components/charts/` |
+| shadcn, framer-motion, lucide-react | Não usados; componentes e ícones próprios |
+| `app/(marketing)/page.tsx` | `app/page.tsx` |
+| `api/account/route.ts` (DELETE) | Server action `deleteAccountAction` |
 
 ## Arquivos/padrões existentes a reutilizar
 - `app/layout.tsx`, `app/globals.css`, `eslint.config.mjs`, `tsconfig.json` (gerados pelo create-next-app) — estender, não recriar.
@@ -66,11 +158,14 @@ trigger.config.ts, drizzle.config.ts
 - Padrões confirmados: Clerk `clerkMiddleware` em `proxy.ts` e `clerkClient().users.deleteUser`; trigger.dev `task.trigger(payload, {idempotencyKey, concurrencyKey})` e `schedules.task({cron})`; Drizzle `drizzle-orm/neon-http` + `neon()`; OpenAI `zodTextFormat` + `responses.parse`.
 
 ## Verificação
-- `npm run lint`, `tsc --noEmit`, `vitest run` (motor) limpos.
-- Local: `next dev` + `npx trigger.dev dev` + túnel (cloudflared/ngrok) com `setWebhook` do bot de dev; fluxo: criar conta → conectar Telegram → montar rotina → "supino 10 reps 20kg" → ver meta 11 reps → "errei, foi 25kg" → "terminei" → resumo → conferir painel/gráfico.
-- Idempotência: reenviar o mesmo `update_id` não duplica séries; cron rodando duas vezes não duplica lembrete.
-- Limites: estourar 150 msg/dia retorna aviso; exclusão de conta zera dados no Neon e remove no Clerk.
-- Mini conjunto de ~60 frases reais para checar manualmente o parser (acurácia-alvo ≥95%), conforme risco aberto.
+Resultado de 2026-11-01. Os itens em aberto dependem de teste manual ou de ambiente e não têm registro no repositório.
+- [x] `npm run lint`: 0 erros, 2 avisos
+- [x] `vitest run`: 70 testes passando
+- [ ] `tsc --noEmit`: 4 erros (ver Fase 8)
+- [ ] Local: `next dev` + `npx trigger.dev dev` + túnel (cloudflared/ngrok) com `setWebhook` do bot de dev; fluxo: criar conta → conectar Telegram → montar rotina → "supino 10 reps 20kg" → ver meta 11 reps → "errei, foi 25kg" → "terminei" → resumo → conferir painel/gráfico.
+- [ ] Idempotência: reenviar o mesmo `update_id` não duplica séries; cron rodando duas vezes não duplica lembrete.
+- [ ] Limites: estourar 60 msg/dia retorna aviso; exclusão de conta zera dados no Neon e remove no Clerk.
+- [ ] Mini conjunto de ~60 frases reais para checar manualmente o parser (acurácia-alvo ≥95%), conforme risco aberto.
 
 ## Riscos a acompanhar
 Latência webhook→resposta; qualidade do parser sem eval automatizado; recomputação em cascata após correção; duplicidade de lembrete; versões de libs (confirmar no momento de instalar).
