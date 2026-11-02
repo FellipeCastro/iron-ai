@@ -1,100 +1,192 @@
 # Iron AI
 
-Assistente de treino no Telegram + site Next.js (painel, rotina, histórico). Stack: Next.js 16, Clerk, Drizzle + Neon, Trigger.dev.
+**Personal Trainer de bolso no Telegram. Você conta o treino em texto livre, o código cuida da progressão.**
 
-## Rodando o projeto localmente
+![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=nextdotjs) ![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white) ![OpenAI](https://img.shields.io/badge/OpenAI-Structured%20Outputs-412991?logo=openai&logoColor=white) ![Trigger.dev](https://img.shields.io/badge/Trigger.dev-4.8-6366F1) ![Stripe](https://img.shields.io/badge/Stripe-Billing-635BFF?logo=stripe&logoColor=white)
 
-Abra **4 terminais** na raiz do projeto, um para cada processo:
+## Sobre o Projeto
 
-```bash
-# Terminal 1 — site Next.js (http://localhost:3000)
-npm run dev
+O Iron AI é uma plataforma B2C para quem treina musculação e quer parar de anotar série em planilha. O registro acontece no Telegram, em linguagem natural ("supino 3x10 20kg", "terminei"), e o site Next.js entrega painel, rotina, histórico e gráficos de evolução.
 
-# Terminal 2 — worker do Trigger.dev (executa as tasks em ./trigger)
-npx trigger.dev@4.8.1 dev
+Não é um chatbot que "opina" sobre treino. A IA tem uma única função: **interpretar** o que o usuário escreveu. Progressão de carga, recordes, rodízio de treinos e respostas são código determinístico e templates em pt-BR, o que torna o resultado previsível e barato. A saída do modelo passa por Structured Outputs (via schemas Zod) antes de tocar no banco.
 
-# Terminal 3 — túnel público para os webhooks do Clerk e do Telegram
-ngrok http 3000
+## 🛠️ Stack Tecnológica
 
-# Terminal 4 — encaminha os webhooks do Stripe para o site local
-stripe listen --forward-to localhost:3000/api/webhooks/stripe
+### Core & Frontend
+- **Framework:** Next.js 16 (App Router + Turbopack) com React 19
+- **Estilização:** Tailwind CSS 4
+- **Gráficos:** componentes próprios em SVG (linha, barra, sparkline)
+- **Drag and drop:** dnd-kit (edição da rotina)
+
+### IA & Backend
+- **LLM:** OpenAI (`gpt-5.4-mini` por padrão, com fallback para `gpt-5.5`) via SDK `openai`
+- **Validação:** Zod 4 (Structured Outputs com `responses.parse`)
+- **Jobs em background:** Trigger.dev 4 (processamento do bot, lembretes e limpeza agendada)
+- **Banco de dados:** Neon (Postgres serverless) com Drizzle ORM
+- **Autenticação:** Clerk
+- **Pagamentos:** Stripe (Checkout, Customer Portal e webhooks)
+- **Observabilidade:** Sentry, sem PII
+- **Testes:** Vitest
+
+## ⚡ Módulos do Produto
+
+A plataforma é dividida em módulos, cada um com responsabilidade única:
+
+### 1. Bot de Treino (Telegram)
+O registro do treino acontece na conversa.
+
+- **Texto livre:** entende "supino 3x10 20kg", correções e remoção de séries.
+- **Confirmação inteligente:** com baixa confiança (< 0,7) ou exercício ambíguo, o bot pergunta com botões e não grava nada antes.
+- **Atalho sem LLM:** mensagens simples são resolvidas por regra, sem custo de modelo (`FAST_PATH`).
+- **Comandos:** `/treino`, `/terminei`, `/semana` e `/ajuda`.
+
+### 2. Motor de Progressão
+Código puro, sem I/O, coberto por testes.
+
+- **Progressão 8→12:** +1 rep a cada treino; ao chegar em 12, sobe a carga e volta para 8.
+- **Recordes:** maior carga e melhor série em cada carga.
+- **Estagnação:** detecta 3 sessões sem progresso.
+- **Rodízio:** define o próximo treino (A→B→C) e fecha sessões paradas há 90 minutos.
+- **Log imutável:** correções anulam a série antiga e gravam uma nova; as metas são recalculadas do histórico inteiro.
+
+### 3. Painel Web
+- **Dashboard:** próximo treino, metas, recordes e métricas.
+- **Rotina:** edição dos dias e exercícios, com catálogo pt-BR de 94 exercícios e aliases.
+- **Histórico e gráficos:** evolução por exercício e por grupo muscular.
+- **Configurações:** horário do lembrete, dias de treino, incremento de carga e fuso horário.
+
+### 4. Lembretes e Relatórios
+- **Lembretes:** enviados no dia e horário de cada usuário, só para quem tem assinatura ativa e nenhuma sessão aberta.
+- **Resumos:** gerados ao fechar a sessão.
+- **Relatórios:** por exercício e por grupo, em texto no Telegram com link para o site.
+
+### 5. Assinatura
+- **14 dias grátis** (cartão no Checkout), depois R$ 19,90/mês ou R$ 199,00/ano.
+- **Customer Portal:** cancelamento, troca de plano, cartão e faturas.
+- **Controle de risco:** disputa aberta ou reembolso total cancelam a assinatura na hora.
+
+## 🏗️ Arquitetura de IA
+
+Para evitar alucinações e dados corrompidos, o modelo nunca escreve a resposta final nem decide a carga do próximo treino. O fluxo é:
+
+1. **Schema Definition:** as intenções possíveis (registrar série, corrigir, apagar, finalizar) são definidas com Zod, como uma união discriminada.
+2. **Generation:** o modelo é forçado a responder no schema via Structured Outputs, com reasoning desligado.
+3. **Validation:** a saída é validada com Zod e cruzada com o catálogo de exercícios por nome e alias.
+4. **Execution:** o motor determinístico grava a série, recalcula metas e recordes, e a resposta sai de um template pt-BR.
+
+```
+Telegram → POST /api/telegram/webhook   valida o secret, aplica os limites (60 msgs/dia, 1.000/mês), enfileira
+        → task telegram-handle-update    1 run por update_id (idempotencyKey), 1 por usuário por vez (concurrencyKey)
+            → lib/ai/fast-parse.ts        atalho sem LLM para mensagens simples (FAST_PATH)
+            → OpenAI responses.parse      Structured Outputs (Zod estrito, lib/ai/schemas.ts): só interpreta
+            → lib/engine                  progressão 8→12, recordes, sessão, rodízio
+            → lib/telegram/render.ts      toda resposta é template pt-BR
 ```
 
-O `stripe listen` imprime um segredo `whsec_...`: ele vai em `STRIPE_WEBHOOK_SECRET` no `.env.local` (reinicie o `npm run dev` ao trocar). Requer o [Stripe CLI](https://docs.stripe.com/stripe-cli) e `stripe login` (a sessão expira; se der 401 "Expired API Key", faça login de novo).
+### Tarefas agendadas
+- **`tick`** (a cada 15 min): fecha sessões paradas há 90 min e envia os lembretes.
+- **`purge`** (diário): apaga o texto bruto das mensagens após 30 dias, tokens usados ou expirados e contadores antigos.
 
-A versão do CLI (`trigger.dev@4.8.1`) deve ser a mesma de `@trigger.dev/sdk` no `package.json`.
+### Controle de custos
+- Cada chamada é registrada em `ai_usage` (global) e `ai_usage_user` (por usuário), com o preço do modelo que respondeu.
+- Tetos diários global, por usuário e para o modelo de fallback, mais limites de mensagens por dia e por mês.
+- Para avaliar outro modelo com mensagens reais: `npm run ai:export-golden`, revise `scripts/golden/golden.json` à mão e rode `npm run ai:eval -- <modelo> --fast`.
 
-Se a URL do ngrok mudou (plano gratuito sem domínio fixo), atualize o endpoint no Clerk Dashboard → Webhooks para:
+## 🚀 Como Rodar Localmente
 
-```
-https://<url-do-ngrok>/api/webhooks/clerk
-```
+1. **Clone o repositório:**
+   ```bash
+   git clone https://github.com/FellipeCastro/iron-ai.git
+   cd iron-ai
+   ```
 
-Eventos assinados: `user.created`, `user.updated`, `user.deleted`.
+2. **Instale as dependências e autorize o CLI do Trigger.dev:**
+   ```bash
+   npm install
+   npx trigger.dev@4.8.1 login   # abre o navegador para autorizar o CLI
+   ```
 
-Com o túnel no ar, aponte o bot de **dev** para ele (repita sempre que a URL mudar):
+3. **Configure as variáveis de ambiente.** Crie um arquivo `.env` na raiz:
+   ```bash
+   NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=   # Clerk Dashboard → API Keys
+   CLERK_SECRET_KEY=                    # Clerk Dashboard → API Keys
+   CLERK_WEBHOOK_SIGNING_SECRET=        # Clerk Dashboard → Webhooks → endpoint → Signing Secret
+   DATABASE_URL=                        # Neon → Connection string
+   TRIGGER_SECRET_KEY=                  # Trigger.dev → API Keys → Development (tr_dev_...)
 
-```bash
-npm run telegram:webhook -- https://<url-do-ngrok>
-```
+   NEXT_PUBLIC_SITE_URL=http://localhost:3000   # links enviados pelo bot
+   TELEGRAM_BOT_TOKEN=                  # @BotFather → /newbot (use um bot para dev e outro para prod)
+   TELEGRAM_BOT_USERNAME=               # nome do bot sem @, para o link t.me/<bot>?start=<token>
+   TELEGRAM_WEBHOOK_SECRET=             # 16–256 chars [A-Za-z0-9_-]; ex.: openssl rand -hex 32
+   OPENAI_API_KEY=                      # platform.openai.com → API keys
 
-## Primeira vez em uma máquina nova
+   STRIPE_SECRET_KEY=                   # Stripe → Developers → API keys (sk_test_... em dev; prefira uma chave restrita rk_...)
+   NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=  # Stripe → Developers → API keys (pk_test_...)
+   STRIPE_WEBHOOK_SECRET=               # whsec_... do `stripe listen` (dev) ou do endpoint de webhook (prod)
+   STRIPE_PRICE_MONTHLY=                # price_... do plano mensal (R$ 19,90)
+   STRIPE_PRICE_ANNUAL=                 # price_... do plano anual (R$ 199,00)
+   ```
 
-```bash
-npm install
-npx trigger.dev@4.8.1 login   # abre o navegador para autorizar o CLI
-```
+   <details>
+   <summary>Variáveis opcionais</summary>
 
-Crie o `.env` na raiz com:
+   ```bash
+   OPENAI_PARSER_MODEL=gpt-5.4-mini     # modelo do parser (precisa de Structured Outputs)
+   OPENAI_FALLBACK_MODEL=gpt-5.5        # usado se o principal estiver fora do ar
+   OPENAI_DAILY_BUDGET_USD=5            # teto global de gasto/dia; acima disso o bot pausa a leitura
+   OPENAI_USER_DAILY_BUDGET_USD=0.25    # teto de gasto/dia por usuário
+   OPENAI_FALLBACK_DAILY_BUDGET_USD=1   # quanto do teto global o fallback (~7x mais caro) pode gastar/dia
+   DAILY_MESSAGE_LIMIT=60               # mensagens de texto por usuário/dia
+   MONTHLY_MESSAGE_LIMIT=1000           # mensagens de texto por usuário/mês
+   FAST_PATH=shadow                     # atalho sem LLM: off | shadow (compara com o modelo) | on
+   OPENAI_PRICE_INPUT_USD_PER_MTOK=1    # estimativa para modelos fora de lib/ai/pricing.ts
+   OPENAI_PRICE_CACHED_INPUT_USD_PER_MTOK=0.1
+   OPENAI_PRICE_OUTPUT_USD_PER_MTOK=6
+   NEXT_PUBLIC_SENTRY_DSN=              # Sentry (sem PII); vazio = desligado
+   NEXT_PUBLIC_SENTRY_ENVIRONMENT=      # ex.: production / preview; padrão = NODE_ENV
+   SENTRY_AUTH_TOKEN=                   # só no build (Vercel/CI) para enviar source maps
+   ```
+   </details>
 
-```bash
-NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=   # Clerk Dashboard → API Keys
-CLERK_SECRET_KEY=                    # Clerk Dashboard → API Keys
-CLERK_WEBHOOK_SIGNING_SECRET=        # Clerk Dashboard → Webhooks → endpoint → Signing Secret
-DATABASE_URL=                        # Neon → Connection string
-TRIGGER_SECRET_KEY=                  # Trigger.dev → API Keys → Development (tr_dev_...)
+4. **Prepare o banco** (migrações + catálogo de exercícios):
+   ```bash
+   npm run db:setup
+   ```
 
-NEXT_PUBLIC_SITE_URL=http://localhost:3000   # links enviados pelo bot
-TELEGRAM_BOT_TOKEN=                  # @BotFather → /newbot (use um bot para dev e outro para prod)
-TELEGRAM_BOT_USERNAME=               # nome do bot sem @, para o link t.me/<bot>?start=<token>
-TELEGRAM_WEBHOOK_SECRET=             # 16–256 chars [A-Za-z0-9_-]; ex.: openssl rand -hex 32
-OPENAI_API_KEY=                      # platform.openai.com → API keys
+5. **Execute o projeto.** Abra **4 terminais** na raiz, um para cada processo:
+   ```bash
+   # Terminal 1 — site Next.js (http://localhost:3000)
+   npm run dev
 
-STRIPE_SECRET_KEY=                   # Stripe → Developers → API keys (sk_test_... em dev; prefira uma chave restrita rk_...)
-NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=  # Stripe → Developers → API keys (pk_test_...)
-STRIPE_WEBHOOK_SECRET=               # whsec_... do `stripe listen` (dev) ou do endpoint de webhook (prod)
-STRIPE_PRICE_MONTHLY=                # price_... do plano mensal (R$ 19,90)
-STRIPE_PRICE_ANNUAL=                 # price_... do plano anual (R$ 199,00)
+   # Terminal 2 — worker do Trigger.dev (executa as tasks em ./trigger)
+   npx trigger.dev@4.8.1 dev
 
-# Opcionais
-OPENAI_PARSER_MODEL=gpt-5.4-mini     # modelo do parser (precisa de Structured Outputs)
-OPENAI_FALLBACK_MODEL=gpt-5.5        # usado se o principal estiver fora do ar
-OPENAI_DAILY_BUDGET_USD=5            # teto global de gasto/dia; acima disso o bot pausa a leitura. Suba junto com a base: ~US$ 0,02 por usuário ativo/dia
-OPENAI_USER_DAILY_BUDGET_USD=0.25    # teto de gasto/dia por usuário (60 mensagens custam ~US$ 0,12)
-OPENAI_FALLBACK_DAILY_BUDGET_USD=1   # quanto do teto global o modelo de fallback (~7x mais caro) pode gastar/dia
-DAILY_MESSAGE_LIMIT=60               # mensagens de texto por usuário/dia
-MONTHLY_MESSAGE_LIMIT=1000           # mensagens de texto por usuário/mês
-FAST_PATH=shadow                     # atalho sem LLM para "supino 3x10 20kg" e "terminei": off | shadow (compara com o modelo) | on
-# Preços dos modelos padrão estão em lib/ai/pricing.ts; para outro modelo, estas variáveis servem de estimativa:
-OPENAI_PRICE_INPUT_USD_PER_MTOK=1
-OPENAI_PRICE_CACHED_INPUT_USD_PER_MTOK=0.1
-OPENAI_PRICE_OUTPUT_USD_PER_MTOK=6
-NEXT_PUBLIC_SENTRY_DSN=              # Sentry (sem PII); vazio = desligado. Sentry → Project Settings → Client Keys (DSN)
-NEXT_PUBLIC_SENTRY_ENVIRONMENT=      # ex.: production / preview; padrão = NODE_ENV
-SENTRY_AUTH_TOKEN=                   # só no build (Vercel/CI) para enviar source maps; Sentry → Settings → Auth Tokens
-```
+   # Terminal 3 — túnel público para os webhooks do Clerk e do Telegram
+   ngrok http 3000
 
-No Trigger.dev Cloud (ambiente **prod**), cadastre as mesmas variáveis usadas pelas tasks: `DATABASE_URL`, `OPENAI_API_KEY`, `TELEGRAM_BOT_TOKEN`, `NEXT_PUBLIC_SITE_URL`, as opcionais da OpenAI e `NEXT_PUBLIC_SENTRY_DSN` / `NEXT_PUBLIC_SENTRY_ENVIRONMENT` (erros e logs das tasks vão para o mesmo projeto do Sentry, via `trigger/init.ts`). Em dev, o `trigger.dev dev` lê o `.env` local.
+   # Terminal 4 — encaminha os webhooks do Stripe para o site local
+   stripe listen --forward-to localhost:3000/api/webhooks/stripe
+   ```
 
-Os planos e o portal de cobrança do Stripe precisam existir na conta (produto com dois preços recorrentes e o Customer Portal configurado); os ids dos preços vão nas variáveis `STRIPE_PRICE_*`.
+   A versão do CLI (`trigger.dev@4.8.1`) deve ser a mesma de `@trigger.dev/sdk` no `package.json`.
 
-Se o banco estiver vazio, aplique as migrações e o catálogo de exercícios:
+6. **Aponte os webhooks para o ambiente local:**
+   - **Stripe:** o `stripe listen` imprime um segredo `whsec_...`. Coloque em `STRIPE_WEBHOOK_SECRET` e reinicie o `npm run dev`. Requer o [Stripe CLI](https://docs.stripe.com/stripe-cli) e `stripe login` (se der 401 "Expired API Key", faça login de novo).
+   - **Clerk:** no Clerk Dashboard → Webhooks, use `https://<url-do-ngrok>/api/webhooks/clerk` com os eventos `user.created`, `user.updated` e `user.deleted`.
+   - **Telegram:** aponte o bot de **dev** para o túnel (repita sempre que a URL do ngrok mudar):
+     ```bash
+     npm run telegram:webhook -- https://<url-do-ngrok>
+     ```
 
-```bash
-npm run db:setup
-```
+### Trigger.dev em produção
+No Trigger.dev Cloud (ambiente **prod**), cadastre as variáveis usadas pelas tasks: `DATABASE_URL`, `OPENAI_API_KEY`, `TELEGRAM_BOT_TOKEN`, `NEXT_PUBLIC_SITE_URL`, as opcionais da OpenAI e `NEXT_PUBLIC_SENTRY_DSN` / `NEXT_PUBLIC_SENTRY_ENVIRONMENT`. Em dev, o `trigger.dev dev` lê o `.env` local.
 
-## Banco de dados (Drizzle)
+### Stripe
+Os planos e o portal de cobrança precisam existir na conta: um produto com dois preços recorrentes e o Customer Portal configurado. Os ids dos preços vão em `STRIPE_PRICE_MONTHLY` e `STRIPE_PRICE_ANNUAL`. Em dev, teste com o cartão `4242 4242 4242 4242`.
+
+Em produção, crie o endpoint `https://<dominio>/api/webhooks/stripe` com os eventos `customer.subscription.created|updated|deleted`, `checkout.session.completed`, `invoice.paid`, `invoice.payment_failed`, `charge.dispute.created`, `charge.refunded` e `radar.early_fraud_warning.created`. Use as chaves `live` e cadastre as variáveis `STRIPE_*` no host do site.
+
+## 🗄️ Banco de Dados (Drizzle)
 
 ```bash
 npm run db:generate   # gera migração a partir de db/schema.ts
@@ -103,56 +195,18 @@ npm run db:seed       # (re)popula o catálogo de exercícios
 npm run db:studio     # abre o Drizzle Studio
 ```
 
-## Testes e checagens
+Se o login quebrar com erro de coluna inexistente, as migrações novas não foram aplicadas: rode `npm run db:migrate`.
+
+## ✅ Testes e Checagens
 
 ```bash
 npm run lint
 npm run typecheck
-npm test          # vitest: motor de progressão, sessão, recordes, relatórios, lembretes
+npm test          # vitest: motor de progressão, sessão, recordes, lembretes
 ```
 
-O CI (`.github/workflows/ci.yml`) roda os três em cada push/PR.
+O CI (`.github/workflows/ci.yml`) roda os três em cada push e PR.
 
-## Assinatura (Stripe)
+## 🤝 Contribuição
 
-Todo acesso exige assinatura: 14 dias grátis (cartão no Checkout), depois R$ 19,90/mês ou R$ 199,00/ano.
-
-```
-Login/cadastro → /assinar (escolhe Mensal ou Anual) → Stripe Checkout → /assinar/sucesso → painel
-Configurações → "Gerenciar assinatura" → Customer Portal (cancelar, trocar plano, cartão, faturas)
-```
-
-- O Stripe é a fonte da verdade: `POST /api/webhooks/stripe` ([app/api/webhooks/stripe/route.ts](app/api/webhooks/stripe/route.ts)) valida a assinatura e todo evento vira `syncSubscription`, que relê a assinatura no Stripe e grava em `subscriptions`. Eventos repetidos ou fora de ordem são seguros.
-- Têm acesso os status `trialing`, `active` e `past_due`. Sem acesso: o painel redireciona para `/assinar`, o bot responde pedindo a assinatura e os lembretes (`tick`) não são enviados.
-- Eventos assinados no endpoint: `customer.subscription.created|updated|deleted`, `checkout.session.completed`, `invoice.paid`, `invoice.payment_failed` e, para risco, `charge.dispute.created`, `charge.refunded`, `radar.early_fraud_warning.created`.
-- Risco: disputa aberta ou reembolso total cancelam a assinatura na hora e avisam no Sentry; o alerta de fraude (EFW) só avisa, e reembolsar antes de virar disputa é decisão sua.
-- Excluir a conta apaga também o customer no Stripe (cancela a cobrança).
-- Teste em dev com o cartão `4242 4242 4242 4242`. Com o `stripe listen` no ar, `stripe trigger customer.subscription.updated` também funciona.
-- Produção: crie o endpoint `https://<dominio>/api/webhooks/stripe` com os eventos acima, use as chaves `live`, ajuste o `default_return_url` do portal e cadastre as variáveis `STRIPE_*` no host do site (as tasks do Trigger.dev só leem o banco, não precisam delas).
-- Se as migrações novas não foram aplicadas (`subscriptions`, `users.stripe_customer_id`), o login quebra com erro de coluna inexistente: rode `npm run db:migrate`.
-
-## Como o bot funciona
-
-```
-Telegram → POST /api/telegram/webhook   valida o secret, aplica os limites (60 msgs/dia, 1.000/mês), enfileira
-        → task telegram-handle-update    1 run por update_id (idempotencyKey), 1 por usuário por vez (concurrencyKey)
-            → lib/ai/fast-parse.ts        atalho sem LLM para mensagens simples (FAST_PATH)
-            → OpenAI responses.parse      Structured Outputs (Zod estrito, lib/ai/schemas.ts): só interpreta; reasoning desligado
-            → lib/engine                  progressão 8→12, recordes, sessão, rodízio — código determinístico
-            → lib/telegram/render.ts      toda resposta é template pt-BR
-```
-
-- Baixa confiança (< 0,7) ou exercício ambíguo ⇒ botões de confirmação/escolha; nada é gravado antes.
-- Correções anulam a série antiga e gravam uma nova (log imutável); as metas são recalculadas do histórico inteiro.
-- `tick` (a cada 15 min): fecha sessões paradas há 90 min e manda lembretes nos dias/horário de cada usuário com assinatura ativa.
-- `purge` (diário): apaga texto bruto das mensagens após 30 dias, tokens usados/expirados e contadores antigos.
-
-## Custos de IA
-
-- Cada chamada é registrada em `ai_usage` (global, com tokens em cache e gasto do fallback) e `ai_usage_user` (por usuário), com o preço do modelo que respondeu.
-- `FAST_PATH=shadow` (padrão): o atalho roda ao lado do modelo e o log `Telegram update handled` traz `fast_path=agree|disagree`. Com `disagree` ≈ 0 em dados reais, mude para `on`.
-- Para avaliar outro modelo (ex.: nano) com mensagens reais: `npm run ai:export-golden`, revise `scripts/golden/golden.json` à mão e rode `npm run ai:eval -- <modelo> --fast`. A pasta é ignorada pelo git (contém texto de usuários).
-
-## Como os webhooks do Clerk funcionam
-
-Clerk → `POST /api/webhooks/clerk` ([app/api/webhooks/clerk/route.ts](app/api/webhooks/clerk/route.ts)) valida a assinatura e dispara uma task do Trigger.dev ([trigger/clerk-users.ts](trigger/clerk-users.ts)), que cria, atualiza ou apaga o usuário no Neon. Os runs aparecem em [cloud.trigger.dev](https://cloud.trigger.dev/projects/v3/proj_plpwgmrshwngodbkqrdd/runs?envSlug=dev).
+Pull requests são bem-vindos. Para mudanças maiores, por favor abra uma issue primeiro para discutir o que você gostaria de mudar.
