@@ -10,6 +10,7 @@ Abra **4 terminais** na raiz do projeto, um para cada processo:
 # Terminal 1 — site Next.js (http://localhost:3000)
 npm run dev
 
+
 # Terminal 2 — worker do Trigger.dev (executa as tasks em ./trigger)
 npx trigger.dev@4.8.1 dev
 
