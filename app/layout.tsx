@@ -13,7 +13,7 @@ const bricolage = Bricolage_Grotesque({
 });
 
 const description =
-  "Um contato inteligente que organiza os seus treinos: registre séries por mensagem, receba metas automáticas de 8 a 12 reps, lembretes, resumos e gráficos de evolução. 100% grátis.";
+  "Um contato inteligente que organiza os seus treinos: registre séries por mensagem, receba metas automáticas de 8 a 12 reps, lembretes, resumos e gráficos de evolução.";
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl()),

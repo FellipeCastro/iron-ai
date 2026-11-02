@@ -33,7 +33,7 @@ const navLinks = [
 const chatCards = [
   {
     title: "Registro por texto livre",
-    text: "Mande “supino reto 1 série 10kg” e pronto: a série fica salva no seu histórico.",
+    text: "Mande “supino reto 10 reps com 10kg” e pronto: a série fica salva no seu histórico.",
     height: "h-[460px] md:h-[549px]",
     photo: "/assets/gym/01.jpg",
   },
@@ -57,13 +57,13 @@ const chatCards = [
   },
   {
     title: "Metas automáticas",
-    text: "Bateu a meta? +1 rep 😮",
+    text: "Bateu a meta? A próxima série pede +1 rep. Chegou a 12, a carga sobe sozinha 😮",
     height: "h-[460px] md:h-[579px]",
     photo: "/assets/gym/05.jpg",
   },
   {
     title: "Resumo de progressão",
-    text: "Carga, repetições e calorias comparadas no período. Simples, rápido e sem planilha.",
+    text: "Carga, repetições e calorias lado a lado no período, sem você montar planilha.",
     height: "h-[460px] md:h-[579px]",
     photo: "/assets/gym/06.jpg",
   },
@@ -72,13 +72,13 @@ const chatCards = [
 const reasons = [
   {
     icon: <TimerIcon className="size-7" />,
-    title: "Economize seu tempo",
-    text: "Nada de planilha nem app cheio de botões. Você escreve do seu jeito para o seu contato inteligente e o Iron AI entende exercício, carga e repetições na hora.",
+    title: "Sem planilha, sem menu",
+    text: "Escreva como falaria com um colega de treino: “supino 3x10 com 20kg”. O Iron AI entende exercício, carga e repetições e salva a série.",
   },
   {
     icon: <ChartUpIcon className="size-7" />,
     title: "Progressão sem achismo",
-    text: "Regra clara e automática: bateu a meta, ganha +1 rep. Chegou a 12 reps, a carga sobe e as reps voltam para 8. Simples assim.",
+    text: "Bateu a meta, a próxima série ganha +1 rep. Chegou a 12 reps, a carga sobe e as reps voltam para 8. Você sempre sabe o que fazer na série seguinte.",
   },
   {
     icon: <DumbbellIcon className="size-8" />,
@@ -236,15 +236,15 @@ export default function Home() {
             </span>
           </div>
           <h1 className="text-[44px] leading-[52px] font-medium sm:mt-6 sm:text-[48px] sm:leading-[64px] tracking-[-0.01em]">
-            <span className="font-bold">Seu contato inteligente</span>
+            <span className="font-bold">O contato inteligente</span>
             <br />
             que organiza
             <br />
             os seus treinos
           </h1>
           <p className="mt-6 max-w-[520px] text-[16px] leading-6 text-[#5b5b66]">
-            O Iron AI é o contato inteligente que organiza os seus treinos. Mande suas séries em texto livre, pelo
-            Telegram, e ele registra, calcula a próxima meta e acompanha sua evolução.
+            Mande suas séries em texto livre. O Iron AI registra, calcula a meta da próxima série e
+            mostra sua evolução em gráficos.
           </p>
           <CtaBadges className="mt-6" />
         </div>
@@ -358,7 +358,7 @@ export default function Home() {
         <h2 className="text-center text-[32px] leading-tight sm:text-[44px] font-semibold tracking-[-0.01em] lg:text-[48px]">
           Por que ter um contato inteligente no treino?
         </h2>
-        <p className="mt-2 text-center text-[18px] text-[#333]">O jeito mais simples de registrar e evoluir seu treino.</p>
+        <p className="mt-2 text-center text-[18px] text-[#333]">Registre pelo chat e saiba exatamente quando subir a carga.</p>
         <div className="mx-auto mt-[84px] grid max-w-[1120px] gap-8 md:grid-cols-3">
           {reasons.map((reason) => (
             <article key={reason.title} className="rounded-[28px] bg-white px-8 pt-8 pb-10 shadow-[0_8px_30px_rgba(0,0,0,0.04)]">
@@ -460,7 +460,7 @@ export default function Home() {
               ))}
             </div>
             <h2 className="mt-1 max-w-[400px] text-[36px] leading-[40px] font-bold sm:text-[48px] sm:leading-[48px] tracking-[-0.01em] text-[#1e1a24]">
-              Seu contato inteligente para treinar melhor
+              Registre seu próximo treino com uma mensagem
             </h2>
             <div className="mt-6 flex items-center gap-4 text-[18px] text-[#3f3f46]">
               <span className="flex items-center gap-2">

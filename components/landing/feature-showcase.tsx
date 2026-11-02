@@ -7,7 +7,7 @@ const features = [
   {
     title: "Registre séries só mandando mensagem",
     description:
-      "Escreva “supino reto 1 série 10kg” no Telegram e o Iron AI entende exercício, carga e repetições. Errou? Mande a correção e tudo é recalculado.",
+      "Escreva “supino reto 10 reps com 10kg” e o Iron AI entende exercício, carga e repetições. Errou? Mande a correção e tudo é recalculado.",
     image: "/assets/image-01.png",
   },
   {
@@ -23,9 +23,9 @@ const features = [
     image: "/assets/image-03.png",
   },
   {
-    title: "Resumos e relatórios inteligentes",
+    title: "Resumo ao fim do treino e relatórios sob demanda",
     description:
-      "Ao terminar o treino você recebe um resumo da sessão. Peça relatórios por exercício ou grupo muscular quando quiser.",
+      "Ao terminar, você recebe o resumo da sessão. Quando quiser, peça um relatório por exercício ou grupo muscular.",
     image: "/assets/image-04.png",
   },
 ];

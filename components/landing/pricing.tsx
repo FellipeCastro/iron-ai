@@ -75,7 +75,7 @@ export function Pricing() {
   return (
     <section id="precos" className="mx-auto max-w-[1440px] scroll-mt-20 px-6 pt-[160px] pb-[140px]">
       <h2 className="text-center text-[32px] leading-tight font-semibold tracking-[-0.01em] sm:text-[44px] lg:text-[48px]">
-        Preço simples, sem surpresas
+        Dois planos, os mesmos recursos
       </h2>
       <p className="mt-2 text-center text-[18px] text-[#333]">
         Teste {TRIAL_DAYS} dias grátis com tudo liberado. Depois, escolha o plano que cabe no seu treino.
@@ -91,7 +91,7 @@ export function Pricing() {
           highlight
         />
       </div>
-      <p className="mt-8 text-center text-[14px] text-[#5b5b66]">Todos os planos incluem o mesmo conjunto de recursos.</p>
+      <p className="mt-8 text-center text-[14px] text-[#5b5b66]">Cancele quando quiser, sem fidelidade em nenhum dos planos.</p>
     </section>
   );
 }
