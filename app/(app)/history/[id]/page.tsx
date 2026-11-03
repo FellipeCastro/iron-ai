@@ -5,8 +5,9 @@ import { auth } from "@clerk/nextjs/server";
 import { EditDuration } from "@/components/app/edit-duration";
 import { EditSetRow } from "@/components/app/edit-set-row";
 import { ChevronLeftIcon } from "@/components/app/icons";
+import { AddExercise, AddSet, DeleteSession } from "@/components/app/session-edit-tools";
 import { Badge, Card, DayBadge } from "@/components/app/ui";
-import { getSession } from "@/lib/data";
+import { getCatalog, getSession } from "@/lib/data";
 import { formatDate, formatDuration, formatKcal, formatTime } from "@/lib/format";
 import { HISTORY_URL, exerciseUrl } from "@/lib/routes";
 
@@ -15,10 +16,12 @@ export const metadata: Metadata = { title: "Editar treino" };
 export default async function EditSessionPage({ params }: PageProps<"/history/[id]">) {
   await auth.protect();
   const { id } = await params;
-  const data = await getSession(id);
+  const [data, catalog] = await Promise.all([getSession(id), getCatalog()]);
   if (!data) notFound();
 
   const { session: s, timeZone } = data;
+  const present = new Set(s.exercises.map((e) => e.id));
+  const addable = catalog.filter((e) => !present.has(e.id));
 
   return (
     <>
@@ -60,8 +63,16 @@ export default async function EditSessionPage({ params }: PageProps<"/history/[i
                 <EditSetRow key={`${set.id}:${set.weight}:${set.reps}`} setId={set.id} position={set.position} weight={set.weight} reps={set.reps} />
               ))}
             </div>
+            <div className="mt-4">
+              <AddSet sessionId={s.id} exercise={e} last={e.sets.at(-1) ?? { weight: 0, reps: 0 }} />
+            </div>
           </Card>
         ))}
+      </div>
+
+      <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
+        <AddExercise sessionId={s.id} catalog={addable} />
+        <DeleteSession sessionId={s.id} />
       </div>
     </>
   );

@@ -24,3 +24,4 @@ export const CheckIcon = (props: IconProps) => <Stroke d="m5 12 5 5L20 7" {...pr
 export const SearchIcon = (props: IconProps) => <Stroke d="M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14Zm9 2-4-4" {...props} />;
 export const TrashIcon = (props: IconProps) => <Stroke d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" {...props} />;
 export const CopyIcon = (props: IconProps) => <Stroke d="M9 9h11v11H9zM5 15H4V4h11v1" {...props} />;
+export const PencilIcon = (props: IconProps) => <Stroke d="M4 20h4L19 9l-4-4L4 16v4ZM13.5 6.5l4 4" {...props} />;

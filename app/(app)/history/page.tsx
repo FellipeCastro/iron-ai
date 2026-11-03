@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { auth } from "@clerk/nextjs/server";
-import { EditDuration } from "@/components/app/edit-duration";
+import { PencilIcon } from "@/components/app/icons";
 import { Badge, Card, CardTitle, DayBadge, PageHeader } from "@/components/app/ui";
 import { ChevronDownIcon } from "@/components/landing/icons";
 import { getHistory, type CloseReason, type WorkoutSession } from "@/lib/data";
@@ -148,12 +148,14 @@ function SessionCard({ session: s, timeZone }: { session: WorkoutSession; timeZo
           <p className="text-[13px] text-[#8a8a94]">
             {closeLabel[s.closeReason]} · calorias estimadas {formatKcal(s.calories)}
           </p>
-          <div className="flex flex-wrap items-center gap-2">
-            <EditDuration sessionId={s.id} minutes={Math.max(1, Math.round((Date.parse(s.endedAt) - Date.parse(s.startedAt)) / 60_000))} />
-            <Link href={sessionUrl(s.id)} className="inline-flex h-9 items-center rounded-full border border-[#e5e7eb] px-4 text-[13px] font-medium transition-colors hover:bg-[#f3f4f6]">
-              Editar séries
-            </Link>
-          </div>
+          <Link
+            href={sessionUrl(s.id)}
+            aria-label="Editar treino"
+            title="Editar treino"
+            className="inline-flex h-9 items-center gap-2 rounded-full border border-[#e5e7eb] px-4 text-[13px] font-medium transition-colors hover:bg-[#f3f4f6]"
+          >
+            <PencilIcon className="size-3.5" /> Editar
+          </Link>
         </div>
       </div>
     </details>

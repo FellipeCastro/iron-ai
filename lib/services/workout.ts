@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, isNull, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, or, sql, type SQL } from "drizzle-orm";
 import { db, exercises, routineDays, sessions, setEntries, setTargets, type Session, type User } from "@/db";
 import { computeTargets, type Load } from "@/lib/engine/progression";
 import { markRecords, type PrKind } from "@/lib/engine/records";
@@ -354,4 +354,44 @@ export async function deleteSetById(user: User, setId: string) {
   const remaining = await loadLog(user.id, { sessionId: old.sessionId });
   if (remaining.length === 0) await db.delete(sessions).where(eq(sessions.id, old.sessionId));
   return { sessionEmpty: remaining.length === 0 };
+}
+
+/**
+ * Adds a set to a finished session from the site. It lands after the session's last set, keeping the
+ * session's order, and counts as extra when the exercise is not in the day or its planned sets are done.
+ */
+export async function addSetToSession(user: User, sessionId: string, input: { exerciseId: string; weight: number; reps: number }) {
+  const session = await db.query.sessions.findFirst({ where: and(eq(sessions.id, sessionId), eq(sessions.userId, user.id)) });
+  if (!session) return null;
+  const exercise = await db.query.exercises.findFirst({ where: and(eq(exercises.id, input.exerciseId), or(isNull(exercises.ownerUserId), eq(exercises.ownerUserId, user.id))) });
+  if (!exercise) return null;
+
+  const [day, sessionSets] = await Promise.all([session.dayId ? loadDay(session.dayId) : null, loadLog(user.id, { sessionId })]);
+  const placed = assignSet(day, sessionSets, input.exerciseId);
+  const last = sessionSets.reduce((max, s) => Math.max(max, s.createdAt.getTime()), session.startedAt.getTime());
+
+  await db.insert(setEntries).values({
+    sessionId,
+    exerciseId: input.exerciseId,
+    setPosition: placed.setPosition,
+    isExtra: placed.isExtra,
+    weight: input.weight,
+    reps: input.reps,
+    createdAt: new Date(last + 1),
+  });
+
+  const log = await loadLog(user.id, { exerciseIds: [input.exerciseId] });
+  await recomputeTargets(user.id, user.weightIncrementKg, log, [input.exerciseId]);
+  return true;
+}
+
+/** Deletes a whole session with its sets and rebuilds the targets of the exercises it touched. */
+export async function deleteSessionById(user: User, sessionId: string) {
+  const session = await db.query.sessions.findFirst({ where: and(eq(sessions.id, sessionId), eq(sessions.userId, user.id)) });
+  if (!session) return false;
+  const touched = await db.selectDistinct({ exerciseId: setEntries.exerciseId }).from(setEntries).where(eq(setEntries.sessionId, sessionId));
+  await db.delete(sessions).where(eq(sessions.id, sessionId));
+  const exerciseIds = touched.map((t) => t.exerciseId);
+  if (exerciseIds.length) await recomputeTargets(user.id, user.weightIncrementKg, await loadLog(user.id, { exerciseIds }), exerciseIds);
+  return true;
 }

@@ -76,7 +76,7 @@ export function ExerciseList({ exercises }: { exercises: ExerciseSummary[] }) {
                       {e.weightChange30d > 0 && <span className="text-[#8a8a94]"> em 30 dias</span>}
                     </p>
                   </div>
-                  <Sparkline values={e.trend} />
+                  <Sparkline values={e.trend} values2={e.trendReps} />
                 </div>
               </Link>
             ))}

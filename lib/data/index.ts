@@ -57,6 +57,7 @@ function summarize(sessions: WorkoutSession[], ref: ExerciseRef, today: string, 
     currentWeight: latest.maxWeight,
     weightChange30d: latest.maxWeight - baseline.maxWeight,
     trend: points.slice(-10).map((p) => p.maxWeight),
+    trendReps: points.slice(-10).map((p) => p.maxWeightReps),
     stagnant,
     lastTrainedAt: latest.date,
   };

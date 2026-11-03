@@ -53,6 +53,7 @@ export type ExerciseSummary = ExerciseRef & {
   currentWeight: number;
   weightChange30d: number;
   trend: number[];
+  trendReps: number[];
   stagnant: boolean;
   lastTrainedAt: string;
 };
