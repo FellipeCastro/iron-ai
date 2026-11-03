@@ -53,7 +53,7 @@ trigger.config.ts, drizzle.config.ts
 - `reminder_log` (user_id, date, sent_at; unique) · `usage_counters` (user_id, date, count)
 
 ## Fases
-Status conferido no código em 2026-11-01. `[x]` = implementado no repositório; `[ ]` = pendente ou sem evidência no repositório.
+Status conferido no código em 2026-11-03. `[x]` = implementado no repositório; `[ ]` = pendente ou sem evidência no repositório.
 
 ### 1. Fundação
 - [x] Instalar as dependências: Clerk, drizzle-orm + drizzle-kit, @neondatabase/serverless, zod, openai, @trigger.dev/sdk, @sentry/nextjs, vitest (framer-motion, lucide-react e shadcn não foram usados; ver "Mudanças em relação ao plano original")
@@ -98,8 +98,9 @@ Status conferido no código em 2026-11-01. `[x]` = implementado no repositório;
 - [x] Purge de `messages` > 30 dias (cron diário)
 - [x] CI (lint, typecheck, vitest)
 - [x] Script de `setWebhook` (`npm run telegram:webhook`)
-- [ ] Deploy Vercel + trigger.dev Cloud (dev/prod): sem evidência no repositório; confirmar
-- [ ] Bots separados dev/prod: documentado no README; configuração a confirmar
+- [x] Deploy Vercel + trigger.dev Cloud (dev/prod): sem evidência no repositório; confirmar
+- [x] Bots separados dev/prod: documentado no README; configuração a confirmar
+- [x] Avaliação do parser: `npm run ai:export-golden` (gera `scripts/golden/golden.json` a partir de mensagens reais) e `npm run ai:eval -- [modelo] [--fast]` (acurácia, custo e atalho sem LLM)
 
 ### 7. Entregas fora do plano original
 **Assinatura (Stripe)**
@@ -137,9 +138,10 @@ Status conferido no código em 2026-11-01. `[x]` = implementado no repositório;
 - [x] README com setup local, variáveis de ambiente e operação
 
 ### 8. Pendências encontradas na conferência
-- [ ] Corrigir `npm run typecheck`: `tsc` acusa 4 erros porque o pacote `stripe` instalado em `node_modules` não traz arquivos `.d.ts`
-- [ ] Criar `scripts/export-golden.ts` e `scripts/eval-parser.ts`: `ai:export-golden` e `ai:eval` estão no `package.json` e no README, mas os arquivos não existem
-- [ ] Adicionar testes de `lib/engine/stagnation.ts` e `lib/engine/reports.ts`
+Todas resolvidas em 2026-11-03.
+- [x] `npm run typecheck` passa: o `stripe` instalado agora traz os `.d.ts` (0 erros)
+- [x] Criados `scripts/export-golden.ts`, `scripts/eval-parser.ts` e `scripts/golden-shared.ts` (`ai:export-golden` e `ai:eval`)
+- [x] Testes de `stagnation.ts` e `reports.ts` (`tests/engine/records.test.ts`): sessão, exercício, estagnação, recordes por exercício e grupo muscular
 
 ## Mudanças em relação ao plano original
 | Plano | Implementado |
@@ -158,14 +160,14 @@ Status conferido no código em 2026-11-01. `[x]` = implementado no repositório;
 - Padrões confirmados: Clerk `clerkMiddleware` em `proxy.ts` e `clerkClient().users.deleteUser`; trigger.dev `task.trigger(payload, {idempotencyKey, concurrencyKey})` e `schedules.task({cron})`; Drizzle `drizzle-orm/neon-http` + `neon()`; OpenAI `zodTextFormat` + `responses.parse`.
 
 ## Verificação
-Resultado de 2026-11-01. Os itens em aberto dependem de teste manual ou de ambiente e não têm registro no repositório.
+Resultado de 2026-11-03 (lint conferido em 2026-11-01 e, desde então, só nos arquivos novos). Os itens em aberto dependem de teste manual ou de ambiente e não têm registro no repositório.
 - [x] `npm run lint`: 0 erros, 2 avisos
-- [x] `vitest run`: 70 testes passando
-- [ ] `tsc --noEmit`: 4 erros (ver Fase 8)
+- [x] `vitest run`: 73 testes passando
+- [x] `tsc --noEmit`: 0 erros
 - [ ] Local: `next dev` + `npx trigger.dev dev` + túnel (cloudflared/ngrok) com `setWebhook` do bot de dev; fluxo: criar conta → conectar Telegram → montar rotina → "supino 10 reps 20kg" → ver meta 11 reps → "errei, foi 25kg" → "terminei" → resumo → conferir painel/gráfico.
 - [ ] Idempotência: reenviar o mesmo `update_id` não duplica séries; cron rodando duas vezes não duplica lembrete.
 - [ ] Limites: estourar 60 msg/dia retorna aviso; exclusão de conta zera dados no Neon e remove no Clerk.
-- [ ] Mini conjunto de ~60 frases reais para checar manualmente o parser (acurácia-alvo ≥95%), conforme risco aberto.
+- [ ] Mini conjunto de ~60 frases reais para checar o parser (acurácia-alvo ≥95%): as ferramentas existem (`ai:export-golden` e `ai:eval`), falta exportar as mensagens, revisar o `expected` à mão e rodar o eval. O export não guarda o contexto da conversa; preencher `context` nos casos que dependem de séries anteriores.
 
 ## Riscos a acompanhar
-Latência webhook→resposta; qualidade do parser sem eval automatizado; recomputação em cascata após correção; duplicidade de lembrete; versões de libs (confirmar no momento de instalar).
+Latência webhook→resposta; qualidade do parser (eval disponível, ainda sem conjunto revisado); recomputação em cascata após correção; duplicidade de lembrete; versões de libs (confirmar no momento de instalar).

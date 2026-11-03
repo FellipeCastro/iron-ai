@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { matchExercise } from "@/lib/engine/match";
 import { bestSet, markRecords } from "@/lib/engine/records";
-import { exerciseReport, sessionSummary, type ReportSet } from "@/lib/engine/reports";
+import { exerciseReport, muscleGroupReport, recordsByExercise, sessionSummary, type ReportSet } from "@/lib/engine/reports";
 import { isStagnant } from "@/lib/engine/stagnation";
 import { estimateCalories } from "@/lib/format";
 
@@ -74,6 +74,41 @@ describe("reports", () => {
     expect(report.weightChange30d).toBe(2.5);
     expect(report.stagnant).toBe(false);
     expect(exerciseReport(history, "nada", day(6))).toBeNull();
+  });
+
+  it("flags an exercise as stagnant after 3 sessions without a record", () => {
+    const flat = [mk("s1", day(1), 50, 10), mk("s2", day(3), 50, 10), mk("s3", day(5), 50, 10), mk("s4", day(7), 50, 10)];
+    const report = exerciseReport(flat, "supino", day(8))!;
+    expect(report.stagnant).toBe(true);
+    expect(report.weightChange30d).toBe(0);
+  });
+
+  it("marks records per exercise, never across exercises", () => {
+    const rosca = { ...mk("s1", day(1), 10, 10), exerciseId: "rosca", exerciseName: "Rosca direta", muscleGroup: "biceps" };
+    const mixed = [mk("s1", day(1), 50, 10), rosca, mk("s2", day(3), 52.5, 8)];
+    const records = recordsByExercise(mixed);
+    expect(mixed.map((s) => records.get(s))).toEqual(["weight", "weight", "weight"]);
+    expect(recordsByExercise(mixed, { includeFirst: false }).get(mixed[1])).toBeNull();
+  });
+
+  it("compares muscle groups against the previous period", () => {
+    const now = day(20);
+    const back = (id: string, date: Date, weight: number, reps: number): ReportSet => ({
+      ...mk(id, date, weight, reps),
+      exerciseId: "remada",
+      exerciseName: "Remada curvada",
+      muscleGroup: "costas",
+    });
+    const groups = muscleGroupReport(
+      [mk("old", day(8), 40, 10), mk("a", day(18), 50, 10), mk("a", day(18), 50, 10), back("b", day(19), 30, 10)],
+      now,
+    );
+    expect(groups.map((g) => g.group)).toEqual(["peito", "costas"]);
+    expect(groups[0]).toMatchObject({ sets: 2, exercises: ["Supino reto com barra"] });
+    expect(groups[0].calories).toBeCloseTo(estimateCalories(1000));
+    expect(groups[0].previousCalories).toBeCloseTo(estimateCalories(400));
+    expect(groups[1].previousCalories).toBe(0);
+    expect(muscleGroupReport([mk("old", day(1), 40, 10)], now)).toEqual([]);
   });
 });
 
