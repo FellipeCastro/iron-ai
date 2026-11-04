@@ -168,7 +168,7 @@ export async function closeSession(user: User, sessionId: string, reason: CloseR
 
 export type ClosedSession = NonNullable<Awaited<ReturnType<typeof closeSession>>>;
 
-const sessionMinutes = (startedAt: Date, endedAt: Date) => Math.max(1, Math.round((endedAt.getTime() - startedAt.getTime()) / 60_000));
+export const sessionMinutes = (startedAt: Date, endedAt: Date) => Math.max(1, Math.round((endedAt.getTime() - startedAt.getTime()) / 60_000));
 
 /** The user's own duration for a finished session: the end moves so the site shows the same span. */
 export async function setSessionDuration(userId: string, sessionId: string, minutes: number) {

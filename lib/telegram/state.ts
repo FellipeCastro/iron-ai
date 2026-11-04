@@ -19,13 +19,16 @@ export const RoutineDraft = z.array(
 );
 export type RoutineDraft = z.infer<typeof RoutineDraft>;
 
+// `at` (epoch ms) is stamped when the step is saved; a step without it or past its TTL is dropped on read, so an
+// unanswered question can never swallow a message sent hours or days later.
 const Pending = z.discriminatedUnion("kind", [
   // Low-confidence parse waiting for "Registrar" / "Cancelar".
-  z.object({ kind: z.literal("confirm"), id: z.string(), intent: Intent, overrides: z.record(z.string(), z.string()) }),
+  z.object({ kind: z.literal("confirm"), id: z.string(), at: z.number().optional(), intent: Intent, overrides: z.record(z.string(), z.string()) }),
   // An exercise name matched several catalog entries; `slot` says which part of the intent it fills.
   z.object({
     kind: z.literal("pick"),
     id: z.string(),
+    at: z.number().optional(),
     intent: Intent,
     overrides: z.record(z.string(), z.string()),
     slot: z.string(),
@@ -33,23 +36,42 @@ const Pending = z.discriminatedUnion("kind", [
     confidence: z.number(),
   }),
   // Routine parsed from chat, waiting for "Salvar rotina".
-  z.object({ kind: z.literal("routine"), id: z.string(), days: RoutineDraft }),
+  z.object({ kind: z.literal("routine"), id: z.string(), at: z.number().optional(), days: RoutineDraft }),
   // Onboarding step 2: waiting for the training weekdays as text ("segunda, quarta e sexta").
-  z.object({ kind: z.literal("days"), id: z.string() }),
+  z.object({ kind: z.literal("days"), id: z.string(), at: z.number().optional() }),
   // Onboarding step 3: waiting for the training time as text ("18:30"), or "sem lembrete".
-  z.object({ kind: z.literal("time"), id: z.string() }),
+  z.object({ kind: z.literal("time"), id: z.string(), at: z.number().optional() }),
   // Session just closed: "Confirmar" keeps the duration, "Editar" waits for the real one as text.
-  z.object({ kind: z.literal("duration"), id: z.string(), sessionId: z.string(), minutes: z.number() }),
-  z.object({ kind: z.literal("duration_edit"), id: z.string(), sessionId: z.string() }),
+  z.object({ kind: z.literal("duration"), id: z.string(), at: z.number().optional(), sessionId: z.string(), minutes: z.number() }),
+  z.object({ kind: z.literal("duration_edit"), id: z.string(), at: z.number().optional(), sessionId: z.string() }),
 ]);
 export type Pending = z.infer<typeof Pending>;
 
 export const ChatState = z.object({ pending: Pending.nullable() });
 export type ChatState = z.infer<typeof ChatState>;
 
-export function readChatState(raw: unknown): ChatState {
+const HOUR = 3_600_000;
+/** How long a step keeps waiting for its answer. Onboarding is slower than a button tap or a duration. */
+const PENDING_TTL_MS: Record<Pending["kind"], number> = {
+  confirm: HOUR,
+  pick: HOUR,
+  duration: 3 * HOUR,
+  duration_edit: 3 * HOUR,
+  routine: 24 * HOUR,
+  days: 24 * HOUR,
+  time: 24 * HOUR,
+};
+
+export const stampPending = (state: ChatState, now = Date.now()): ChatState =>
+  state.pending ? { pending: { ...state.pending, at: now } } : state;
+
+export function readChatState(raw: unknown, now = Date.now()): ChatState {
   const parsed = ChatState.safeParse(raw);
-  return parsed.success ? parsed.data : { pending: null };
+  if (!parsed.success) return { pending: null };
+  const { pending } = parsed.data;
+  // Steps saved before `at` existed are treated as expired: they are the ones that got stuck.
+  if (pending && (pending.at === undefined || now - pending.at > PENDING_TTL_MS[pending.kind])) return { pending: null };
+  return parsed.data;
 }
 
 export const newPendingId = () => Math.random().toString(36).slice(2, 8);

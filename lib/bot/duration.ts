@@ -4,7 +4,7 @@ import type { ClosedSession } from "@/lib/services/workout";
 import type { InlineKeyboard } from "@/lib/telegram/client";
 import { durationKeyboard } from "@/lib/telegram/keyboards";
 import * as render from "@/lib/telegram/render";
-import { newPendingId } from "@/lib/telegram/state";
+import { newPendingId, stampPending } from "@/lib/telegram/state";
 
 /**
  * Asks the user to confirm (or edit) the duration of a session that just closed. Stores the pending step in the
@@ -15,7 +15,7 @@ export async function durationPrompt(userId: string, closed: ClosedSession): Pro
   const minutes = closed.data.durationMin;
   await db
     .update(telegramLinks)
-    .set({ chatState: { pending: { kind: "duration", id, sessionId: closed.session.id, minutes } } })
+    .set({ chatState: stampPending({ pending: { kind: "duration", id, sessionId: closed.session.id, minutes } }) })
     .where(eq(telegramLinks.userId, userId));
   return { text: render.confirmDuration(minutes), keyboard: durationKeyboard(id) };
 }

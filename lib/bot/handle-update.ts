@@ -27,13 +27,14 @@ import {
 import { answerCallbackQuery, editMessageText, sendMessage, sendTyping, type InlineKeyboard, type TgUpdate } from "@/lib/telegram/client";
 import { confirmKeyboard, pickKeyboard } from "@/lib/telegram/keyboards";
 import * as render from "@/lib/telegram/render";
-import { newPendingId, parseCallback, readChatState, type ChatState, type Pending, type RoutineDraft } from "@/lib/telegram/state";
+import { newPendingId, parseCallback, readChatState, stampPending, type ChatState, type Pending, type RoutineDraft } from "@/lib/telegram/state";
 
 // Conversation flow for one Telegram update. The LLM only turns text into an Intent; everything after
 // that (exercise matching, progression, records, replies) is deterministic code and templates.
 
 export const CONFIRM_BELOW = 0.7;
 const FAST_PATH_MODEL = "fast-path";
+const MAX_DURATION_REPLY_CHARS = 10;
 
 type Out = { text: string; keyboard?: InlineKeyboard; sessionId?: string };
 type Ctx = { chatId: number; user: User; state: ChatState; routine: Routine | null; pool: MatchCandidate[] | null };
@@ -229,8 +230,8 @@ async function loadCtx(chatId: number, user: User, rawState: unknown): Promise<C
 }
 
 async function saveState(ctx: Ctx, state: ChatState) {
-  ctx.state = state;
-  await db.update(telegramLinks).set({ chatState: state }).where(eq(telegramLinks.userId, ctx.user.id));
+  ctx.state = stampPending(state);
+  await db.update(telegramLinks).set({ chatState: ctx.state }).where(eq(telegramLinks.userId, ctx.user.id));
 }
 
 /** Day being trained (open session) or the next one in the rotation. */
@@ -452,7 +453,8 @@ async function handleAwaitedText(ctx: Ctx, pending: Pending, text: string): Prom
   }
   if (pending.kind === "duration_edit") {
     const minutes = parseDurationInput(text);
-    if (!minutes) return [{ text: render.askDurationEdit(true) }];
+    // A long message is not a mistyped duration: let it through as a normal message (e.g. a set being logged).
+    if (!minutes) return text.length > MAX_DURATION_REPLY_CHARS ? null : [{ text: render.askDurationEdit(true) }];
     await saveState(ctx, { pending: null });
     const updated = await setSessionDuration(ctx.user.id, pending.sessionId, minutes);
     return [{ text: updated ? render.durationUpdated(minutes) : render.expiredAction() }];

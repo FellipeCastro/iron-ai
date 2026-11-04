@@ -17,15 +17,15 @@ const features = [
     image: "/assets/image-02.png",
   },
   {
-    title: "Gráficos de evolução e recordes",
-    description:
-      "Acompanhe carga, 1RM estimado e calorias gastas em cada exercício. Seus PRs ficam registrados no chat e no painel web.",
-    image: "/assets/image-03.png",
-  },
-  {
     title: "Resumo ao fim do treino e relatórios sob demanda",
     description:
       "Ao terminar, você recebe o resumo da sessão. Quando quiser, peça um relatório por exercício ou grupo muscular.",
+    image: "/assets/image-03.png",
+  },
+  {
+    title: "Gráficos de evolução e recordes",
+    description:
+      "Acompanhe carga, 1RM estimado e calorias gastas em cada exercício. Seus PRs ficam registrados no chat e no painel web.",
     image: "/assets/image-04.png",
   },
 ];

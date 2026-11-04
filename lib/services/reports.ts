@@ -3,7 +3,7 @@ import { db, sessions, type MuscleGroup, type User } from "@/db";
 import { caloriesOf, exerciseReport, muscleGroupReport, recordsByExercise, sessionSummary } from "@/lib/engine/reports";
 import * as render from "@/lib/telegram/render";
 import { loadDay, type RoutineDayFull, type Routine } from "./routine";
-import { findOpenSession, loadLog, loadTargets, nextRoutineDay } from "./workout";
+import { findOpenSession, loadLog, loadTargets, nextRoutineDay, sessionMinutes } from "./workout";
 
 // Telegram reports: data from the engine, text from the templates. Same numbers the site shows.
 
@@ -41,7 +41,8 @@ export async function lastWorkoutText(user: User, routine: Routine | null) {
     sessionId: last.id,
     closeReason: last.closeReason ?? "user",
     day: day ? { letter: day.letter, title: day.title } : null,
-    data: sessionSummary(last.id, upTo, []),
+    // The session's own start/end, so a duration the user corrected wins over the first-to-last-set estimate.
+    data: { ...sessionSummary(last.id, upTo, []), durationMin: last.endedAt ? sessionMinutes(last.startedAt, last.endedAt) : 0 },
     next: await nextRoutineDay(user.id, routine),
   });
 }
