@@ -18,3 +18,22 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
+
+  deploy-trigger:
+    needs: check
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    concurrency: deploy-trigger
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx trigger.dev@4.8.1 deploy
+        env:
+          TRIGGER_ACCESS_TOKEN: ${{ secrets.TRIGGER_ACCESS_TOKEN }}
+
+
+tr_pat_kjjpvj923ou7dmwm3s9trj21wou99nic2iqtdgez
