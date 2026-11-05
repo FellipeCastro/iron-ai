@@ -18,12 +18,12 @@ const sections: LegalSection[] = [
         <p>
           O Iron AI é um assistente de treino que funciona no Telegram, com um painel web para rotina, histórico e gráficos. O
           controlador dos seus dados pessoais, nos termos da Lei Geral de Proteção de Dados (Lei nº 13.709/2018 — LGPD), é{" "}
-          <Placeholder>NOME OU RAZÃO SOCIAL DO RESPONSÁVEL</Placeholder>, <Placeholder>CPF/CNPJ</Placeholder>, com endereço em{" "}
-          <Placeholder>ENDEREÇO</Placeholder>.
+          {/* <Placeholder>NOME OU RAZÃO SOCIAL DO RESPONSÁVEL</Placeholder>, <Placeholder>CPF/CNPJ</Placeholder> */} Fellipe da Silva Castro ("nós"), com endereço em{" "}
+          {/* <Placeholder>ENDEREÇO</Placeholder> */} São Paulo, Brasil.
         </p>
         <p>
-          Encarregado pelo tratamento de dados (DPO): <Placeholder>NOME DO ENCARREGADO</Placeholder> —{" "}
-          <Placeholder>E-MAIL DE PRIVACIDADE</Placeholder>.
+          Encarregado pelo tratamento de dados (DPO): {/* <Placeholder>NOME DO ENCARREGADO</Placeholder> */} Fellipe da Silva Castro —{" "}
+          {/* <Placeholder>E-MAIL DE PRIVACIDADE</Placeholder> */} fehcastru@gmail.com.
         </p>
       </>
     ),
@@ -231,7 +231,7 @@ const sections: LegalSection[] = [
           [
             "Registros técnicos e feedback no Sentry",
             <>
-              Conforme o período de retenção configurado no Sentry: <Placeholder>PRAZO DE RETENÇÃO DO SENTRY</Placeholder>
+              Conforme o período de retenção configurado no Sentry: {/* <Placeholder>PRAZO DE RETENÇÃO DO SENTRY</Placeholder> */} 90 dias
             </>,
           ],
         ]}
@@ -269,8 +269,8 @@ const sections: LegalSection[] = [
         </Callout>
         <p>
           Você também pode exercer os demais direitos do art. 18 da LGPD — confirmação e acesso, portabilidade, informação sobre
-          compartilhamento, oposição e revisão — escrevendo para <Placeholder>E-MAIL DE PRIVACIDADE</Placeholder>. Responderemos
-          em até <Placeholder>PRAZO DE RESPOSTA, EX.: 15 DIAS</Placeholder>. Você também pode reclamar à Autoridade Nacional de
+          compartilhamento, oposição e revisão — escrevendo para {/* <Placeholder>E-MAIL DE PRIVACIDADE</Placeholder> */} fehcastru@gmail.com. Responderemos
+          em até {/* <Placeholder>PRAZO DE RESPOSTA, EX.: 15 DIAS</Placeholder> */} 15 dias. Você também pode reclamar à Autoridade Nacional de
           Proteção de Dados (ANPD).
         </p>
       </>
@@ -299,7 +299,7 @@ const sections: LegalSection[] = [
     title: "Idade mínima",
     content: (
       <p>
-        O Iron AI não é destinado a menores de <Placeholder>18</Placeholder> anos, e não coletamos intencionalmente dados de
+        O Iron AI não é destinado a menores de {/* <Placeholder>18</Placeholder> */} 18 anos, e não coletamos intencionalmente dados de
         crianças ou adolescentes. Se você souber de uma conta nessa situação, entre em contato para que ela seja excluída.
       </p>
     ),
@@ -323,7 +323,7 @@ const sections: LegalSection[] = [
     title: "Contato",
     content: (
       <p>
-        Dúvidas sobre privacidade: <Placeholder>E-MAIL DE PRIVACIDADE</Placeholder>.
+        Dúvidas sobre privacidade: {/* <Placeholder>E-MAIL DE PRIVACIDADE</Placeholder> */} fehcastru@gmail.com.
       </p>
     ),
   },
