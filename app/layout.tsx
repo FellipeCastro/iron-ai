@@ -58,8 +58,24 @@ export const viewport: Viewport = {
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
+  const gaId = process.env.GOOGLE_ANALYTICS_ID;
   return (
     <html lang="pt-BR" className={`${bricolage.variable} ${bricolage.className} h-full antialiased`}>
+      <head>
+        {gaId && (
+          <>
+            <script async src={`https://www.googletagmanager.com/gtag/js?id=${gaId}`} />
+            <script
+              dangerouslySetInnerHTML={{
+                __html: `window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', '${gaId}');`,
+              }}
+            />
+          </>
+        )}
+      </head>
       <body className="min-h-full flex flex-col">
         <ClerkProvider
           localization={ptBR}
