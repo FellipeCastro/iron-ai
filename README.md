@@ -2,8 +2,6 @@
 
 **Personal Trainer de bolso no Telegram. Você conta o treino em texto livre, o código cuida da progressão.**
 
-![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=nextdotjs) ![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white) ![OpenAI](https://img.shields.io/badge/OpenAI-Structured%20Outputs-412991?logo=openai&logoColor=white) ![Trigger.dev](https://img.shields.io/badge/Trigger.dev-4.8-6366F1) ![Stripe](https://img.shields.io/badge/Stripe-Billing-635BFF?logo=stripe&logoColor=white)
-
 ## Sobre o Projeto
 
 O Iron AI é uma plataforma B2C para quem treina musculação e quer parar de anotar série em planilha. O registro acontece no Telegram, em linguagem natural ("supino 3x10 20kg", "terminei"), e o site Next.js entrega painel, rotina, histórico e gráficos de evolução.
