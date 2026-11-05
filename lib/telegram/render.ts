@@ -11,6 +11,9 @@ export const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;")
 const kg = (n: number) => `${formatNumber(n)} kg`;
 const load = (weight: number, reps: number) => (weight > 0 ? `${kg(weight)} × ${reps}` : `${reps} reps`);
 const loadReps = (weight: number, reps: number) => (weight > 0 ? `${kg(weight)} × ${reps} reps` : `${reps} reps`);
+// One set per line: "  10 reps × 20 kg" (bodyweight sets drop the weight).
+const setLine = (weight: number, reps: number) => `  ${reps} reps${weight > 0 ? ` × ${kg(weight)}` : ""}`;
+const exerciseBlock = (name: string, setLines: string[]) => [`• <b>${esc(name)}</b>:`, ...setLines];
 const link = (path: string, label: string) => `<a href="${siteUrl()}${path}">${label}</a>`;
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 const ordinal = (position: number) => `${position}ª série`;
@@ -184,7 +187,7 @@ export function summary(input: {
   if (data.loadUps) lines.push("", `📈 ${plural(data.loadUps, "série subiu", "séries subiram")} de carga para o próximo treino.`);
   lines.push("", "<b>Exercícios</b>");
   for (const e of data.exercises) {
-    lines.push(`• <b>${esc(e.name)}</b>: ${e.sets.map((s) => load(s.weight, s.reps)).join(" · ")}`);
+    lines.push(...exerciseBlock(e.name, e.sets.map((s) => setLine(s.weight, s.reps))));
   }
   if (input.next) lines.push("", `Próximo: <b>${esc(input.next.letter)} · ${esc(input.next.title)}</b>`);
   lines.push("", `✏️ ${link(sessionUrl(input.sessionId), "Revisar e editar este treino no site")}`);
@@ -211,9 +214,9 @@ export function nextWorkout(day: PlanView | null, intro = "Seu próximo treino")
   for (const e of day.exercises) {
     const metas = Array.from({ length: e.plannedSets }, (_, i) => {
       const t = e.targets.find((x) => x.position === i + 1);
-      return t ? load(t.weight, t.reps) : "livre";
+      return t ? setLine(t.weight, t.reps) : "  livre";
     });
-    lines.push(`• <b>${esc(e.name)}</b>: ${metas.join(" · ")}`);
+    lines.push(...exerciseBlock(e.name, metas));
   }
   return lines.join("\n");
 }
