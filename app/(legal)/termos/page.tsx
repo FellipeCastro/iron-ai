@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Callout, LegalPage, List, Placeholder, Strong, type LegalSection } from "@/components/legal/legal-page";
+import { Callout, LegalPage, List, Strong, type LegalSection } from "@/components/legal/legal-page";
 import { ANNUAL_PRICE, MONTHLY_PRICE, TRIAL_DAYS } from "@/components/landing/pricing";
 import { PRIVACY_URL, SETTINGS_URL } from "@/lib/routes";
 
@@ -23,8 +23,7 @@ const sections: LegalSection[] = [
     content: (
       <p>
         Estes Termos de serviço regem o uso do Iron AI — o site, o painel web e o bot no Telegram (o “Serviço”) — oferecido por{" "}
-        {/* <Placeholder>NOME OU RAZÃO SOCIAL DO RESPONSÁVEL</Placeholder>, <Placeholder>CPF/CNPJ</Placeholder> (“nós”). */} 
-        Fellipe da Silva Castro ("nós").
+        Fellipe da Silva Castro (“nós”).
         Ao criar uma conta ou usar o Serviço, você concorda com estes termos e com a{" "}
         <Link href={PRIVACY_URL} className={linkClass}>
           Política de privacidade
@@ -57,7 +56,7 @@ const sections: LegalSection[] = [
     title: "Quem pode usar",
     content: (
       <p>
-        Para usar o Serviço você precisa ter pelo menos {/* <Placeholder>18</Placeholder> */} 18 anos e capacidade para aceitar estes 
+        Para usar o Serviço você precisa ter pelo menos 18 anos e capacidade para aceitar estes 
         termos. Para usar o bot, você também precisa de uma conta no Telegram.
       </p>
     ),
@@ -124,7 +123,7 @@ const sections: LegalSection[] = [
           <li>
             <Strong>Reembolso:</Strong> se você contratou pela internet, pode se arrepender em até 7 dias corridos contados da
             cobrança, com devolução do valor (art. 49 do Código de Defesa do Consumidor). Escreva para{" "}
-            {/* <Placeholder>E-MAIL DE CONTATO</Placeholder> */} fehcastru@gmail.com. Fora desse prazo, cobranças já feitas não são reembolsadas, salvo
+            fehcastru@gmail.com. Fora desse prazo, cobranças já feitas não são reembolsadas, salvo
             cobrança indevida ou quando a lei exigir.
           </li>
           <li>
@@ -320,7 +319,7 @@ const sections: LegalSection[] = [
     title: "Contato",
     content: (
       <p>
-        Dúvidas sobre estes termos: {/* <Placeholder>E-MAIL DE CONTATO</Placeholder> */} fehcastru@gmail.com.
+        Dúvidas sobre estes termos: fehcastru@gmail.com.
       </p>
     ),
   },

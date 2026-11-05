@@ -28,7 +28,6 @@ export default async function OpengraphImage() {
           background: "linear-gradient(135deg, #0a0a0a 0%, #0b1626 45%, #1e3a8a 100%)",
         }}
       >
-        {/* eslint-disable-next-line @next/next/no-img-element -- next/og renders plain <img> */}
         <img src={logoSrc} width={LOGO_WIDTH} height={LOGO_HEIGHT} alt="" />
         <div style={{ marginTop: 36, fontSize: 32, color: "#d4d4d8" }}>
           O contato inteligente que organiza os seus treinos
