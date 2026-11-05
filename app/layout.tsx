@@ -49,6 +49,7 @@ export const metadata: Metadata = {
     title: "Iron AI — o contato inteligente que organiza seus treinos",
     description,
   },
+  verification: { google: process.env.GOOGLE_SITE_VERIFICATION },
   robots: { index: true, follow: true, googleBot: { index: true, follow: true, "max-image-preview": "large" } },
 };
 
