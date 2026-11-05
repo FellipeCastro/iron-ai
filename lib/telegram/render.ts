@@ -9,10 +9,10 @@ import type { MuscleGroup } from "@/db/schema";
 
 export const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 const kg = (n: number) => `${formatNumber(n)} kg`;
-const load = (weight: number, reps: number) => (weight > 0 ? `${kg(weight)} × ${reps}` : `${reps} reps`);
-const loadReps = (weight: number, reps: number) => (weight > 0 ? `${kg(weight)} × ${reps} reps` : `${reps} reps`);
-// One set per line: "  10 reps × 20 kg" (bodyweight sets drop the weight).
-const setLine = (weight: number, reps: number) => `  ${reps} reps${weight > 0 ? ` × ${kg(weight)}` : ""}`;
+// Standard set format everywhere: "10 reps × 20 kg" (bodyweight sets drop the weight).
+const load = (weight: number, reps: number) => `${reps} reps${weight > 0 ? ` × ${kg(weight)}` : ""}`;
+// One set per line, indented under its exercise.
+const setLine = (weight: number, reps: number) => `  ${load(weight, reps)}`;
 const exerciseBlock = (name: string, setLines: string[]) => [`• <b>${esc(name)}</b>:`, ...setLines];
 const link = (path: string, label: string) => `<a href="${siteUrl()}${path}">${label}</a>`;
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
@@ -119,7 +119,7 @@ export function setsLogged(input: {
   for (const it of input.items) {
     const tag = it.isExtra ? " <i>(extra)</i>" : "";
     const rec = it.record ? ` ${RECORD_LABEL[it.record]}` : "";
-    lines.push(`✅ <b>${esc(it.name)}</b> — ${ordinal(it.setPosition)}: ${loadReps(it.weight, it.reps)}${tag}${rec}`);
+    lines.push(`✅ <b>${esc(it.name)}</b> — ${ordinal(it.setPosition)}: ${load(it.weight, it.reps)}${tag}${rec}`);
   }
   if (input.remaining.length) {
     const next = input.remaining.slice(0, 3).map((r) => `${esc(r.name)} (${plural(r.missing, "série", "séries")})`);
@@ -131,14 +131,14 @@ export function setsLogged(input: {
 export function confirmLog(items: { name: string; weight: number | null; reps: number; sets: number }[]) {
   const lines = ["Entendi assim, confere?", ""];
   for (const it of items) {
-    lines.push(`• <b>${esc(it.name)}</b> — ${it.sets > 1 ? `${it.sets}× ` : ""}${it.weight === null ? `${it.reps} reps` : load(it.weight, it.reps)}`);
+    lines.push(`• <b>${esc(it.name)}</b> — ${it.sets > 1 ? `${it.sets} séries de ` : ""}${load(it.weight ?? 0, it.reps)}`);
   }
   return lines.join("\n");
 }
 
 export const confirmCorrection = (name: string | null, setNumber: number | null, to: { weight: number | null; reps: number | null }) => {
   const what = `${setNumber ? `a ${setNumber}ª série` : "a última série"}${name ? ` de <b>${esc(name)}</b>` : ""}`;
-  const parts = [to.weight !== null ? kg(to.weight) : null, to.reps !== null ? `${to.reps} reps` : null].filter(Boolean);
+  const parts = [to.reps !== null ? `${to.reps} reps` : null, to.weight !== null ? kg(to.weight) : null].filter(Boolean);
   return `Corrigir ${what} para <b>${parts.join(" × ")}</b>?`;
 };
 
