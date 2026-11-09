@@ -72,7 +72,7 @@ function Segmented<T extends string>({
   label: (v: T) => string;
 }) {
   return (
-    <div className="flex flex-wrap gap-1 rounded-full bg-[#f5f5f8] p-1" role="radiogroup">
+    <div className="flex w-full gap-1 overflow-x-auto rounded-full bg-[#f5f5f8] p-1 sm:w-auto" role="radiogroup">
       {options.map((o) => (
         <button
           key={o}
@@ -80,7 +80,7 @@ function Segmented<T extends string>({
           role="radio"
           aria-checked={o === value}
           onClick={() => onChange(o)}
-          className={`rounded-full px-4 py-1.5 text-[14px] font-medium transition-colors ${
+          className={`flex-1 rounded-full px-2 py-1.5 text-[13px] font-medium whitespace-nowrap transition-colors sm:flex-none sm:px-4 sm:text-[14px] ${
             o === value ? "bg-white text-[#111] shadow-[0_2px_8px_rgba(0,0,0,0.08)]" : "text-[#5b5b66] hover:text-[#111]"
           }`}
         >

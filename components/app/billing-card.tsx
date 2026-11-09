@@ -28,7 +28,7 @@ export function BillingCard({ billing, timezone, checkout }: { billing: Billing;
     return (
       <Card>
         <CardTitle title="Assinatura" subtitle="Iron AI" action={<Badge tone="good">Acesso gratuito</Badge>} />
-        <p className="mt-4 text-[14px] text-[#3f3f46]">Sua conta foi criada antes das assinaturas e continua com acesso completo, sem cobrança.</p>
+        <p className="mt-4 text-[14px] text-[#3f3f46]">Acesso total ao Iron Ai, aproveite!.</p>
       </Card>
     );
   }

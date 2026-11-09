@@ -13,7 +13,7 @@ import { DAY_LETTERS, MAX_PLANNED_SETS, renameExerciseForUser, saveRoutine } fro
 import { createCheckoutUrl, createPortalUrl, deleteStripeCustomer } from "@/lib/services/billing";
 import { userHasAccess } from "@/lib/services/access";
 import { createLinkToken, unlinkTelegram } from "@/lib/services/users";
-import { addSetToSession, deleteSessionById, deleteSetById, editSetById, setSessionDuration } from "@/lib/services/workout";
+import { addSetToSession, deleteExerciseFromSession, deleteSessionById, deleteSetById, editSetById, setSessionDuration } from "@/lib/services/workout";
 
 // Server Actions for the (app) pages. Each one resolves the signed-in user itself (they are reachable
 // by direct POST) and validates its input with Zod. Changes that alter what the bot does (routine, reminders,
@@ -144,7 +144,21 @@ export async function deleteSetAction(input: { setId: string }): Promise<ActionR
   });
 }
 
-const SetAddInput = SetEditInput.omit({ setId: true }).extend({ sessionId: z.uuid(), exerciseId: z.uuid() });
+export async function deleteExerciseFromSessionAction(input: { sessionId: string; exerciseId: string }): Promise<ActionResult<{ sessionEmpty: boolean }>> {
+  return traced("deleteExerciseFromSessionAction", async () => {
+    const user = await subscriber();
+    if (!user) return fail(SUBSCRIPTION_REQUIRED);
+    const parsed = z.object({ sessionId: z.uuid(), exerciseId: z.uuid() }).safeParse(input);
+    if (!parsed.success) return fail("Exercício inválido.");
+    const result = await deleteExerciseFromSession(user, parsed.data.sessionId, parsed.data.exerciseId);
+    if (!result) return fail("Exercício não encontrado neste treino.");
+    Sentry.logger.info("Exercise removed from session", { user_id: user.id, source: "web" });
+    refresh();
+    return { ok: true, data: result };
+  });
+}
+
+const SetAddInput =SetEditInput.omit({ setId: true }).extend({ sessionId: z.uuid(), exerciseId: z.uuid() });
 
 export async function addSetAction(input: z.input<typeof SetAddInput>): Promise<ActionResult> {
   return traced("addSetAction", async () => {

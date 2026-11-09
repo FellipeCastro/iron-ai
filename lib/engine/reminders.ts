@@ -82,8 +82,19 @@ export function parseWeekdaysInput(text: string) {
 /** "sem lembrete", "não", "pular"… — declining the reminder in the last onboarding step. */
 export const isNoReminder = (text: string) => /^(sem lembrete|nao|não|pular|pula|nenhum|nenhuma|n)\b/i.test(text.trim());
 
+/** The goals message goes out this many minutes before the user's training time. */
+export const REMINDER_LEAD_MIN = 30;
+
+/** `reminderTime` is the training time; the reminder is due REMINDER_LEAD_MIN before it (possibly the evening before). */
 export function isReminderDue(local: LocalTime, reminderTime: string, trainingDays: number[]) {
-  if (!trainingDays.includes(local.isoWeekday)) return false;
-  const delta = local.minutes - parseClock(reminderTime);
+  let target = parseClock(reminderTime) - REMINDER_LEAD_MIN;
+  let trainingWeekday = local.isoWeekday;
+  if (target < 0) {
+    // Training shortly after midnight: the reminder fires the previous evening, for the next day's training.
+    target += 24 * 60;
+    trainingWeekday = (local.isoWeekday % 7) + 1;
+  }
+  if (!trainingDays.includes(trainingWeekday)) return false;
+  const delta = local.minutes - target;
   return delta >= 0 && delta < REMINDER_WINDOW_MIN;
 }

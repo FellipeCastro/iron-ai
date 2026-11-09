@@ -7,6 +7,7 @@ import { useLayoutEffect, useMemo, useRef, useState, useTransition } from "react
 import { saveRoutineAction } from "@/app/(app)/actions";
 import type { DayLetter, ExerciseRef, Routine, RoutineDay } from "@/lib/data/types";
 import { MUSCLE_LABEL, formatKg } from "@/lib/format";
+import { searchByName } from "@/lib/search";
 import { GripIcon, MinusIcon, PlusIcon, SearchIcon, TrashIcon } from "./icons";
 import { useToast } from "./toast";
 import { Badge, Card, buttonPrimary, buttonSecondary, inputBase } from "./ui";
@@ -27,10 +28,8 @@ export function RoutineEditor({ initial, catalog }: { initial: Routine; catalog:
   const dirty = JSON.stringify(days) !== JSON.stringify(saved);
 
   const results = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return [];
     const inDay = new Set(day.exercises.map((e) => e.id));
-    return catalog.filter((e) => !inDay.has(e.id) && e.name.toLowerCase().includes(q)).slice(0, 6);
+    return searchByName(catalog.filter((e) => !inDay.has(e.id)), query);
   }, [query, catalog, day]);
 
   function updateDay(fn: (d: RoutineDay) => RoutineDay) {
@@ -61,6 +60,20 @@ export function RoutineEditor({ initial, catalog }: { initial: Routine; catalog:
     }));
   }
 
+  /** Catalog exercises matching what is being typed, excluding the ones already in this day. */
+  function suggestionsFor(id: string, name: string) {
+    const others = new Set(day.exercises.filter((x) => x.id !== id).map((x) => x.id));
+    return searchByName(catalog.filter((c) => !others.has(c.id)), name);
+  }
+
+  /** Swap a row for a saved exercise, keeping its number of sets. */
+  function replaceExercise(index: number, ref: ExerciseRef) {
+    updateDay((d) => ({
+      ...d,
+      exercises: d.exercises.map((e, i) => (i === index ? { ...ref, plannedSets: e.plannedSets, targets: [] } : e)),
+    }));
+  }
+
   function setSets(index: number, sets: number) {
     updateDay((d) => ({
       ...d,
@@ -71,7 +84,7 @@ export function RoutineEditor({ initial, catalog }: { initial: Routine; catalog:
   function addExercise(ref: ExerciseRef) {
     updateDay((d) => ({
       ...d,
-      exercises: [...d.exercises, { ...ref, plannedSets: 3, targets: [] }],
+      exercises: [{ ...ref, plannedSets: 3, targets: [] }, ...d.exercises],
     }));
     setQuery("");
   }
@@ -182,14 +195,45 @@ export function RoutineEditor({ initial, catalog }: { initial: Routine; catalog:
           )}
         </div>
 
+        {/* Add exercise */}
+        <div className="relative z-30 mt-6">
+          <label className="relative block">
+            <span className="sr-only">Adicionar exercício</span>
+            <SearchIcon className="pointer-events-none absolute top-1/2 left-4 size-4 -translate-y-1/2 text-[#8a8a94]" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Adicionar exercício (ex.: supino, remada, agachamento)"
+              className={`${inputBase} w-full pl-11`}
+            />
+          </label>
+          {query.trim() && (
+            <ul className="absolute inset-x-0 top-full z-30 mt-2 overflow-hidden rounded-[20px] border border-[#ececec] bg-white shadow-[0_10px_30px_rgba(0,0,0,0.08)]">
+              {results.map((r) => (
+                <li key={r.id}>
+                  <button
+                    type="button"
+                    onClick={() => addExercise(r)}
+                    className="flex w-full items-center justify-between gap-4 px-5 py-3 text-left hover:bg-[#f9f9fb]"
+                  >
+                    <span className="text-[15px] font-medium">{r.name}</span>
+                    <span className="text-[13px] text-[#5b5b66]">{MUSCLE_LABEL[r.muscleGroup]}</span>
+                  </button>
+                </li>
+              ))}
+              {results.length === 0 && <li className="px-5 py-4 text-[14px] text-[#5b5b66]">Nenhum exercício encontrado.</li>}
+            </ul>
+          )}
+        </div>
+
         {day.exercises.length === 0 ? (
-          <p className="mt-6 rounded-[20px] border border-dashed border-[#e5e7eb] px-6 py-10 text-center text-[15px] text-[#5b5b66]">
-            Nenhum exercício ainda. Busque abaixo para adicionar.
+          <p className="mt-4 rounded-[20px] border border-dashed border-[#e5e7eb] px-6 py-10 text-center text-[15px] text-[#5b5b66]">
+            Nenhum exercício ainda. Busque acima para adicionar.
           </p>
         ) : (
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
             <SortableContext items={day.exercises.map((e) => e.id)} strategy={verticalListSortingStrategy}>
-              <ol className="mt-6 grid gap-3">
+              <ol className="mt-4 grid gap-3">
                 {day.exercises.map((e, i) => (
                   <SortableRow key={e.id} id={e.id}>
                     {(handle) => (
@@ -209,7 +253,12 @@ export function RoutineEditor({ initial, catalog }: { initial: Routine; catalog:
                             <div className="min-w-0 flex-1">
                               <label>
                                 <span className="sr-only">Nome do exercício</span>
-                                <NameField value={e.name} onChange={(name) => renameExercise(i, name)} />
+                                <NameField
+                                  value={e.name}
+                                  onChange={(name) => renameExercise(i, name)}
+                                  suggestions={suggestionsFor(e.id, e.name)}
+                                  onPick={(ref) => replaceExercise(i, ref)}
+                                />
                               </label>
                               <p className="text-[13px] text-[#5b5b66]">{MUSCLE_LABEL[e.muscleGroup]}</p>
                             </div>
@@ -259,7 +308,7 @@ export function RoutineEditor({ initial, catalog }: { initial: Routine; catalog:
                             const t = e.targets[s];
                             return (
                               <Badge key={s} tone={t ? "neutral" : "blue"}>
-                                {s + 1}ª série · {t ? `${formatKg(t.weight)} × ${t.reps}` : "meta a definir"}
+                                {s + 1}ª série · {t ? `${t.reps} reps × ${formatKg(t.weight)}` : "meta a definir"}
                               </Badge>
                             );
                           })}
@@ -272,37 +321,6 @@ export function RoutineEditor({ initial, catalog }: { initial: Routine; catalog:
             </SortableContext>
           </DndContext>
         )}
-
-        {/* Add exercise */}
-        <div className="relative mt-6">
-          <label className="relative block">
-            <span className="sr-only">Adicionar exercício</span>
-            <SearchIcon className="pointer-events-none absolute top-1/2 left-4 size-4 -translate-y-1/2 text-[#8a8a94]" />
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Adicionar exercício (ex.: supino, remada, agachamento)"
-              className={`${inputBase} w-full pl-11`}
-            />
-          </label>
-          {query.trim() && (
-            <ul className="absolute inset-x-0 top-full z-20 mt-2 overflow-hidden rounded-[20px] border border-[#ececec] bg-white shadow-[0_10px_30px_rgba(0,0,0,0.08)]">
-              {results.map((r) => (
-                <li key={r.id}>
-                  <button
-                    type="button"
-                    onClick={() => addExercise(r)}
-                    className="flex w-full items-center justify-between gap-4 px-5 py-3 text-left hover:bg-[#f9f9fb]"
-                  >
-                    <span className="text-[15px] font-medium">{r.name}</span>
-                    <span className="text-[13px] text-[#5b5b66]">{MUSCLE_LABEL[r.muscleGroup]}</span>
-                  </button>
-                </li>
-              ))}
-              {results.length === 0 && <li className="px-5 py-4 text-[14px] text-[#5b5b66]">Nenhum exercício encontrado.</li>}
-            </ul>
-          )}
-        </div>
 
         <p className="mt-6 text-[13px] text-[#8a8a94]">
           As metas de cada série são atualizadas automaticamente: bateu a meta, +1 rep; chegou a 12, a carga sobe e as reps voltam para 8.
@@ -329,24 +347,66 @@ export function RoutineEditor({ initial, catalog }: { initial: Routine; catalog:
 }
 
 /** Exercise name that wraps onto as many lines as it needs, so it is never cut off. */
-function NameField({ value, onChange }: { value: string; onChange: (name: string) => void }) {
+function NameField({
+  value,
+  onChange,
+  suggestions,
+  onPick,
+}: {
+  value: string;
+  onChange: (name: string) => void;
+  suggestions: ExerciseRef[];
+  onPick: (ref: ExerciseRef) => void;
+}) {
   const ref = useRef<HTMLTextAreaElement>(null);
+  const [typing, setTyping] = useState(false);
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
     el.style.height = "auto";
     el.style.height = `${el.scrollHeight}px`;
   }, [value]);
+  const open = typing && value.trim() !== "";
   return (
-    <textarea
-      ref={ref}
-      rows={1}
-      value={value}
-      maxLength={80}
-      onChange={(ev) => onChange(ev.target.value.replace(/\s+/g, " "))}
-      onKeyDown={(ev) => ev.key === "Enter" && ev.preventDefault()}
-      className="-mx-2 block w-[calc(100%+1rem)] resize-none overflow-hidden rounded-[10px] border border-transparent bg-transparent px-2 py-0.5 text-[16px] leading-[22px] font-semibold outline-none hover:border-[#e5e7eb] focus:border-[#111]"
-    />
+    <div className="relative">
+      <textarea
+        ref={ref}
+        rows={1}
+        value={value}
+        maxLength={80}
+        onChange={(ev) => {
+          setTyping(true);
+          onChange(ev.target.value.replace(/\s+/g, " "));
+        }}
+        onBlur={() => setTyping(false)}
+        onKeyDown={(ev) => {
+          if (ev.key === "Enter") ev.preventDefault();
+          if (ev.key === "Escape") setTyping(false);
+        }}
+        className="-mx-2 block w-[calc(100%+1rem)] resize-none overflow-hidden rounded-[10px] border border-transparent bg-transparent px-2 py-0.5 text-[16px] leading-[22px] font-semibold outline-none hover:border-[#e5e7eb] focus:border-[#111]"
+      />
+      {open && suggestions.length > 0 && (
+        <ul className="absolute inset-x-0 top-full z-30 mt-1 overflow-hidden rounded-[16px] border border-[#ececec] bg-white shadow-[0_10px_30px_rgba(0,0,0,0.08)]">
+          {suggestions.map((r) => (
+            <li key={r.id}>
+              <button
+                type="button"
+                // mousedown fires before the textarea blurs, so the pick isn't lost.
+                onMouseDown={(ev) => {
+                  ev.preventDefault();
+                  setTyping(false);
+                  onPick(r);
+                }}
+                className="flex w-full items-center justify-between gap-4 px-4 py-2.5 text-left hover:bg-[#f9f9fb]"
+              >
+                <span className="text-[14px] font-medium">{r.name}</span>
+                <span className="text-[12px] font-normal text-[#5b5b66]">{MUSCLE_LABEL[r.muscleGroup]}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 

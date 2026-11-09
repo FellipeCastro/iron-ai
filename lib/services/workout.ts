@@ -358,6 +358,20 @@ export async function deleteSetById(user: User, setId: string) {
   return { sessionEmpty: remaining.length === 0 };
 }
 
+/** Removes every set of one exercise from a session. A session left without sets is dropped. */
+export async function deleteExerciseFromSession(user: User, sessionId: string, exerciseId: string) {
+  const sets = await loadLog(user.id, { sessionId, exerciseIds: [exerciseId] });
+  if (sets.length === 0) return null;
+  await db
+    .update(setEntries)
+    .set({ voidedAt: new Date() })
+    .where(and(eq(setEntries.sessionId, sessionId), eq(setEntries.exerciseId, exerciseId), isNull(setEntries.voidedAt)));
+  await recomputeTargets(user.id, user.weightIncrementKg, await loadLog(user.id, { exerciseIds: [exerciseId] }), [exerciseId]);
+  const remaining = await loadLog(user.id, { sessionId });
+  if (remaining.length === 0) await db.delete(sessions).where(eq(sessions.id, sessionId));
+  return { sessionEmpty: remaining.length === 0 };
+}
+
 /**
  * Adds a set to a finished session from the site. It lands after the session's last set, keeping the
  * session's order, and counts as extra when the exercise is not in the day or its planned sets are done.
