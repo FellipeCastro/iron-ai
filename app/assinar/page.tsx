@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import { PlanPicker } from "@/components/app/plan-picker";
 import { Logo } from "@/components/brand/logo";
-import { ANNUAL_INSTALLMENT_PRICE, brl } from "@/lib/plans";
+import { TRIAL_DAYS } from "@/components/landing/pricing";
 import { DASHBOARD_URL } from "@/lib/routes";
 import { userHasAccess } from "@/lib/services/access";
 import { ensureUser } from "@/lib/services/users";
@@ -25,7 +25,9 @@ export default function SubscribePage({ searchParams }: { searchParams: Promise<
       </header>
       <main className="mx-auto w-full max-w-[880px] flex-1 px-6 pt-8 pb-20 sm:pt-14">
         <h1 className="text-center text-[32px] leading-tight font-semibold tracking-[-0.01em] sm:text-[44px]">Escolha seu plano</h1>
-        <p className="mt-3 mb-12 text-center text-[18px] text-[#333]">Todos os recursos liberados por {brl(ANNUAL_INSTALLMENT_PRICE)} por mês.</p>
+        <p className="mt-3 mb-12 text-center text-[18px] text-[#333]">
+          Teste {TRIAL_DAYS} dias grátis com tudo liberado. Os dois planos incluem os mesmos recursos.
+        </p>
         <Suspense>
           <Plans searchParams={searchParams} />
         </Suspense>

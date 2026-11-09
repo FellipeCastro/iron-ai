@@ -10,7 +10,7 @@ import { db, users } from "@/db";
 import { currentAppUser } from "@/lib/data/load";
 import { MAX_DURATION_MIN } from "@/lib/engine/duration";
 import { DAY_LETTERS, MAX_PLANNED_SETS, renameExerciseForUser, saveRoutine } from "@/lib/services/routine";
-import { cancelRenewal, createCheckoutUrl, createPortalUrl, deleteStripeCustomer, NotRenewableError, resumeRenewal } from "@/lib/services/billing";
+import { createCheckoutUrl, createPortalUrl, deleteStripeCustomer } from "@/lib/services/billing";
 import { userHasAccess } from "@/lib/services/access";
 import { createLinkToken, unlinkTelegram } from "@/lib/services/users";
 import { addSetToSession, deleteSessionById, deleteSetById, editSetById, setSessionDuration } from "@/lib/services/workout";
@@ -228,7 +228,7 @@ export async function disconnectTelegramAction(): Promise<ActionResult> {
 
 const CheckoutInput = z.object({ plan: z.enum(["monthly", "annual"]) });
 
-/** Stripe Checkout for the chosen plan; the client redirects to the returned URL. */
+/** Stripe Checkout (free trial included) for the chosen plan; the client redirects to the returned URL. */
 export async function startCheckoutAction(input: z.input<typeof CheckoutInput>): Promise<ActionResult<{ url: string }>> {
   return traced("startCheckoutAction", async () => {
     const user = await currentAppUser();
@@ -255,24 +255,6 @@ export async function openBillingPortalAction(): Promise<ActionResult<{ url: str
       Sentry.captureException(err, { tags: { action: "open_billing_portal" } });
       return fail("Não foi possível abrir o gerenciamento da assinatura. Tente de novo.");
     }
-  });
-}
-
-/** Annual plan: stop (or restore) the renewal. Cancelling only takes effect at the end of the 12-month cycle. */
-export async function setRenewalAction(input: { renew: boolean }): Promise<ActionResult> {
-  return traced("setRenewalAction", async () => {
-    const user = await currentAppUser();
-    const parsed = z.object({ renew: z.boolean() }).safeParse(input);
-    if (!parsed.success) return fail("Pedido inválido.");
-    try {
-      await (parsed.data.renew ? resumeRenewal(user) : cancelRenewal(user));
-    } catch (err) {
-      if (err instanceof NotRenewableError) return fail("Sua assinatura não está no plano anual.");
-      Sentry.captureException(err, { tags: { action: parsed.data.renew ? "resume_renewal" : "cancel_renewal" } });
-      return fail("Não foi possível alterar a renovação. Tente de novo.");
-    }
-    refresh();
-    return { ok: true, data: undefined };
   });
 }
 

@@ -4,12 +4,11 @@ import * as Sentry from "@sentry/nextjs";
 import { eq, inArray, or } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
 import { db, subscriptions, users, type User } from "@/db";
-import { ANNUAL_INSTALLMENT_PRICE, brl } from "@/lib/plans";
-import { COMMITMENT_MONTHS, commitmentEnd } from "@/lib/commitment";
-import { requireEnv, siteUrl } from "@/lib/env";
+import { TRIAL_DAYS } from "@/components/landing/pricing";
+import { siteUrl } from "@/lib/env";
 import { CHECKOUT_URL, DASHBOARD_URL, SETTINGS_URL } from "@/lib/routes";
-import { ACCESS_STATUSES, findSubscription, userHasAccess } from "@/lib/services/access";
-import { hasCommitment, priceId, stripe, type Plan } from "@/lib/stripe";
+import { ACCESS_STATUSES, userHasAccess } from "@/lib/services/access";
+import { priceId, stripe, type Plan } from "@/lib/stripe";
 
 // Stripe is the source of truth: webhooks only say "this subscription changed", and syncSubscription
 // reads its current state back, so late or out-of-order deliveries cannot leave stale data behind.
@@ -32,7 +31,7 @@ async function ensureCustomer(user: User) {
 }
 
 /**
- * Hosted Checkout for a new subscription, charged right away (no trial). Users who already subscribed get the
+ * Hosted Checkout for a new subscription with the free trial. Users who already subscribed get the
  * dashboard instead: a second Checkout would bill them twice.
  */
 export async function createCheckoutUrl(user: User, plan: Plan) {
@@ -53,15 +52,7 @@ export async function createCheckoutUrl(user: User, plan: Plan) {
     customer,
     client_reference_id: user.id,
     line_items: [{ price: priceId(plan), quantity: 1 }],
-    subscription_data: { metadata: { plan } },
-    // Shown above the pay button: the commitment is part of what the customer agrees to.
-    ...(plan === "annual" && {
-      custom_text: {
-        submit: {
-          message: `Plano anual: ${COMMITMENT_MONTHS} parcelas mensais de ${brl(ANNUAL_INSTALLMENT_PRICE)}, com fidelidade de ${COMMITMENT_MONTHS} meses. Renova por mais ${COMMITMENT_MONTHS} meses se você não cancelar.`,
-        },
-      },
-    }),
+    subscription_data: { trial_period_days: TRIAL_DAYS },
     locale: "pt-BR",
     success_url: `${siteUrl()}${CHECKOUT_URL}/sucesso?session_id={CHECKOUT_SESSION_ID}`,
     // Back to the plan picker, which does not auto-redirect, so cancelling never loops.
@@ -72,53 +63,11 @@ export async function createCheckoutUrl(user: User, plan: Plan) {
   return session.url;
 }
 
-/**
- * Customer Portal: card, invoices and (outside a commitment) cancellation. Annual subscribers past the trial get
- * STRIPE_PORTAL_CONFIG_COMMITMENT, which cannot cancel: they cancel the renewal in Settings instead, which ends
- * the subscription at the end of the 12-month cycle. Everyone else gets STRIPE_PORTAL_CONFIG_STANDARD (or the
- * account's default portal when unset).
- */
+/** Customer Portal: cancel, switch plan, update the card, invoices. */
 export async function createPortalUrl(user: User) {
   const customer = await ensureCustomer(user);
-  const sub = await findSubscription(user.id);
-  const committed = sub && hasCommitment(sub.priceId) && sub.status !== "trialing" && ACCESS_STATUSES.includes(sub.status);
-  const configuration = committed ? requireEnv("STRIPE_PORTAL_CONFIG_COMMITMENT") : process.env.STRIPE_PORTAL_CONFIG_STANDARD || undefined;
-  const session = await stripe().billingPortal.sessions.create({ customer, configuration, return_url: `${siteUrl()}${SETTINGS_URL}` });
+  const session = await stripe().billingPortal.sessions.create({ customer, return_url: `${siteUrl()}${SETTINGS_URL}` });
   return session.url;
-}
-
-export class NotRenewableError extends Error {
-  constructor() {
-    super("No live annual-plan subscription to change");
-  }
-}
-
-/**
- * Annual plan: stops the renewal. During the trial nothing was billed, so it ends with the trial; afterwards the
- * installments continue until the end of the 12-month cycle, when access ends. Returns the end date.
- */
-export async function cancelRenewal(user: User) {
-  const local = await findSubscription(user.id);
-  if (!local || !hasCommitment(local.priceId) || !ACCESS_STATUSES.includes(local.status)) throw new NotRenewableError();
-  const sub = await stripe().subscriptions.retrieve(local.stripeSubscriptionId);
-  const end = sub.status === "trialing" ? null : commitmentEnd(new Date(sub.billing_cycle_anchor * 1000));
-  await stripe().subscriptions.update(
-    sub.id,
-    // The cycle end is a period end, so "none" only guards against a stray proration.
-    end ? { cancel_at: Math.floor(end.getTime() / 1000), proration_behavior: "none" } : { cancel_at_period_end: true },
-  );
-  await syncSubscription(sub.id);
-  Sentry.logger.info("Renewal cancelled", { user_id: user.id, during_trial: !end });
-}
-
-/** Undoes cancelRenewal: the subscription renews again. */
-export async function resumeRenewal(user: User) {
-  const local = await findSubscription(user.id);
-  if (!local || !hasCommitment(local.priceId) || !ACCESS_STATUSES.includes(local.status)) throw new NotRenewableError();
-  // Stripe takes one of the two per request: undo whichever cancelRenewal set.
-  await stripe().subscriptions.update(local.stripeSubscriptionId, local.cancelAtPeriodEnd ? { cancel_at_period_end: false } : { cancel_at: "" });
-  await syncSubscription(local.stripeSubscriptionId);
-  Sentry.logger.info("Renewal resumed", { user_id: user.id });
 }
 
 /** Deleting the customer cancels its subscriptions immediately, so nobody is billed after deleting the account. */
@@ -144,8 +93,6 @@ export async function syncSubscription(subscriptionId: string) {
     currentPeriodEnd: new Date(item.current_period_end * 1000),
     trialEnd: sub.trial_end ? new Date(sub.trial_end * 1000) : null,
     cancelAtPeriodEnd: sub.cancel_at_period_end,
-    cancelAt: sub.cancel_at ? new Date(sub.cancel_at * 1000) : null,
-    commitmentEnd: hasCommitment(item.price.id) ? commitmentEnd(new Date(sub.billing_cycle_anchor * 1000)) : null,
   };
   await db
     .insert(subscriptions)

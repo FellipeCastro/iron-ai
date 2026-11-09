@@ -81,8 +81,4 @@ export type Billing = {
   trialEnd: string | null;
   currentPeriodEnd: string | null;
   cancelAtPeriodEnd: boolean;
-  /** When the subscription ends because the user cancelled; null while it renews. */
-  cancelAt: string | null;
-  /** Annual plan in 12 installments: end of the current 12-month commitment cycle. */
-  commitmentEnd: string | null;
 };

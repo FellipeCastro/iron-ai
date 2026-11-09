@@ -5,14 +5,7 @@ import { HeaderAuth } from "@/components/brand/header-auth";
 import { Logo } from "@/components/brand/logo";
 import { CtaBadges, SIGN_IN_URL } from "@/components/landing/cta-badges";
 import { FeatureShowcase } from "@/components/landing/feature-showcase";
-import {
-  ANNUAL_INSTALLMENT_PRICE,
-  ANNUAL_INSTALLMENTS,
-  ANNUAL_PRICE,
-  brl,
-  MONTHLY_PRICE,
-  Pricing,
-} from "@/components/landing/pricing";
+import { ANNUAL_PRICE, MONTHLY_PRICE, Pricing, TRIAL_DAYS } from "@/components/landing/pricing";
 import {
   ArrowRightIcon,
   ChartUpIcon,
@@ -109,12 +102,12 @@ const conversations = [
 
 const faqs = [
   {
-    q: "Quanto custa?",
-    a: `O plano anual sai por ${brl(ANNUAL_INSTALLMENT_PRICE)} por mês, em ${ANNUAL_INSTALLMENTS}x no cartão (total de ${brl(ANNUAL_PRICE)} no ano), com todos os recursos liberados. Se preferir sem fidelidade, o plano mensal custa ${brl(MONTHLY_PRICE)} por mês.`,
+    q: "Quanto custa e como funciona o teste grátis?",
+    a: `Você testa o Iron AI por ${TRIAL_DAYS} dias grátis, com todos os recursos liberados. Depois, o plano mensal custa R$ 19,90 por mês e o anual R$ 199,00 por ano (equivale a R$ 16,58 por mês).`,
   },
   {
     q: "Posso cancelar quando quiser?",
-    a: "No mensal, sim: não há fidelidade. No anual, a fidelidade é de 12 meses. Você pode cancelar a renovação quando quiser, as parcelas restantes continuam e o acesso vai até o fim do ciclo. Nos dois planos, você pode pedir reembolso em até 7 dias depois de assinar. Você também pode excluir sua conta e todos os seus dados em Configurações, no painel web.",
+    a: "Sim. Não há fidelidade: você cancela quando quiser. E, se preferir, pode excluir sua conta e todos os seus dados em Configurações, no painel web.",
   },
   {
     q: "Existe limite de mensagens?",
@@ -185,8 +178,8 @@ const jsonLd = {
       inLanguage: "pt-BR",
       url: siteUrl(),
       offers: [
-        { "@type": "Offer", name: "Anual (12x)", price: ANNUAL_PRICE.toFixed(2), priceCurrency: "BRL" },
         { "@type": "Offer", name: "Mensal", price: MONTHLY_PRICE.toFixed(2), priceCurrency: "BRL" },
+        { "@type": "Offer", name: "Anual", price: ANNUAL_PRICE.toFixed(2), priceCurrency: "BRL" },
       ],
     },
     {
@@ -489,7 +482,7 @@ export default function Home() {
         <div className="mx-auto grid max-w-[1280px] gap-10 px-6 pt-7 pb-4 md:grid-cols-3 lg:px-4">
           <div>
             <Logo className="[&_img:first-child]:h-[37px] [&_img:last-child]:h-[29px]" />
-            <p className="mt-6 text-[14px] text-[#3f3f46]">Iron AI por {brl(ANNUAL_INSTALLMENT_PRICE)} por mês no plano anual</p>
+            <p className="mt-6 text-[14px] text-[#3f3f46]">Teste o Iron AI por {TRIAL_DAYS} dias grátis</p>
             <CtaBadges size="sm" className="mt-4" />
           </div>
           {footerColumns.map((column) => (

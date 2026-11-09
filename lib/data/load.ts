@@ -124,8 +124,6 @@ export const loadUserData = cache(async () => {
       trialEnd: subscription?.status === "trialing" ? (subscription.trialEnd?.toISOString() ?? null) : null,
       currentPeriodEnd: subscription?.currentPeriodEnd.toISOString() ?? null,
       cancelAtPeriodEnd: subscription?.cancelAtPeriodEnd ?? false,
-      cancelAt: (subscription?.cancelAt ?? (subscription?.cancelAtPeriodEnd ? subscription.currentPeriodEnd : null))?.toISOString() ?? null,
-      commitmentEnd: subscription?.commitmentEnd?.toISOString() ?? null,
     },
   };
 
