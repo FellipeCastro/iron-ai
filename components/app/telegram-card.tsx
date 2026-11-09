@@ -7,7 +7,7 @@ import type { Settings } from "@/lib/data/types";
 import { TelegramColorIcon } from "@/components/landing/icons";
 import { CopyIcon } from "./icons";
 import { useToast } from "./toast";
-import { Badge, Card, buttonPrimary, buttonSecondary } from "./ui";
+import { Badge, Card, buttonPrimary, buttonSecondary, buttonDanger } from "./ui";
 
 type Props = {
   telegram: Settings["telegram"];
@@ -60,17 +60,8 @@ export function TelegramCard({ telegram: initialTelegram, linkedSince = null, us
       </div>
 
       {telegram.connected ? (
-        <div className="mt-6 flex flex-wrap items-center justify-between gap-4 rounded-[20px] bg-[#f9f9fb] px-5 py-4">
-          {usage && (
-            <p className="text-[14px] text-[#3f3f46]">
-              Uso hoje:{" "}
-              <span className="font-semibold text-[#111]">
-                {usage.today} de {usage.limit}
-              </span>{" "}
-              mensagens
-            </p>
-          )}
-          <button type="button" disabled={pending} className={`${buttonSecondary} h-10!`} onClick={disconnect}>
+        <div className="mt-6 flex flex-wrap items-center justify-start gap-4 rounded-[20px]">
+          <button type="button" disabled={pending} className={buttonSecondary} onClick={disconnect}>
             Desconectar
           </button>
         </div>

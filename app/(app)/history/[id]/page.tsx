@@ -5,7 +5,7 @@ import { auth } from "@clerk/nextjs/server";
 import { EditDuration } from "@/components/app/edit-duration";
 import { EditSetRow } from "@/components/app/edit-set-row";
 import { ChevronLeftIcon } from "@/components/app/icons";
-import { AddExercise, AddSet, DeleteSession } from "@/components/app/session-edit-tools";
+import { AddExercise, AddSet, DeleteExercise, DeleteSession } from "@/components/app/session-edit-tools";
 import { Badge, Card, DayBadge } from "@/components/app/ui";
 import { getCatalog, getSession } from "@/lib/data";
 import { formatDate, formatDuration, formatKcal, formatTime } from "@/lib/format";
@@ -51,13 +51,20 @@ export default async function EditSessionPage({ params }: PageProps<"/history/[i
         </div>
       </Card>
 
-      <div className="mt-6 grid gap-4">
+      <div className="mt-6">
+        <AddExercise sessionId={s.id} catalog={addable} />
+      </div>
+
+      <div className="mt-4 grid gap-4">
         {s.exercises.map((e) => (
           <Card key={e.id} className="p-5! sm:p-6!">
-            <Link href={exerciseUrl(e.id)} className="inline-flex items-center gap-2 text-[17px] font-semibold hover:underline">
-              {e.name}
-              {e.sets[0]?.isExtra && <Badge tone="blue">extra</Badge>}
-            </Link>
+            <div className="flex items-start justify-between gap-3">
+              <Link href={exerciseUrl(e.id)} className="inline-flex items-center gap-2 pt-1.5 text-[17px] font-semibold hover:underline">
+                {e.name}
+                {e.sets[0]?.isExtra && <Badge tone="blue">extra</Badge>}
+              </Link>
+              <DeleteExercise sessionId={s.id} exercise={e} />
+            </div>
             <div className="mt-4 grid gap-3">
               {e.sets.map((set) => (
                 <EditSetRow key={`${set.id}:${set.weight}:${set.reps}`} setId={set.id} position={set.position} weight={set.weight} reps={set.reps} />
@@ -70,8 +77,7 @@ export default async function EditSessionPage({ params }: PageProps<"/history/[i
         ))}
       </div>
 
-      <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
-        <AddExercise sessionId={s.id} catalog={addable} />
+      <div className="mt-6 flex flex-wrap items-center justify-end gap-3">
         <DeleteSession sessionId={s.id} />
       </div>
     </>

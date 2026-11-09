@@ -44,17 +44,6 @@ export function EditSetRow({ setId, position, weight, reps }: { setId: string; p
       <label className="flex items-center gap-1.5 text-[13px] text-[#5b5b66]">
         <input
           type="text"
-          inputMode="decimal"
-          aria-label={`Carga da ${position}ª série em kg`}
-          value={w}
-          onChange={(e) => setW(e.target.value)}
-          className={`${inputBase} h-9 w-20 px-3 text-[14px]`}
-        />
-        kg
-      </label>
-      <label className="flex items-center gap-1.5 text-[13px] text-[#5b5b66]">
-        <input
-          type="text"
           inputMode="numeric"
           aria-label={`Repetições da ${position}ª série`}
           value={r}
@@ -62,6 +51,18 @@ export function EditSetRow({ setId, position, weight, reps }: { setId: string; p
           className={`${inputBase} h-9 w-16 px-3 text-[14px]`}
         />
         reps
+      </label>
+      <span className="text-[13px] text-[#5b5b66]">×</span>
+      <label className="flex items-center gap-1.5 text-[13px] text-[#5b5b66]">
+        <input
+          type="text"
+          inputMode="decimal"
+          aria-label={`Carga da ${position}ª série em kg`}
+          value={w}
+          onChange={(e) => setW(e.target.value)}
+          className={`${inputBase} h-9 w-20 px-3 text-[14px]`}
+        />
+        kg
       </label>
       {dirty && (
         <button type="button" onClick={save} disabled={pending} className="h-9 rounded-full bg-black px-4 text-[13px] font-semibold text-white disabled:opacity-40">

@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { auth } from "@clerk/nextjs/server";
-import { PencilIcon } from "@/components/app/icons";
+import { ChevronLeftIcon, PencilIcon } from "@/components/app/icons";
 import { Badge, Card, CardTitle, DayBadge, PageHeader } from "@/components/app/ui";
 import { ChevronDownIcon } from "@/components/landing/icons";
 import { getHistory, type CloseReason, type WorkoutSession } from "@/lib/data";
 import { WEEKDAYS, formatDate, formatDuration, formatKcal, formatKg, formatNumber, formatTime } from "@/lib/format";
-import { exerciseUrl, sessionUrl } from "@/lib/routes";
+import { ROUTINE_URL, exerciseUrl, sessionUrl } from "@/lib/routes";
 
 export const metadata: Metadata = { title: "Histórico" };
 
@@ -28,6 +28,9 @@ export default async function HistoryPage() {
 
   return (
     <>
+      <Link href={ROUTINE_URL} className="mb-6 inline-flex items-center gap-1 text-[14px] font-medium text-[#5b5b66] hover:text-[#111]">
+        <ChevronLeftIcon className="size-4" /> Treinos
+      </Link>
       <PageHeader eyebrow="Histórico" title="Seus treinos" description="Tudo o que você registrou pelo Telegram, treino a treino." />
 
       <Card className="mt-10">

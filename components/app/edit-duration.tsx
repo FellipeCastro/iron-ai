@@ -73,7 +73,7 @@ export function EditDuration({ sessionId, minutes }: { sessionId: string; minute
         <button
           type="button"
           onClick={open}
-          className="h-9 rounded-full border border-[#e5e7eb] px-4 text-[13px] font-medium transition-colors hover:bg-[#f3f4f6]"
+          className="h-10 rounded-full bg-black px-5 text-[14px] font-semibold text-white shadow-[0_4px_14px_rgba(0,0,0,0.18)] transition-colors hover:bg-[#2b2b33]"
         >
           Editar duração
         </button>
