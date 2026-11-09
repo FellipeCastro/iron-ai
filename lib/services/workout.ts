@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, isNull, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, notExists, or, sql, type SQL } from "drizzle-orm";
 import { db, exercises, routineDays, sessions, setEntries, setTargets, type Session, type User } from "@/db";
 import { computeTargets, type Load } from "@/lib/engine/progression";
 import { markRecords, type PrKind } from "@/lib/engine/records";
@@ -361,15 +361,33 @@ export async function deleteSetById(user: User, setId: string) {
 /** Removes every set of one exercise from a session. A session left without sets is dropped. */
 export async function deleteExerciseFromSession(user: User, sessionId: string, exerciseId: string) {
   const sets = await loadLog(user.id, { sessionId, exerciseIds: [exerciseId] });
-  if (sets.length === 0) return null;
-  await db
-    .update(setEntries)
-    .set({ voidedAt: new Date() })
-    .where(and(eq(setEntries.sessionId, sessionId), eq(setEntries.exerciseId, exerciseId), isNull(setEntries.voidedAt)));
+  if (sets.length === 0) {
+    // Repair path: a previous attempt may have voided the sets and then failed before rebuilding the targets,
+    // so a retry lands here with nothing left to delete. Rebuilding is idempotent and cheap.
+    await recomputeTargets(user.id, user.weightIncrementKg, await loadLog(user.id, { exerciseIds: [exerciseId] }), [exerciseId]);
+    return null;
+  }
+  // One batch = one transaction (neon-http has no interactive ones). The row lock comes first, so concurrent
+  // inserts (which take a key-share lock on the session via their FK) wait; the delete then runs as a new
+  // statement that sees them and only removes the session if no valid set is left.
+  const results = await db.batch([
+    db.select({ id: sessions.id }).from(sessions).where(eq(sessions.id, sessionId)).for("update"),
+    db
+      .update(setEntries)
+      .set({ voidedAt: new Date() })
+      .where(and(eq(setEntries.sessionId, sessionId), eq(setEntries.exerciseId, exerciseId), isNull(setEntries.voidedAt))),
+    db
+      .delete(sessions)
+      .where(
+        and(
+          eq(sessions.id, sessionId),
+          notExists(db.select({ one: sql`1` }).from(setEntries).where(and(eq(setEntries.sessionId, sessionId), isNull(setEntries.voidedAt)))),
+        ),
+      )
+      .returning({ id: sessions.id }),
+  ]);
   await recomputeTargets(user.id, user.weightIncrementKg, await loadLog(user.id, { exerciseIds: [exerciseId] }), [exerciseId]);
-  const remaining = await loadLog(user.id, { sessionId });
-  if (remaining.length === 0) await db.delete(sessions).where(eq(sessions.id, sessionId));
-  return { sessionEmpty: remaining.length === 0 };
+  return { sessionEmpty: results[2].length > 0 };
 }
 
 /**
