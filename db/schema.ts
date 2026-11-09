@@ -81,6 +81,10 @@ export const subscriptions = pgTable("subscriptions", {
   currentPeriodEnd: timestamp("current_period_end", { withTimezone: true }).notNull(),
   trialEnd: timestamp("trial_end", { withTimezone: true }),
   cancelAtPeriodEnd: boolean("cancel_at_period_end").notNull().default(false),
+  // When Stripe will end the subscription (cancel_at); the annual plan sets it to the commitment end.
+  cancelAt: timestamp("cancel_at", { withTimezone: true }),
+  // Annual plan (12 monthly installments) only: end of the current 12-month commitment cycle.
+  commitmentEnd: timestamp("commitment_end", { withTimezone: true }),
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .notNull()
     .defaultNow()

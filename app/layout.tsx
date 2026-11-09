@@ -76,7 +76,9 @@ gtag('config', '${gaId}');`,
           </>
         )}
       </head>
-      <body className="min-h-full flex flex-col">
+      {/* Browser extensions (ColorZilla's cz-shortcut-listen, Grammarly, ...) add attributes to <body> before React
+          hydrates. This only silences attribute mismatches on this one element, not in its children. */}
+      <body className="min-h-full flex flex-col" suppressHydrationWarning>
         <ClerkProvider
           localization={ptBR}
           appearance={clerkAppearance}

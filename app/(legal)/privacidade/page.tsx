@@ -64,7 +64,7 @@ const sections: LegalSection[] = [
             ],
             [
               <Strong key="b">Assinatura</Strong>,
-              "Identificador do seu cadastro na Stripe, plano contratado, situação da assinatura (teste, ativa, pagamento pendente, cancelada) e datas de teste e de renovação. O e-mail e o nome da conta são enviados à Stripe para criar o cadastro de cobrança. Os dados do cartão são informados direto à Stripe e nunca passam pelos nossos servidores.",
+              "Identificador do seu cadastro na Stripe, plano contratado, situação da assinatura (ativa, pagamento pendente, cancelada) e datas de renovação e de fim da fidelidade. O e-mail e o nome da conta são enviados à Stripe para criar o cadastro de cobrança. Os dados do cartão são informados direto à Stripe e nunca passam pelos nossos servidores.",
               "Você, ao assinar / Stripe",
             ],
             [
@@ -94,7 +94,7 @@ const sections: LegalSection[] = [
             execução de contrato (art. 7º, V, da LGPD).
           </li>
           <li>
-            <Strong>Cobrar a assinatura</Strong> — criar seu cadastro de cobrança, iniciar o teste grátis, cobrar os planos,
+            <Strong>Cobrar a assinatura</Strong> — criar seu cadastro de cobrança, cobrar os planos,
             liberar ou bloquear o acesso conforme a situação da assinatura e permitir que você a gerencie. Base legal:
             execução de contrato; para guardar registros de cobrança, cumprimento de obrigação legal ou regulatória
             (art. 7º, II).

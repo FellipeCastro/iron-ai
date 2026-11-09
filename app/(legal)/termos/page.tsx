@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Callout, LegalPage, List, Strong, type LegalSection } from "@/components/legal/legal-page";
-import { ANNUAL_PRICE, MONTHLY_PRICE, TRIAL_DAYS } from "@/components/landing/pricing";
+import { ANNUAL_INSTALLMENT_PRICE, ANNUAL_INSTALLMENTS, ANNUAL_PRICE, MONTHLY_PRICE } from "@/lib/plans";
 import { PRIVACY_URL, SETTINGS_URL } from "@/lib/routes";
 
 export const metadata: Metadata = {
@@ -86,26 +86,23 @@ const sections: LegalSection[] = [
   },
   {
     id: "assinatura",
-    title: "Assinatura, teste grátis e cobrança",
+    title: "Assinatura e cobrança",
     content: (
       <>
         <p>
-          O Iron AI é um serviço por assinatura. Para usar o painel e o bot é preciso ter uma assinatura ativa, que começa com um
-          teste grátis.
+          O Iron AI é um serviço por assinatura. Para usar o painel e o bot é preciso ter uma assinatura ativa. A primeira
+          cobrança acontece no momento da assinatura.
         </p>
         <List>
           <li>
-            <Strong>Planos:</Strong> mensal, por {brl(MONTHLY_PRICE)} a cada mês, ou anual, por {brl(ANNUAL_PRICE)} a cada ano. Os dois
-            incluem os mesmos recursos. Os valores estão em reais e podem incluir tributos, quando aplicáveis.
+            <Strong>Planos:</Strong> anual, em {ANNUAL_INSTALLMENTS} parcelas mensais de {brl(ANNUAL_INSTALLMENT_PRICE)} (total de{" "}
+            {brl(ANNUAL_PRICE)} por ciclo de 12 meses), com fidelidade de 12 meses; ou mensal, por {brl(MONTHLY_PRICE)} a cada mês,
+            sem fidelidade. As parcelas do anual são cobradas no cartão uma vez por mês e não comprometem o limite do ano inteiro.
+            Os dois incluem os mesmos recursos. Os valores estão em reais e podem incluir tributos, quando aplicáveis.
           </li>
           <li>
-            <Strong>Teste grátis de {TRIAL_DAYS} dias:</Strong> vale para a primeira assinatura de cada conta. Pedimos um cartão
-            ao assinar, mas nada é cobrado durante o teste. Se você não cancelar antes do fim, a cobrança do plano escolhido
-            começa automaticamente no primeiro dia depois do teste.
-          </li>
-          <li>
-            <Strong>Renovação automática:</Strong> a assinatura se renova ao fim de cada período (mês ou ano) e o cartão é
-            cobrado até você cancelar.
+            <Strong>Renovação automática:</Strong> o mensal se renova a cada mês. O anual se renova por mais 12 meses (outras{" "}
+            {ANNUAL_INSTALLMENTS} parcelas) ao fim de cada ciclo. O cartão é cobrado até você cancelar.
           </li>
           <li>
             <Strong>Pagamento:</Strong> é processado pela Stripe. Não vemos nem guardamos o número do seu cartão. Se uma cobrança
@@ -117,8 +114,9 @@ const sections: LegalSection[] = [
             <Link href={SETTINGS_URL} className={linkClass}>
               Configurações
             </Link>
-            , em “Gerenciar assinatura”. O acesso continua até o fim do período já pago (ou do teste) e não há nova cobrança.
-            Você também pode trocar de plano ou atualizar o cartão por lá.
+            . No mensal, use “Gerenciar assinatura”: o acesso continua até o fim do mês já pago e não há nova cobrança. No
+            anual, use “Cancelar renovação”: por causa da fidelidade, as parcelas restantes do ciclo de 12 meses continuam
+            sendo cobradas e o acesso vai até o fim do ciclo, sem novas cobranças depois. O cartão e as faturas também são gerenciados por lá.
           </li>
           <li>
             <Strong>Reembolso:</Strong> se você contratou pela internet, pode se arrepender em até 7 dias corridos contados da

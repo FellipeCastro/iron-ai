@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { SIGN_IN_URL, SIGN_UP_URL } from "@/lib/routes";
+import { ANNUAL_INSTALLMENT_PRICE, brl } from "@/lib/plans";
+import { SIGN_IN_URL, signUpForPlan } from "@/lib/routes";
 
 export { SIGN_IN_URL, SIGN_UP_URL } from "@/lib/routes";
 
@@ -14,8 +15,9 @@ export function CtaBadges({ size = "lg", className = "" }: { size?: BadgeSize; c
   const box = `inline-flex items-center justify-center rounded-full font-semibold transition-opacity hover:opacity-85 ${sizes[size]}`;
   return (
     <div className={`flex flex-wrap items-center gap-3 ${className}`}>
-      <Link href={SIGN_UP_URL} className={`${box} bg-black text-white`}>
-        Testar 14 dias grátis
+      {/* Every primary CTA leads to the featured plan: sign-up, then Checkout for the annual plan. */}
+      <Link href={signUpForPlan("annual")} className={`${box} bg-black text-white`}>
+        Criar conta 
       </Link>
       <Link href={SIGN_IN_URL} className={`${box} border border-[#d4d4d8] bg-white text-[#111]`}>
         Entrar
