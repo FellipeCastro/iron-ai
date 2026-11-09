@@ -29,7 +29,7 @@ export default async function DashboardPage() {
         title={`Olá${user?.firstName ? `, ${user.firstName}` : ""} 👋`}
         description={
           !nextDay
-            ? "Monte sua rotina para começar a registrar pelo Telegram."
+            ? "Monte seus treinos para começar a registrar pelo Telegram."
             : data.isTrainingDay
               ? `Hoje é dia de treino.${data.reminderTime ? ` Avisamos no Telegram às ${data.reminderTime}.` : ""}`
               : `Hoje é dia de descanso. O próximo treino é o ${nextDay.letter}.`
@@ -57,12 +57,12 @@ export default async function DashboardPage() {
         {!nextDay ? (
           <section className="rounded-[28px] bg-[#1e1a24] p-6 text-white shadow-[0_10px_30px_rgba(0,0,0,0.12)] sm:p-8 lg:col-span-2">
             <p className="text-[13px] font-medium tracking-[0.08em] text-white/60 uppercase">Primeiro passo</p>
-            <h2 className="mt-2 text-[24px] font-semibold">Monte sua rotina</h2>
+            <h2 className="mt-2 text-[24px] font-semibold">Monte seus treinos</h2>
             <p className="mt-3 max-w-[520px] text-[15px] text-white/70">
-              Escolha os treinos do rodízio (A, B, C…) e os exercícios de cada um. Você também pode mandar a rotina direto no Telegram.
+              Escolha os treinos do rodízio (A, B, C…) e os exercícios de cada um. Você também pode mandar seus treinos direto no Telegram.
             </p>
             <Link href={ROUTINE_URL} className={`${buttonPrimary} mt-6 bg-white text-[#111]!`}>
-              Montar rotina <ArrowRightIcon className="size-4" />
+              Montar treinos <ArrowRightIcon className="size-4" />
             </Link>
           </section>
         ) : (
@@ -123,7 +123,7 @@ export default async function DashboardPage() {
                 </span>
               </div>
               <Link href={ROUTINE_URL} className="inline-flex items-center gap-2 text-[14px] font-semibold hover:opacity-80">
-                Ver rotina <ArrowRightIcon className="size-4" />
+                Ver treinos <ArrowRightIcon className="size-4" />
               </Link>
             </div>
           </section>
@@ -221,7 +221,7 @@ export default async function DashboardPage() {
               : undefined
           }
         />
-        <StatTile label="Cargas aumentadas em 30 dias" value={String(stats.loadUps30d)} hint={`de ${stats.trackedExercises} exercícios da rotina`} />
+        <StatTile label="Cargas aumentadas em 30 dias" value={String(stats.loadUps30d)} hint={`de ${stats.trackedExercises} exercícios dos treinos`} />
       </div>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-3">

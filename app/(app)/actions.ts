@@ -70,7 +70,7 @@ export async function saveRoutineAction(input: z.input<typeof RoutineInput>): Pr
     const user = await subscriber();
     if (!user) return fail(SUBSCRIPTION_REQUIRED);
     const parsed = RoutineInput.safeParse(input);
-    if (!parsed.success) return fail("Rotina inválida. Confira os treinos e tente de novo.");
+    if (!parsed.success) return fail("Treinos inválidos. Confira os treinos e tente de novo.");
     const renamed: RenamedExercises = {};
     try {
       for (const e of parsed.data.flatMap((d) => d.exercises)) {
@@ -85,7 +85,7 @@ export async function saveRoutineAction(input: z.input<typeof RoutineInput>): Pr
       );
     } catch (err) {
       Sentry.logger.warn("Routine save rejected", { user_id: user.id, error_type: err instanceof Error ? err.name : typeof err });
-      return fail(err instanceof Error ? err.message : "Não foi possível salvar a rotina.");
+      return fail(err instanceof Error ? err.message : "Não foi possível salvar os treinos.");
     }
     Sentry.logger.info("Routine saved", {
       user_id: user.id,

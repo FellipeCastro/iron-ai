@@ -178,7 +178,7 @@ export function SettingsForm({ initial, linkedSince, checkout }: { initial: Sett
 
       {/* Danger zone */}
       <Card className="border border-[#fecdd3]">
-        <CardTitle title="Excluir conta" subtitle="Apaga de forma definitiva sua rotina, histórico, metas e o vínculo com o Telegram." />
+        <CardTitle title="Excluir conta" subtitle="Apaga de forma definitiva seus treinos, histórico, metas e o vínculo com o Telegram." />
         {confirmDelete ? (
           <div className="mt-6 grid gap-3 sm:max-w-[420px]">
             <label className="grid gap-2">

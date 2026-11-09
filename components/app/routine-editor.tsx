@@ -112,7 +112,7 @@ export function RoutineEditor({ initial, catalog }: { initial: Routine; catalog:
       }));
       setDays(next);
       setSaved(next);
-      showToast("Rotina salva");
+      showToast("Treinos salvos");
     });
   }
 
@@ -125,7 +125,7 @@ export function RoutineEditor({ initial, catalog }: { initial: Routine; catalog:
             <h2 className="text-[20px] font-bold">Rodízio</h2>
             <p className="mt-1 text-[14px] text-[#5b5b66]">Os treinos seguem esta ordem, independente do dia da semana.</p>
           </div>
-          <div className="flex items-center gap-1.5 pt-2 sm:gap-2" role="tablist" aria-label="Treinos da rotina">
+          <div className="flex items-center gap-1.5 pt-2 sm:gap-2" role="tablist" aria-label="Treinos">
             {days.map((d, i) => (
               <div key={d.letter} className="flex items-center gap-1.5 sm:gap-2">
                 {i > 0 && <span className="text-[13px] text-[#c4c4cc] sm:text-[16px]">→</span>}
@@ -318,7 +318,7 @@ export function RoutineEditor({ initial, catalog }: { initial: Routine; catalog:
               Descartar
             </button>
             <button type="button" onClick={save} disabled={saving} className={`${buttonPrimary} h-10! bg-white text-[#111]!`}>
-              Salvar rotina
+              Salvar treinos
             </button>
           </div>
         </div>

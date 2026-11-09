@@ -47,7 +47,10 @@ const Pending = z.discriminatedUnion("kind", [
 ]);
 export type Pending = z.infer<typeof Pending>;
 
-export const ChatState = z.object({ pending: Pending.nullable() });
+// Day the user asked to train instead of the suggested one. `at` (epoch ms) bounds how long it holds.
+const DayOverride = z.object({ letter: z.string(), at: z.number() });
+
+export const ChatState = z.object({ pending: Pending.nullable(), dayOverride: DayOverride.nullable().optional() });
 export type ChatState = z.infer<typeof ChatState>;
 
 const HOUR = 3_600_000;
@@ -62,16 +65,20 @@ const PENDING_TTL_MS: Record<Pending["kind"], number> = {
   time: 24 * HOUR,
 };
 
+/** Day choices stop applying after this: the next training day starts from the rotation again. */
+const DAY_OVERRIDE_TTL_MS = 16 * HOUR;
+
 export const stampPending = (state: ChatState, now = Date.now()): ChatState =>
-  state.pending ? { pending: { ...state.pending, at: now } } : state;
+  state.pending ? { ...state, pending: { ...state.pending, at: now } } : state;
 
 export function readChatState(raw: unknown, now = Date.now()): ChatState {
   const parsed = ChatState.safeParse(raw);
   if (!parsed.success) return { pending: null };
-  const { pending } = parsed.data;
+  const { pending, dayOverride } = parsed.data;
+  const override = dayOverride && now - dayOverride.at <= DAY_OVERRIDE_TTL_MS ? dayOverride : null;
   // Steps saved before `at` existed are treated as expired: they are the ones that got stuck.
-  if (pending && (pending.at === undefined || now - pending.at > PENDING_TTL_MS[pending.kind])) return { pending: null };
-  return parsed.data;
+  const live = pending && pending.at !== undefined && now - pending.at <= PENDING_TTL_MS[pending.kind] ? pending : null;
+  return { pending: live, dayOverride: override };
 }
 
 export const newPendingId = () => Math.random().toString(36).slice(2, 8);

@@ -40,7 +40,7 @@ const sections: LegalSection[] = [
         <p>O Iron AI é um assistente para registrar e acompanhar treinos de musculação. Com ele você pode:</p>
         <List>
           <li>registrar séries em texto livre pelo Telegram, corrigi-las ou apagá-las;</li>
-          <li>montar uma rotina de treinos (A, B, C…) com rodízio automático;</li>
+          <li>montar seus treinos (A, B, C…) com rodízio automático;</li>
           <li>receber metas calculadas por uma regra fixa de progressão de 8 a 12 repetições, com aumento de carga pelo incremento que você configurar;</li>
           <li>receber lembretes nos seus dias e horário de treino e resumos ao final de cada sessão;</li>
           <li>consultar histórico, recordes, relatórios e gráficos no painel web.</li>
@@ -178,7 +178,7 @@ const sections: LegalSection[] = [
     content: (
       <>
         <p>
-          Os dados que você registra — rotina, séries, exercícios personalizados e mensagens — continuam sendo seus. Você nos
+          Os dados que você registra — treinos, séries, exercícios personalizados e mensagens — continuam sendo seus. Você nos
           concede uma permissão limitada, não exclusiva e gratuita para armazenar, processar e exibir esse conteúdo apenas para
           prestar o Serviço a você, inclusive enviando-o aos prestadores descritos na Política de privacidade (como o serviço de
           IA que interpreta suas mensagens).

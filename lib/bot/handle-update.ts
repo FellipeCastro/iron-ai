@@ -5,6 +5,7 @@ import { parseMessage, type ParseResult } from "@/lib/ai/parse-message";
 import type { Intent } from "@/lib/ai/schemas";
 import { durationPrompt } from "@/lib/bot/duration";
 import { parseDurationInput } from "@/lib/engine/duration";
+import { findDayByQuery } from "@/lib/engine/session";
 import { matchExercise, type MatchCandidate } from "@/lib/engine/match";
 import { isNoReminder, parseTimeInput, parseWeekdaysInput } from "@/lib/engine/reminders";
 import { BudgetExceededError, UserBudgetExceededError } from "@/lib/limits";
@@ -229,15 +230,20 @@ async function loadCtx(chatId: number, user: User, rawState: unknown): Promise<C
   return { chatId, user, state: readChatState(rawState), routine: await loadRoutine(user.id), pool: null };
 }
 
-async function saveState(ctx: Ctx, state: ChatState) {
-  ctx.state = stampPending(state);
+/** Replaces the given parts of the chat state; what is not mentioned (e.g. the chosen day) is kept. */
+async function saveState(ctx: Ctx, state: Partial<ChatState>) {
+  ctx.state = stampPending({ ...ctx.state, ...state });
   await db.update(telegramLinks).set({ chatState: ctx.state }).where(eq(telegramLinks.userId, ctx.user.id));
 }
 
-/** Day being trained (open session) or the next one in the rotation. */
+const chosenLetter = (ctx: Ctx) => ctx.state.dayOverride?.letter ?? null;
+
+/** Day being trained (open session), the one the user asked for, or the next one in the rotation. */
 async function currentDay(ctx: Ctx): Promise<RoutineDayFull | null> {
   const open = await findOpenSession(ctx.user.id);
   if (open?.dayId) return loadDay(open.dayId);
+  const chosen = ctx.routine?.days.find((d) => d.letter === chosenLetter(ctx));
+  if (chosen) return chosen;
   return nextRoutineDay(ctx.user.id, ctx.routine);
 }
 
@@ -293,7 +299,7 @@ async function handleCommand(ctx: Ctx, text: string): Promise<Out[] | null> {
     case "help":
       return [{ text: render.help() }];
     case "treino":
-      return [{ text: await reports.nextWorkoutText(ctx.user, ctx.routine) }];
+      return [{ text: await reports.nextWorkoutText(ctx.user, ctx.routine, chosenLetter(ctx)) }];
     case "terminei":
       return finishWorkout(ctx);
     case "semana":
@@ -374,7 +380,11 @@ async function apply(ctx: Ctx, intent: Intent, ids: Record<string, string>): Pro
         ctx.user,
         ctx.routine,
         intent.groups.map((g, i) => ({ exerciseId: ids[`g${i}`], weight: g.weight_kg, reps: g.reps, count: g.sets })),
+        new Date(),
+        chosenLetter(ctx),
       );
+      // The chosen day now lives in the session itself.
+      if (ctx.state.dayOverride) await saveState(ctx, { dayOverride: null });
       const outs: Out[] = [];
       if (result.closedBefore) outs.push(summaryOut(result.closedBefore, "inactive"));
       outs.push({ text: render.setsLogged(result) });
@@ -398,6 +408,8 @@ async function apply(ctx: Ctx, intent: Intent, ids: Record<string, string>): Pro
     }
     case "finish_workout":
       return finishWorkout(ctx);
+    case "choose_day":
+      return chooseDay(ctx, intent.day);
     case "ask_report":
       return [{ text: await reportText(ctx, intent, ids) }];
     case "setup_routine":
@@ -411,7 +423,9 @@ async function apply(ctx: Ctx, intent: Intent, ids: Record<string, string>): Pro
 async function reportText(ctx: Ctx, intent: Extract<Intent, { type: "ask_report" }>, ids: Record<string, string>) {
   switch (intent.scope) {
     case "next_workout":
-      return reports.nextWorkoutText(ctx.user, ctx.routine);
+      // Naming a day in the question ("metas do treino A push") also makes it today's workout.
+      if (intent.day) return (await chooseDay(ctx, intent.day))[0].text;
+      return reports.nextWorkoutText(ctx.user, ctx.routine, chosenLetter(ctx));
     case "last_workout":
       return reports.lastWorkoutText(ctx.user, ctx.routine);
     case "exercise":
@@ -423,6 +437,20 @@ async function reportText(ctx: Ctx, intent: Extract<Intent, { type: "ask_report"
   }
 }
 
+/**
+ * The user named a day of the routine: it replaces the suggested one until they train it (or the choice
+ * expires). Only ever triggered by their message, never by the rotation. A workout already in progress keeps its day.
+ */
+async function chooseDay(ctx: Ctx, query: string): Promise<Out[]> {
+  const days = ctx.routine?.days ?? [];
+  const day = findDayByQuery(days, query);
+  if (!day) return [{ text: days.length ? render.unknownDay(query, days) : render.onboardingPrompt() }];
+  const open = await findOpenSession(ctx.user.id);
+  if (open && open.dayId !== day.id) return [{ text: await reports.nextWorkoutText(ctx.user, ctx.routine) }];
+  await saveState(ctx, { dayOverride: { letter: day.letter, at: Date.now() } });
+  return [{ text: await reports.nextWorkoutText(ctx.user, ctx.routine, day.letter) }];
+}
+
 function summaryOut(closed: ClosedSession, reason: "user" | "complete" | "inactive"): Out {
   return {
     text: render.summary({ sessionId: closed.session.id, closeReason: reason, day: closed.day, data: closed.data, next: closed.next }),
@@ -432,6 +460,7 @@ function summaryOut(closed: ClosedSession, reason: "user" | "complete" | "inacti
 
 async function finishWorkout(ctx: Ctx): Promise<Out[]> {
   const open = await findOpenSession(ctx.user.id);
+  if (ctx.state.dayOverride) await saveState(ctx, { dayOverride: null });
   const closed = open ? await closeSession(ctx.user, open.id, "user", ctx.routine) : null;
   if (!closed) return [{ text: render.noOpenSession() }];
   return [summaryOut(closed, "user"), await durationPrompt(ctx.user.id, closed)];
@@ -479,7 +508,7 @@ async function proposeRoutine(ctx: Ctx, intent: Extract<Intent, { type: "setup_r
   }));
   const id = newPendingId();
   await saveState(ctx, { pending: { kind: "routine", id, days } });
-  return [{ text: render.routineDraft(days), keyboard: confirmKeyboard(id, "Salvar rotina") }];
+  return [{ text: render.routineDraft(days), keyboard: confirmKeyboard(id, "Salvar treinos") }];
 }
 
 async function saveRoutineDraft(ctx: Ctx, days: RoutineDraft): Promise<Out[]> {

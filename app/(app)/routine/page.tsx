@@ -7,7 +7,7 @@ import { PageHeader } from "@/components/app/ui";
 import { getCatalog, getRoutine } from "@/lib/data";
 import { HISTORY_URL } from "@/lib/routes";
 
-export const metadata: Metadata = { title: "Rotina" };
+export const metadata: Metadata = { title: "Treinos" };
 
 export default async function RoutinePage() {
   await auth.protect();
@@ -17,7 +17,7 @@ export default async function RoutinePage() {
     <>
       <div className="relative">
         <PageHeader
-          eyebrow="Rotina"
+          eyebrow="Treinos"
           title="Seus treinos"
           description="Monte os treinos do rodízio, escolha os exercícios e quantas séries fazer em cada um."
         />

@@ -30,7 +30,7 @@ export default async function ExercisePage({ params }: PageProps<"/exercises/[id
         eyebrow={MUSCLE_LABEL[exercise.muscleGroup]}
         title={exercise.name}
         description={
-          data.dayLetter ? `Faz parte do treino ${data.dayLetter} · ${targets.length} séries` : "Registrado como exercício extra, fora da rotina."
+          data.dayLetter ? `Faz parte do treino ${data.dayLetter} · ${targets.length} séries` : "Registrado como exercício extra, fora dos treinos."
         }
         actions={summary.stagnant ? <Badge tone="warn">⚠️ Sem progresso nos últimos 3 treinos</Badge> : undefined}
       />
@@ -47,7 +47,7 @@ export default async function ExercisePage({ params }: PageProps<"/exercises/[id
         <StatTile
           label="Próxima meta"
           value={targets[0] ? formatLoad(targets[0].weight, targets[0].reps) : "—"}
-          hint={targets[0] ? "na 1ª série" : "fora da rotina"}
+          hint={targets[0] ? "na 1ª série" : "fora dos treinos"}
         />
       </div>
 

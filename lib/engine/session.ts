@@ -24,6 +24,37 @@ export function pickDayForSession<D extends PlanDay>(days: D[], lastLetter: stri
   return matches.length === 1 ? matches[0] : expected;
 }
 
+const plain = (s: string) =>
+  s
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+
+/**
+ * Routine day the user named ("A", "treino push", "A push", "upper"): a standalone letter or a word of the
+ * title. Returns null when nothing matches or two days tie, so the bot asks instead of guessing.
+ */
+export function findDayByQuery<D extends Pick<PlanDay, "letter"> & { title: string }>(days: D[], query: string): D | null {
+  const words = plain(query).split(" ").filter((w) => w && w !== "treino" && w !== "dia");
+  if (words.length === 0) return null;
+  const scored = days
+    .map((d) => {
+      const title = new Set(plain(d.title).split(" "));
+      let score = 0;
+      for (const w of words) {
+        if (w.length === 1 && w === d.letter.toLowerCase()) score += 1;
+        else if (w.length > 1 && title.has(w)) score += 2;
+      }
+      return { d, score };
+    })
+    .filter((x) => x.score > 0)
+    .sort((a, b) => b.score - a.score);
+  if (scored.length === 0 || (scored[1] && scored[1].score === scored[0].score)) return null;
+  return scored[0].d;
+}
+
 export type SessionSet = { exerciseId: string; setPosition: number; isExtra: boolean };
 
 /**

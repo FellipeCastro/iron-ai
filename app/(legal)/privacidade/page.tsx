@@ -16,7 +16,7 @@ const sections: LegalSection[] = [
     content: (
       <>
         <p>
-          O Iron AI é um assistente de treino que funciona no Telegram, com um painel web para rotina, histórico e gráficos. O
+          O Iron AI é um assistente de treino que funciona no Telegram, com um painel web para treinos, histórico e gráficos. O
           controlador dos seus dados pessoais, nos termos da Lei Geral de Proteção de Dados (Lei nº 13.709/2018 — LGPD), é{" "}
           Fellipe da Silva Castro (“nós”), com endereço em{" "}
           São Paulo, Brasil.
@@ -49,12 +49,12 @@ const sections: LegalSection[] = [
             ],
             [
               <Strong key="t">Telegram</Strong>,
-              "ID do chat, seu @usuário (se houver) e o estado da conversa (por exemplo, uma confirmação pendente ou o rascunho de uma rotina).",
+              "ID do chat, seu @usuário (se houver) e o estado da conversa (por exemplo, uma confirmação pendente ou o rascunho dos seus treinos).",
               "Telegram, ao vincular a conta",
             ],
             [
               <Strong key="tr">Treino</Strong>,
-              "Rotina (treinos A/B/C, exercícios e séries planejadas), sessões, séries registradas (exercício, carga e repetições), correções, metas calculadas e exercícios personalizados que você criar.",
+              "Treinos (A/B/C, exercícios e séries planejadas), sessões, séries registradas (exercício, carga e repetições), correções, metas calculadas e exercícios personalizados que você criar.",
               "Você, pelo chat ou pelo painel",
             ],
             [
@@ -105,7 +105,7 @@ const sections: LegalSection[] = [
           </li>
           <li>
             <Strong>Manter o serviço estável e seguro</Strong> — limite diário de mensagens, teto de gasto com o serviço de IA,
-            diagnóstico de erros e auditoria de ações importantes (como salvar a rotina, alterar o horário de treino, desconectar o
+            diagnóstico de erros e auditoria de ações importantes (como salvar os treinos, alterar o horário de treino, desconectar o
             Telegram ou excluir a conta). Base legal: legítimo interesse (art. 7º, IX).
           </li>
           <li>
@@ -126,7 +126,7 @@ const sections: LegalSection[] = [
         <p>
           Quando você manda uma mensagem de texto ao bot, ela é enviada à <Strong>OpenAI</Strong> para ser{" "}
           <Strong>interpretada</Strong> — por exemplo, transformar “supino 3x10 com 20kg” em exercício, séries, repetições e
-          carga. Junto com a mensagem enviamos um contexto mínimo: os nomes dos exercícios da sua rotina, as metas do treino do
+          carga. Junto com a mensagem enviamos um contexto mínimo: os nomes dos exercícios dos seus treinos, as metas do treino do
           dia e suas últimas séries registradas.
         </p>
         <List>
@@ -221,7 +221,7 @@ const sections: LegalSection[] = [
           ["Texto das mensagens enviadas ao bot e sua interpretação", "Apagados automaticamente após 30 dias"],
           ["Contador diário de mensagens e registro de lembretes", "Apagados após 90 dias"],
           ["Links de vinculação do Telegram", "Válidos por 15 minutos; apagados após o uso ou até 1 dia depois de expirar. Só guardamos um hash, nunca o link"],
-          ["Conta, preferências, rotina, histórico de treino e metas", "Enquanto sua conta existir"],
+          ["Conta, preferências, treinos, histórico de treino e metas", "Enquanto sua conta existir"],
           ["Vínculo do Telegram", "Até você desconectar ou excluir a conta"],
           ["Situação da assinatura e identificador na Stripe", "Enquanto sua conta existir"],
           [
@@ -246,7 +246,7 @@ const sections: LegalSection[] = [
         <p>Você pode, a qualquer momento:</p>
         <List>
           <li>
-            <Strong>Ver e corrigir seus dados</Strong> — rotina, histórico, metas e preferências ficam no painel web; séries podem
+            <Strong>Ver e corrigir seus dados</Strong> — treinos, histórico, metas e preferências ficam no painel web; séries podem
             ser corrigidas ou apagadas pelo chat (“errei, foi 25kg”, “apaga a última”).
           </li>
           <li>
@@ -258,7 +258,7 @@ const sections: LegalSection[] = [
           </li>
           <li>
             <Strong>Excluir sua conta</Strong> — em Configurações, “Excluir conta”. A exclusão é definitiva e imediata: apagamos
-            sua rotina, histórico, metas, exercícios personalizados, mensagens, contadores e o vínculo com o Telegram, cancelamos a assinatura, excluímos seu cadastro na Stripe e
+            seus treinos, histórico, metas, exercícios personalizados, mensagens, contadores e o vínculo com o Telegram, cancelamos a assinatura, excluímos seu cadastro na Stripe e
             removemos seu login no provedor de autenticação. Não é possível desfazer.
           </li>
         </List>

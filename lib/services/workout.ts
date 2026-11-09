@@ -191,7 +191,8 @@ export type SetInput = { exerciseId: string; weight: number | null; reps: number
  * Appends sets to the open session (opening one if needed), recomputes targets and detects records.
  * A stale open session (90 min idle) is closed first and returned in `closedBefore`.
  */
-export async function logSets(user: User, routine: Routine | null, inputs: SetInput[], now = new Date()) {
+/** `chosenLetter`: day the user asked to train; it wins over the rotation when a new session opens. */
+export async function logSets(user: User, routine: Routine | null, inputs: SetInput[], now = new Date(), chosenLetter?: string | null) {
   let closedBefore: ClosedSession | null = null;
   let session = await findOpenSession(user.id);
   if (session && isInactive(session.lastSetAt ?? session.startedAt, now)) {
@@ -201,7 +202,8 @@ export async function logSets(user: User, routine: Routine | null, inputs: SetIn
 
   let opened = false;
   if (!session) {
-    const day = routine ? pickDayForSession(routine.days, await lastTrainedLetter(user.id), inputs[0].exerciseId) : null;
+    const chosen = chosenLetter ? routine?.days.find((d) => d.letter === chosenLetter) : undefined;
+    const day = chosen ?? (routine ? pickDayForSession(routine.days, await lastTrainedLetter(user.id), inputs[0].exerciseId) : null);
     [session] = await db
       .insert(sessions)
       .values({ userId: user.id, dayId: day?.id ?? null, startedAt: now, lastSetAt: now })

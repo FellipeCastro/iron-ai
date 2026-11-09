@@ -47,6 +47,15 @@ const AskReport = z.object({
     ),
   exercise: exerciseName.nullable(),
   muscle_group: z.enum(muscleGroup.enumValues).nullable(),
+  day: z
+    .string()
+    .nullable()
+    .describe("Only for next_workout: the routine day the user named ('A', 'treino push', 'A push'), as written. null when they did not name one."),
+});
+
+const ChooseDay = z.object({
+  type: z.literal("choose_day"),
+  day: z.string().describe("Routine day the user says they will train now, as written: 'A', 'push', 'treino A push'."),
 });
 
 const RoutineExercise = z.object({
@@ -70,7 +79,7 @@ const Clarify = z.object({
 });
 
 export const ParsedMessage = z.object({
-  intent: z.discriminatedUnion("type", [LogSets, CorrectSet, DeleteSet, FinishWorkout, AskReport, SetupRoutine, Clarify]),
+  intent: z.discriminatedUnion("type", [LogSets, CorrectSet, DeleteSet, FinishWorkout, AskReport, ChooseDay, SetupRoutine, Clarify]),
   confidence: z.number().describe("0 to 1: how sure you are that the intent and every number are exactly what the user meant."),
 });
 

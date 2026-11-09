@@ -12,7 +12,7 @@ const features = [
   "Lembretes nos seus dias e horários de treino",
   "Resumo ao final de cada treino",
   "Gráficos de evolução, 1RM estimado e calorias",
-  "Painel web com rotina e histórico completo",
+  "Painel web com treinos e histórico completo",
 ];
 
 function CheckIcon({ className = "" }: { className?: string }) {

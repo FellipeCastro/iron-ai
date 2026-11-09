@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assignSet, isInactive, isSessionComplete, nextDay, pickDayForSession, remainingSets, type PlanDay } from "@/lib/engine/session";
+import { assignSet, findDayByQuery, isInactive, isSessionComplete, nextDay, pickDayForSession, remainingSets, type PlanDay } from "@/lib/engine/session";
 
 const days: PlanDay[] = [
   {
@@ -69,4 +69,21 @@ it("inactivity after 90 minutes", () => {
   const last = new Date("2026-01-01T10:00:00Z");
   expect(isInactive(last, new Date("2026-01-01T11:29:00Z"))).toBe(false);
   expect(isInactive(last, new Date("2026-01-01T11:30:00Z"))).toBe(true);
+});
+
+describe("findDayByQuery", () => {
+  const named = [
+    { letter: "A", position: 1, title: "Push" },
+    { letter: "B", position: 2, title: "Pull" },
+    { letter: "D", position: 4, title: "Upper" },
+  ];
+  it("matches the letter", () => expect(findDayByQuery(named, "treino B")?.letter).toBe("B"));
+  it("matches the title", () => expect(findDayByQuery(named, "treino push")?.letter).toBe("A"));
+  it("matches letter and title together", () => expect(findDayByQuery(named, "A push")?.letter).toBe("A"));
+  it("ignores accents and case", () => expect(findDayByQuery(named, "UPPER")?.letter).toBe("D"));
+  it("returns null for unknown or empty queries", () => {
+    expect(findDayByQuery(named, "perna")).toBeNull();
+    expect(findDayByQuery(named, "treino")).toBeNull();
+  });
+  it("returns null on a tie", () => expect(findDayByQuery(named, "push pull")).toBeNull());
 });

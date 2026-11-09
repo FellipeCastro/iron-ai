@@ -20,9 +20,11 @@ export async function planView(userId: string, day: RoutineDayFull | null): Prom
   };
 }
 
-export async function nextWorkoutText(user: User, routine: Routine | null) {
+export async function nextWorkoutText(user: User, routine: Routine | null, chosenLetter?: string | null) {
   const open = await findOpenSession(user.id);
   if (open?.dayId) return render.nextWorkout(await planView(user.id, await loadDay(open.dayId)), "Treino em andamento");
+  const chosen = chosenLetter ? routine?.days.find((d) => d.letter === chosenLetter) : undefined;
+  if (chosen) return render.nextWorkout(await planView(user.id, chosen), "Treino de hoje");
   return render.nextWorkout(await planView(user.id, await nextRoutineDay(user.id, routine)));
 }
 

@@ -36,11 +36,11 @@ export const linked = (hasRoutine: boolean) => `Pronto, Telegram conectado! ✅\
 
 export const onboardingPrompt = () =>
   [
-    "Vamos montar sua rotina. Me mande seus treinos em uma mensagem, por exemplo:",
+    "Vamos montar seus treinos. Me mande seus treinos em uma mensagem, por exemplo:",
     "",
     "<i>A: supino reto 3 séries, crucifixo 3, tríceps corda 3\nB: puxada 3, remada baixa 3, rosca direta 3\nC: agachamento 4, leg press 3, elevação lateral 3</i>",
     "",
-    `Se preferir, monte pelo site em ${link(ROUTINE_URL, "Rotina")}.`,
+    `Se preferir, monte pelo site em ${link(ROUTINE_URL, "Treinos")}.`,
   ].join("\n");
 
 const howToLog = () =>
@@ -63,7 +63,7 @@ export const help = () =>
 export type DraftDay = { title: string; exercises: { name: string; sets: number; id: string | null }[] };
 
 export function routineDraft(days: DraftDay[]) {
-  const lines = ["<b>Confere sua rotina?</b>", ""];
+  const lines = ["<b>Confere seus treinos?</b>", ""];
   days.forEach((d, i) => {
     lines.push(`<b>${String.fromCharCode(65 + i)} · ${esc(d.title)}</b>`);
     for (const e of d.exercises) lines.push(`• ${esc(e.name)} — ${plural(e.sets, "série", "séries")}${e.id ? "" : " <i>(novo)</i>"}`);
@@ -73,7 +73,7 @@ export function routineDraft(days: DraftDay[]) {
   return lines.join("\n");
 }
 
-export const routineSaved = (firstTitle: string) => `Rotina salva! ✅ Seu próximo treino é o <b>A · ${esc(firstTitle)}</b>.`;
+export const routineSaved = (firstTitle: string) => `Treinos salvos! ✅ Seu próximo treino é o <b>A · ${esc(firstTitle)}</b>.`;
 
 const WEEKDAY_NAMES = ["segunda", "terça", "quarta", "quinta", "sexta", "sábado", "domingo"];
 const formatClock = (time: string) => time.slice(0, 5).replace(":", "h").replace(/h00$/, "h");
@@ -148,7 +148,7 @@ export const confirmDelete = (name: string | null, setNumber: number | null) =>
 export const pickExercise = (query: string) => `Qual exercício é <b>“${esc(query)}”</b>?`;
 
 export const unknownExercise = (query: string) =>
-  `Não encontrei o exercício <b>“${esc(query)}”</b>. Tente o nome completo (ex.: <i>supino inclinado com halteres</i>) ou adicione-o em ${link(ROUTINE_URL, "Rotina")}.`;
+  `Não encontrei o exercício <b>“${esc(query)}”</b>. Tente o nome completo (ex.: <i>supino inclinado com halteres</i>) ou adicione-o em ${link(ROUTINE_URL, "Treinos")}.`;
 
 export const cancelled = () => "Ok, não registrei nada.";
 export const expiredAction = () => "Essa ação não está mais disponível.";
@@ -162,6 +162,9 @@ export const deleted = (it: { name: string; setPosition: number; weight: number;
 export const nothingToCorrect = () => "Não achei nenhuma série recente para alterar.";
 
 // ---------- Session ----------
+
+export const unknownDay = (query: string, days: { letter: string; title: string }[]) =>
+  `Não achei o treino <b>“${esc(query)}”</b> nos seus treinos. Seus treinos: ${days.map((d) => `<b>${esc(d.letter)}</b>${d.title ? ` · ${esc(d.title)}` : ""}`).join(", ")}.`;
 
 export const noOpenSession = () => "Você não tem treino em andamento. Mande sua primeira série para começar.";
 

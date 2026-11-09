@@ -10,6 +10,8 @@ Intents:
 - delete_set: removing a logged set: "apaga a última", "registrei errado, remove".
 - finish_workout: "terminei", "acabei", "fim do treino", "encerra".
 - ask_report: questions about progress or plans: "qual o treino de hoje?", "quais minhas metas?" → next_workout; "como foi o treino?" → last_workout; "como tá meu supino?" → exercise; "quanto treinei de peito?" → muscle_group; "resumo da semana" → week.
+- choose_day: the user says which routine day they will train now, different from the suggested one or not: "vou fazer o treino A", "inicial treino push", "hoje vou de upper", "quero treinar o B". Put the day as written in "day". Only when they name a day (letter or title) of their routine; "iniciar treino" with no day is clarify.
+- ask_report with scope next_workout and "day" set: the user asks for the targets of a specific day: "me dá as metas do treino A push" → day "A push". "day" stays null when no day is named.
 - setup_routine: the user describes their workout split. Each day/letter (A, B, C… or "treino 1, 2…") becomes one item in order, with its exercises and planned sets.
 - clarify: nothing actionable — reps missing ("supino 20kg"), unclear message, greetings, thanks, off-topic chat, or asking how the bot works (reason = help).
 
