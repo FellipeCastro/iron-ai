@@ -1,9 +1,8 @@
 import Link from "next/link";
 import { signUpForPlan } from "@/lib/routes";
 
-export const TRIAL_DAYS = 14;
-export const MONTHLY_PRICE = 19.9;
-export const ANNUAL_PRICE = 199;
+export const MONTHLY_PRICE = 14.9;
+export const ANNUAL_PRICE = 139.9;
 
 const brl = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -55,7 +54,7 @@ function Plan({ plan, name, price, period, note, highlight = false }: PlanProps)
           highlight ? "bg-white text-[#111]" : "bg-black text-white"
         }`}
       >
-        Testar {TRIAL_DAYS} dias grátis
+        Assinar agora
       </Link>
       <ul className="mt-8 flex flex-col gap-3.5">
         {features.map((feature) => (
@@ -78,7 +77,7 @@ export function Pricing() {
         Dois planos, os mesmos recursos
       </h2>
       <p className="mt-2 text-center text-[18px] text-[#333]">
-        Teste {TRIAL_DAYS} dias grátis com tudo liberado. Depois, escolha o plano que cabe no seu treino.
+        Todos os recursos liberados. Escolha o plano que cabe no seu treino.
       </p>
       <div className="mx-auto mt-[72px] grid max-w-[880px] gap-8 md:grid-cols-2">
         <Plan plan="monthly" name="Mensal" price={brl(MONTHLY_PRICE)} period="/ mês" note="Sem fidelidade. Cancele quando quiser." />

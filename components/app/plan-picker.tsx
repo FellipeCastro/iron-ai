@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { startCheckoutAction } from "@/app/(app)/actions";
-import { ANNUAL_PRICE, MONTHLY_PRICE, TRIAL_DAYS } from "@/components/landing/pricing";
+import { ANNUAL_PRICE, MONTHLY_PRICE } from "@/components/landing/pricing";
 import { useToast } from "./toast";
 import { buttonPrimary } from "./ui";
 
@@ -22,7 +22,7 @@ const plans: { plan: Plan; name: string; price: string; period: string; note: st
   },
 ];
 
-/** Pick monthly or annual, then continue to Stripe Checkout (the trial is applied there). */
+/** Pick monthly or annual, then continue to Stripe Checkout (the first charge happens there). */
 export function PlanPicker({ initial }: { initial: Plan }) {
   const [selected, setSelected] = useState<Plan>(initial);
   const [toast, showToast] = useToast();
@@ -85,10 +85,10 @@ export function PlanPicker({ initial }: { initial: Plan }) {
 
       <div className="mt-8 flex flex-col items-center gap-3">
         <button type="button" disabled={pending} onClick={continueToCheckout} className={`${buttonPrimary} h-12! px-8! text-[17px]!`}>
-          {pending ? "Abrindo pagamento…" : `Começar ${TRIAL_DAYS} dias grátis`}
+          {pending ? "Abrindo pagamento…" : "Assinar agora"}
         </button>
         <p className="text-center text-[14px] text-[#5b5b66]">
-          Você só é cobrado depois do teste e pode cancelar a qualquer momento.
+          Cobrança imediata no cartão. Você pode cancelar a qualquer momento.
         </p>
       </div>
       {toast}

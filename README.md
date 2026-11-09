@@ -59,9 +59,8 @@ Código puro, sem I/O, coberto por testes.
 - **Relatórios:** por exercício e por grupo, em texto no Telegram com link para o site.
 
 ### 5. Assinatura
-- **Sem teste grátis:** a primeira cobrança é feita no Checkout. O plano em destaque é o anual em 12x de R$ 11,58 (fidelidade de 12 meses); o mensal, de R$ 14,90 sem fidelidade, é a alternativa.
-- **Anual em 12x:** no Stripe é um preço mensal. A fidelidade fica no app: "Cancelar renovação" agenda `cancel_at` para o fim do ciclo de 12 meses (`lib/commitment.ts`), e o portal desses assinantes não tem a opção de cancelar.
-- **Customer Portal:** cartão, faturas e (fora da fidelidade) cancelamento.
+- **Sem teste grátis:** a primeira cobrança é feita no Checkout. R$ 14,90/mês ou R$ 139,90/ano (à vista, sem parcelamento e sem fidelidade).
+- **Customer Portal:** cancelamento, troca de plano, cartão e faturas.
 - **Controle de risco:** disputa aberta ou reembolso total cancelam a assinatura na hora.
 
 ## 🏗️ Arquitetura de IA
@@ -123,11 +122,7 @@ Telegram → POST /api/telegram/webhook   valida o secret, aplica os limites (60
    NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=  # Stripe → Developers → API keys (pk_test_...)
    STRIPE_WEBHOOK_SECRET=               # whsec_... do `stripe listen` (dev) ou do endpoint de webhook (prod)
    STRIPE_PRICE_MONTHLY=                # price_... do plano mensal (R$ 14,90/mês)
-   STRIPE_PRICE_ANNUAL=                 # price_... do anual em 12x: preço MENSAL de R$ 11,58, com fidelidade
-   STRIPE_PRICE_MONTHLY_LEGACY=         # opcional: preço mensal antigo (R$ 19,90), de quem já assinava
-   STRIPE_PRICE_ANNUAL_LEGACY=          # opcional: preço anual antigo à vista (R$ 199,00)
-   STRIPE_PORTAL_CONFIG_STANDARD=       # bpc_... portal com cancelamento (npm run stripe:setup-plans)
-   STRIPE_PORTAL_CONFIG_COMMITMENT=     # bpc_... portal sem cancelamento, para o anual em 12x
+   STRIPE_PRICE_ANNUAL=                 # price_... do plano anual (R$ 139,90/ano, à vista)
    ```
 
    <details>
@@ -163,12 +158,14 @@ Telegram → POST /api/telegram/webhook   valida o secret, aplica os limites (60
 
    # Terminal 2 — worker do Trigger.dev (executa as tasks em ./trigger)
    npm run trigger:dev
+   npx trigger.dev@4.8.1 dev
 
    # Terminal 3 — túnel público para os webhooks do Clerk e do Telegram
    ngrok http 3000
 
    # Terminal 4 — encaminha os webhooks do Stripe para o site local
    stripe listen --all-snapshot --forward-to localhost:3000/api/webhooks/stripe
+   stripe listen --forward-to localhost:3000/api/webhooks/stripe
    ```
 
    A versão do CLI (`trigger.dev@4.8.1`) deve ser a mesma de `@trigger.dev/sdk` no `package.json`.
@@ -185,7 +182,7 @@ Telegram → POST /api/telegram/webhook   valida o secret, aplica os limites (60
 No Trigger.dev Cloud (ambiente **prod**), cadastre as variáveis usadas pelas tasks: `DATABASE_URL`, `OPENAI_API_KEY`, `TELEGRAM_BOT_TOKEN`, `NEXT_PUBLIC_SITE_URL`, as opcionais da OpenAI e `NEXT_PUBLIC_SENTRY_DSN` / `NEXT_PUBLIC_SENTRY_ENVIRONMENT`. Em dev, o `trigger.dev dev` lê o `.env` local.
 
 ### Stripe
-Os planos e o portal de cobrança precisam existir na conta. Rode `npm run stripe:setup-plans`, uma vez em teste e outra com a chave `live`. Ele cria os dois preços mensais no produto do `STRIPE_PRICE_MONTHLY` atual e as duas configurações do Customer Portal, depois imprime as variáveis `STRIPE_*` para copiar. Os preços em `lib/plans.ts` precisam bater com os do Stripe. Em dev, teste com o cartão `4242 4242 4242 4242`.
+Crie no produto do Iron AI um preço recorrente mensal de R$ 14,90 e um anual de R$ 139,90 (em teste e em `live`) e copie os IDs `price_...` para `STRIPE_PRICE_MONTHLY` e `STRIPE_PRICE_ANNUAL`. Os valores em `components/landing/pricing.tsx` precisam bater com os do Stripe. Ative o Customer Portal no Dashboard. Em dev, teste com o cartão `4242 4242 4242 4242`.
 
 Em produção, crie o endpoint `https://<dominio>/api/webhooks/stripe` com os eventos `customer.subscription.created|updated|deleted`, `checkout.session.completed`, `invoice.paid`, `invoice.payment_failed`, `charge.dispute.created`, `charge.refunded` e `radar.early_fraud_warning.created`. Use as chaves `live` e cadastre as variáveis `STRIPE_*` no host do site.
 

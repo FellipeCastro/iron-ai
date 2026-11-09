@@ -75,7 +75,7 @@ async function sendReminders(now: Date) {
       and(
         isNotNull(users.reminderTime),
         sql`cardinality(${users.trainingDays}) > 0`,
-        // Reminders are part of the product: only for complimentary accounts and users with a trial or paid subscription.
+        // Reminders are part of the product: only for complimentary accounts and users with a paid subscription.
         or(eq(users.complimentary, true), inArray(subscriptions.status, ACCESS_STATUSES)),
       ),
     );

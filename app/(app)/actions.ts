@@ -228,7 +228,7 @@ export async function disconnectTelegramAction(): Promise<ActionResult> {
 
 const CheckoutInput = z.object({ plan: z.enum(["monthly", "annual"]) });
 
-/** Stripe Checkout (free trial included) for the chosen plan; the client redirects to the returned URL. */
+/** Stripe Checkout for the chosen plan; the client redirects to the returned URL. */
 export async function startCheckoutAction(input: z.input<typeof CheckoutInput>): Promise<ActionResult<{ url: string }>> {
   return traced("startCheckoutAction", async () => {
     const user = await currentAppUser();

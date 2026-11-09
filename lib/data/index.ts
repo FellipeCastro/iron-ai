@@ -10,7 +10,7 @@ export type * from "./types";
 
 // Read model for the (app) pages: view models derived from the signed-in user's data (./load.ts).
 
-/** View-model source for every page except Settings: without a trial or subscription, the user is sent straight to Checkout. */
+/** View-model source for every page except Settings: without a subscription, the user is sent straight to Checkout. */
 async function load() {
   const data = await loadUserData();
   if (!data.settings.billing.hasAccess) redirect(CHECKOUT_URL);

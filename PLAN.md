@@ -104,7 +104,7 @@ Status conferido no código em 2026-11-03. `[x]` = implementado no repositório;
 
 ### 7. Entregas fora do plano original
 **Assinatura (Stripe)**
-- [x] Checkout com 14 dias grátis, planos mensal e anual (`/assinar`, `/assinar/sucesso`)
+- [x] Checkout sem teste grátis, planos mensal (R$ 14,90) e anual (R$ 139,90) (`/assinar`, `/assinar/sucesso`)
 - [x] Webhook do Stripe sincronizando `subscriptions` e Customer Portal
 - [x] Controle de acesso no painel, no bot e nos lembretes (`lib/services/access.ts`)
 - [x] Tratamento de risco: disputa, reembolso total e alerta de fraude
@@ -146,7 +146,7 @@ Todas resolvidas em 2026-11-03.
 ## Mudanças em relação ao plano original
 | Plano | Implementado |
 |---|---|
-| Grátis + rate limit | Assinatura paga com 14 dias grátis + rate limit |
+| Grátis + rate limit | Assinatura paga + rate limit |
 | 150 msg/dia | 60 msg/dia e 1.000 msg/mês, configuráveis por env |
 | Cron a cada 5 min | Cron a cada 15 min, para deixar o Neon dormir entre execuções |
 | Recharts via shadcn charts | Gráficos próprios em `components/charts/` |

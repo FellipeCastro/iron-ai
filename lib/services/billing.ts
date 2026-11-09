@@ -4,7 +4,6 @@ import * as Sentry from "@sentry/nextjs";
 import { eq, inArray, or } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
 import { db, subscriptions, users, type User } from "@/db";
-import { TRIAL_DAYS } from "@/components/landing/pricing";
 import { siteUrl } from "@/lib/env";
 import { CHECKOUT_URL, DASHBOARD_URL, SETTINGS_URL } from "@/lib/routes";
 import { ACCESS_STATUSES, userHasAccess } from "@/lib/services/access";
@@ -31,7 +30,7 @@ async function ensureCustomer(user: User) {
 }
 
 /**
- * Hosted Checkout for a new subscription with the free trial. Users who already subscribed get the
+ * Hosted Checkout for a new subscription, charged right away (no trial). Users who already subscribed get the
  * dashboard instead: a second Checkout would bill them twice.
  */
 export async function createCheckoutUrl(user: User, plan: Plan) {
@@ -52,7 +51,6 @@ export async function createCheckoutUrl(user: User, plan: Plan) {
     customer,
     client_reference_id: user.id,
     line_items: [{ price: priceId(plan), quantity: 1 }],
-    subscription_data: { trial_period_days: TRIAL_DAYS },
     locale: "pt-BR",
     success_url: `${siteUrl()}${CHECKOUT_URL}/sucesso?session_id={CHECKOUT_SESSION_ID}`,
     // Back to the plan picker, which does not auto-redirect, so cancelling never loops.

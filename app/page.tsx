@@ -5,7 +5,7 @@ import { HeaderAuth } from "@/components/brand/header-auth";
 import { Logo } from "@/components/brand/logo";
 import { CtaBadges, SIGN_IN_URL } from "@/components/landing/cta-badges";
 import { FeatureShowcase } from "@/components/landing/feature-showcase";
-import { ANNUAL_PRICE, MONTHLY_PRICE, Pricing, TRIAL_DAYS } from "@/components/landing/pricing";
+import { ANNUAL_PRICE, MONTHLY_PRICE, Pricing } from "@/components/landing/pricing";
 import {
   ArrowRightIcon,
   ChartUpIcon,
@@ -102,8 +102,8 @@ const conversations = [
 
 const faqs = [
   {
-    q: "Quanto custa e como funciona o teste grátis?",
-    a: `Você testa o Iron AI por ${TRIAL_DAYS} dias grátis, com todos os recursos liberados. Depois, o plano mensal custa R$ 19,90 por mês e o anual R$ 199,00 por ano (equivale a R$ 16,58 por mês).`,
+    q: "Quanto custa o Iron AI?",
+    a: "Todos os recursos ficam liberados nos dois planos. O mensal custa R$ 14,90 por mês e o anual R$ 139,90 por ano, à vista (equivale a R$ 11,66 por mês).",
   },
   {
     q: "Posso cancelar quando quiser?",
@@ -482,7 +482,7 @@ export default function Home() {
         <div className="mx-auto grid max-w-[1280px] gap-10 px-6 pt-7 pb-4 md:grid-cols-3 lg:px-4">
           <div>
             <Logo className="[&_img:first-child]:h-[37px] [&_img:last-child]:h-[29px]" />
-            <p className="mt-6 text-[14px] text-[#3f3f46]">Teste o Iron AI por {TRIAL_DAYS} dias grátis</p>
+            <p className="mt-6 text-[14px] text-[#3f3f46]">Treine com o Iron AI a partir de R$ 14,90 por mês</p>
             <CtaBadges size="sm" className="mt-4" />
           </div>
           {footerColumns.map((column) => (

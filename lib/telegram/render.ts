@@ -3,7 +3,6 @@ import type { exerciseReport, muscleGroupReport, sessionSummary } from "@/lib/en
 import { siteUrl } from "@/lib/env";
 import { MUSCLE_LABEL, formatKcal, formatNumber } from "@/lib/format";
 import { DASHBOARD_URL, ROUTINE_URL, SETTINGS_URL, exerciseUrl, sessionUrl } from "@/lib/routes";
-import { ANNUAL_INSTALLMENT_PRICE, brl } from "@/lib/plans";
 import type { MuscleGroup } from "@/db/schema";
 
 // Every bot reply is a template here (HTML parse mode). The LLM never writes user-facing text.
@@ -27,7 +26,7 @@ export const notLinked = () =>
   `Olá! Eu sou o <b>Iron AI</b> 💪\n\nPara começar, crie sua conta e toque em <b>Conectar Telegram</b> em ${link(SETTINGS_URL, "Configurações")}. O link abre esta conversa já vinculada.`;
 
 export const subscriptionRequired = () =>
-  `Para continuar usando o <b>Iron AI</b>, ative sua assinatura em ${link(SETTINGS_URL, "Configurações")}. O plano anual sai por ${brl(ANNUAL_INSTALLMENT_PRICE)} por mês. 💪`;
+  `Para continuar usando o <b>Iron AI</b>, ative sua assinatura em ${link(SETTINGS_URL, "Configurações")}. Os planos começam em R$ 14,90 por mês e você pode cancelar quando quiser. 💪`;
 
 export const linkInvalid =() => `Esse link de conexão expirou ou já foi usado. Gere um novo em ${link(SETTINGS_URL, "Configurações")}.`;
 

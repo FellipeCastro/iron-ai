@@ -2,7 +2,7 @@
 
 import { useTransition } from "react";
 import { openBillingPortalAction, startCheckoutAction } from "@/app/(app)/actions";
-import { ANNUAL_PRICE, MONTHLY_PRICE, TRIAL_DAYS } from "@/components/landing/pricing";
+import { ANNUAL_PRICE, MONTHLY_PRICE } from "@/components/landing/pricing";
 import type { Billing } from "@/lib/data/types";
 import { formatDate } from "@/lib/format";
 import { useToast } from "./toast";
@@ -34,7 +34,6 @@ export function BillingCard({ billing, timezone, checkout }: { billing: Billing;
   }
 
   if (billing.hasAccess) {
-    const trialing = billing.status === "trialing" && billing.trialEnd;
     return (
       <Card>
         <CardTitle
@@ -43,8 +42,6 @@ export function BillingCard({ billing, timezone, checkout }: { billing: Billing;
           action={
             billing.status === "past_due" ? (
               <Badge tone="warn">Pagamento pendente</Badge>
-            ) : trialing ? (
-              <Badge tone="good">Teste grátis</Badge>
             ) : (
               <Badge tone="good">● Ativa</Badge>
             )
@@ -55,9 +52,7 @@ export function BillingCard({ billing, timezone, checkout }: { billing: Billing;
             ? "Não conseguimos cobrar seu cartão. Atualize a forma de pagamento para não perder o acesso."
             : billing.cancelAtPeriodEnd
               ? `Cancelada: você continua com acesso até ${day(billing.currentPeriodEnd!)}.`
-              : trialing
-                ? `Seu teste grátis termina em ${day(billing.trialEnd!)}. Depois disso a cobrança começa automaticamente.`
-                : `Próxima cobrança em ${day(billing.currentPeriodEnd!)}.`}
+              : `Próxima cobrança em ${day(billing.currentPeriodEnd!)}.`}
         </p>
         <div className="mt-6">
           <button type="button" disabled={pending} onClick={() => go(openBillingPortalAction)} className={billing.status === "past_due" ? buttonPrimary : buttonSecondary}>
@@ -76,7 +71,7 @@ export function BillingCard({ billing, timezone, checkout }: { billing: Billing;
         subtitle={
           billing.status
             ? "Sua assinatura terminou. Assine de novo para continuar usando o Iron AI."
-            : `Teste ${TRIAL_DAYS} dias grátis com tudo liberado. Cancele quando quiser.`
+            : "Todos os recursos liberados. Cancele quando quiser."
         }
       />
       {checkout === "error" && (

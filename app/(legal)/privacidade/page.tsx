@@ -94,7 +94,7 @@ const sections: LegalSection[] = [
             execução de contrato (art. 7º, V, da LGPD).
           </li>
           <li>
-            <Strong>Cobrar a assinatura</Strong> — criar seu cadastro de cobrança, iniciar o teste grátis, cobrar os planos,
+            <Strong>Cobrar a assinatura</Strong> — criar seu cadastro de cobrança, cobrar os planos,
             liberar ou bloquear o acesso conforme a situação da assinatura e permitir que você a gerencie. Base legal:
             execução de contrato; para guardar registros de cobrança, cumprimento de obrigação legal ou regulatória
             (art. 7º, II).

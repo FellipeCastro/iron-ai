@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Callout, LegalPage, List, Strong, type LegalSection } from "@/components/legal/legal-page";
-import { ANNUAL_PRICE, MONTHLY_PRICE, TRIAL_DAYS } from "@/components/landing/pricing";
+import { ANNUAL_PRICE, MONTHLY_PRICE } from "@/components/landing/pricing";
 import { PRIVACY_URL, SETTINGS_URL } from "@/lib/routes";
 
 export const metadata: Metadata = {
@@ -86,22 +86,20 @@ const sections: LegalSection[] = [
   },
   {
     id: "assinatura",
-    title: "Assinatura, teste grátis e cobrança",
+    title: "Assinatura e cobrança",
     content: (
       <>
         <p>
-          O Iron AI é um serviço por assinatura. Para usar o painel e o bot é preciso ter uma assinatura ativa, que começa com um
-          teste grátis.
+          O Iron AI é um serviço por assinatura. Para usar o painel e o bot é preciso ter uma assinatura ativa.
         </p>
         <List>
           <li>
-            <Strong>Planos:</Strong> mensal, por {brl(MONTHLY_PRICE)} a cada mês, ou anual, por {brl(ANNUAL_PRICE)} a cada ano. Os dois
+            <Strong>Planos:</Strong> mensal, por {brl(MONTHLY_PRICE)} a cada mês, ou anual, por {brl(ANNUAL_PRICE)} a cada ano, cobrado à vista. Os dois
             incluem os mesmos recursos. Os valores estão em reais e podem incluir tributos, quando aplicáveis.
           </li>
           <li>
-            <Strong>Teste grátis de {TRIAL_DAYS} dias:</Strong> vale para a primeira assinatura de cada conta. Pedimos um cartão
-            ao assinar, mas nada é cobrado durante o teste. Se você não cancelar antes do fim, a cobrança do plano escolhido
-            começa automaticamente no primeiro dia depois do teste.
+            <Strong>Primeira cobrança:</Strong> não há teste grátis. O valor do plano escolhido é cobrado no cartão assim que
+            você conclui a assinatura.
           </li>
           <li>
             <Strong>Renovação automática:</Strong> a assinatura se renova ao fim de cada período (mês ou ano) e o cartão é
@@ -117,7 +115,7 @@ const sections: LegalSection[] = [
             <Link href={SETTINGS_URL} className={linkClass}>
               Configurações
             </Link>
-            , em “Gerenciar assinatura”. O acesso continua até o fim do período já pago (ou do teste) e não há nova cobrança.
+            , em “Gerenciar assinatura”. O acesso continua até o fim do período já pago e não há nova cobrança.
             Você também pode trocar de plano ou atualizar o cartão por lá.
           </li>
           <li>

@@ -139,7 +139,7 @@ export async function handleUpdate(update: TgUpdate, opts: HandleOptions): Promi
     return { status: "ignored", kind: "message" };
   }
 
-  // No trial or subscription: nothing runs (and no model call is paid for). Linking above still works.
+  // No subscription: nothing runs (and no model call is paid for). Linking above still works.
   if (!(await userHasAccess(link.userId))) {
     await finish("ignored");
     await sendMessage(chat.id, render.subscriptionRequired());
