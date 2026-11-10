@@ -56,6 +56,10 @@ export const viewport: Viewport = {
   themeColor: "#ffffff",
 };
 
+/**
+ * Root layout shared by every route: sets the pt-BR document shell, loads the brand font,
+ * injects Google Analytics (when `GOOGLE_ANALYTICS_ID` is set) and wraps the app in Clerk.
+ */
 export default function RootLayout({ children }: LayoutProps<"/">) {
   const gaId = process.env.GOOGLE_ANALYTICS_ID;
   return (

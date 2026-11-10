@@ -204,6 +204,10 @@ const jsonLd = {
   ],
 };
 
+/**
+ * Public landing page: hero, how it works, features, pricing, FAQ and footer,
+ * plus the JSON-LD structured data for search engines.
+ */
 export default function Home() {
   return (
     <div className="bg-[linear-gradient(180deg,#ffffff_0px,#fffffc_400px,#fffff6_1500px,#fffff1_2500px,#fdfef2_3000px,#f7fbf7_4000px,#f1f8fd_5000px)] text-[#111]">
