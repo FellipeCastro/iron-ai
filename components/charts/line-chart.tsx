@@ -23,12 +23,15 @@ export function LineChart({
   label,
   name,
   secondary,
+  dots,
 }: {
   points: LinePoint[];
   unit?: string;
   label: string;
   name?: string;
   secondary?: { name: string; unit?: string };
+  /** Draws a marker on every point, not only the last/active one. */
+  dots?: boolean;
 }) {
   const [ref, width] = useElementWidth<HTMLDivElement>();
   const [active, setActive] = useState<number | null>(null);
@@ -112,6 +115,10 @@ export function LineChart({
           <path d={area} fill={CHART.series} opacity={0.1} />
           <path d={line} fill="none" stroke={CHART.series} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
           {s2 && <path d={line2} fill="none" stroke={CHART.series2} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />}
+          {dots &&
+            points.map((p, i) => (
+              <circle key={i} cx={x(i)} cy={y(p.value)} r={4} fill={CHART.series} stroke={CHART.surface} strokeWidth={2} />
+            ))}
           {active !== null && (
             <>
               <line x1={x(active)} x2={x(active)} y1={PAD.top} y2={PAD.top + plotH} stroke="#111" strokeOpacity={0.25} />
