@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { Chip } from "@/components/brand/chip";
@@ -21,6 +22,8 @@ import {
 } from "@/components/landing/icons";
 import { siteUrl } from "@/lib/env";
 import { PRIVACY_URL, TERMS_URL } from "@/lib/routes";
+
+export const metadata: Metadata = { alternates: { canonical: "/" } };
 
 const navLinks = [
   { label: "Como funciona", href: "#como-funciona" },
@@ -150,7 +153,7 @@ const footerColumns = [
     links: [
       { label: "Preços", href: "#precos" },
       { label: "FAQ", href: "#faq" },
-      { label: "Contato", href: "#" },
+      { label: "Contato", href: `${PRIVACY_URL}#contato` },
       { label: "Painel web", href: SIGN_IN_URL },
       { label: "Relatórios", href: "#recursos", badge: "Novo" },
     ],
@@ -166,6 +169,14 @@ const jsonLd = {
       name: "Iron AI",
       url: siteUrl(),
       logo: `${siteUrl()}/assets/logo-icon-black.png`,
+    },
+    {
+      "@type": "WebSite",
+      "@id": `${siteUrl()}/#website`,
+      name: "Iron AI",
+      url: siteUrl(),
+      inLanguage: "pt-BR",
+      publisher: { "@id": `${siteUrl()}/#organization` },
     },
     {
       "@type": "SoftwareApplication",
@@ -256,6 +267,7 @@ export default function Home() {
             width={703}
             height={1440}
             priority
+            sizes="46vw"
             className="absolute top-8 left-[5%] w-[46%] -rotate-[3deg] drop-shadow-[0_20px_30px_rgba(0,0,0,0.18)]"
           />
           <svg
@@ -276,6 +288,7 @@ export default function Home() {
             width={703}
             height={1440}
             priority
+            sizes="48vw"
             className="absolute top-2 right-[5%] w-[48%] rotate-[4deg] drop-shadow-[0_20px_30px_rgba(0,0,0,0.18)]"
           />
           <Chip title="Supino reto" value="25kg" className="top-0 right-[26%]" />
@@ -290,6 +303,7 @@ export default function Home() {
             width={703}
             height={1440}
             priority
+            sizes="285px"
             className="absolute top-0 left-0 w-[285px] -rotate-[3deg] drop-shadow-[0_20px_30px_rgba(0,0,0,0.18)]"
           />
           <svg
@@ -310,6 +324,7 @@ export default function Home() {
             width={703}
             height={1440}
             priority
+            sizes="290px"
             className="absolute -top-[50px] left-[385px] w-[290px] rotate-[4deg] drop-shadow-[0_20px_30px_rgba(0,0,0,0.18)]"
           />
           <Chip title="Supino reto" value="25kg" className="-top-[20px] left-[425px]" />
