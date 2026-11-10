@@ -58,6 +58,12 @@
       "computedHash": "b7b614bdbce2a81dd8c54e32472b2947679b1b51c94abe83955b1f3af4f3baf8",
       "wellKnownDigest": "sha256:34ad5c4b6bfe34233b5f0d643c0ab0edf231fd831c3898147f512e2fece468d3"
     },
+    "seo-audit": {
+      "source": "coreyhaines31/marketingskills",
+      "sourceType": "github",
+      "skillPath": "skills/seo-audit/SKILL.md",
+      "computedHash": "c8af5f78df48a884f204f93c28645404e8bb6aec7e466be596af0d4147c44f3f"
+    },
     "stripe-apps": {
       "source": "docs.stripe.com",
       "sourceUrl": "https://docs.stripe.com",
