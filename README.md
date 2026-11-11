@@ -1,12 +1,12 @@
-# Iron AI
+# 🏋️‍♂️ Iron AI
 
-**O contato inteligente que organiza os seus treinos. Você conta o treino em texto livre, o código cuida da progressão.**
+> O contato inteligente que organiza os seus treinos. Você conta o treino em texto livre, o código cuida da progressão.
 
 ## Sobre o Projeto
 
-A proposta de valor do Iron AI é ser um **contato inteligente**: um contato na sua lista de conversas que organiza os seus treinos. Para quem treina musculação e quer parar de anotar série em planilha, é só mandar mensagem em linguagem natural ("supino 3x10 20kg", "terminei") e o contato registra, calcula a próxima meta, lembra do treino e mostra a evolução. O canal da conversa é o Telegram, e o site Next.js entrega painel, treinos, histórico e gráficos de evolução.
+Um contato na sua lista de conversas que organiza os seus treinos. Para quem treina musculação e quer parar de anotar série em planilha, é só mandar mensagem em linguagem natural ("supino 3x10 20kg", "terminei") e o contato registra, calcula a próxima meta, lembra do treino e mostra a evolução. O canal da conversa é o Telegram, e o site Next.js entrega painel, treinos, histórico e gráficos de evolução.
 
-Não é um chatbot que "opina" sobre treino: o contato inteligente organiza, não aconselha. A IA tem uma única função: **interpretar** o que o usuário escreveu. Progressão de carga, recordes, rodízio de treinos e respostas são código determinístico e templates em pt-BR, o que torna o resultado previsível e barato. A saída do modelo passa por Structured Outputs (via schemas Zod) antes de tocar no banco.
+Não é um chatbot que "opina" sobre treino: o Iron organiza, não aconselha. A IA tem uma única função: **interpretar** o que o usuário escreveu. Progressão de carga, recordes, rodízio de treinos e respostas são código determinístico e templates em pt-BR, o que torna o resultado previsível e barato. A saída do modelo passa por Structured Outputs (via schemas Zod) antes de tocar no banco.
 
 ## 🛠️ Stack Tecnológica
 
