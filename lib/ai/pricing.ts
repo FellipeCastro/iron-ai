@@ -7,6 +7,9 @@ export type Price = { input: number; cachedInput: number; output: number };
 export const PRICES: Record<string, Price> = {
   "gpt-5.4-mini": { input: 0.75, cachedInput: 0.075, output: 4.5 },
   "gpt-5.5": { input: 5, cachedInput: 0.5, output: 30 },
+  // Transcription models bill audio input tokens (no cache discount); the audio rate is used for all input.
+  "gpt-4o-mini-transcribe": { input: 3, cachedInput: 3, output: 5 },
+  "gpt-4o-transcribe": { input: 6, cachedInput: 6, output: 10 },
 };
 
 export function priceOf(model: string): Price {

@@ -1,5 +1,7 @@
 import OpenAI, { toFile } from "openai";
 import { downloadFile, type TgVoice } from "@/lib/telegram/client";
+import { assertAiBudget, recordAiUsage } from "@/lib/limits";
+import type { TokenUsage } from "./pricing";
 
 // Voice notes become plain text and then follow the exact same path as a typed message (fast path, parser,
 // confirmations). The transcript never reaches the user as a reply; only the parsed intent does.
@@ -17,11 +19,23 @@ const openai = () => (client ??= new OpenAI({ maxRetries: 1, timeout: 30_000 }))
 
 export const voiceTooLong = (voice: TgVoice) => voice.duration > MAX_VOICE_SECONDS;
 
-/** Returns the transcript, or "" when nothing intelligible was said. */
-export async function transcribeVoice(voice: TgVoice): Promise<string> {
+// Audio is roughly 10 tokens per second; used only when the response carries no token usage.
+const AUDIO_TOKENS_PER_SECOND = 10;
+
+/**
+ * Returns the transcript, or "" when nothing intelligible was said. Throws BudgetExceededError /
+ * UserBudgetExceededError when a daily ceiling is hit, before any paid request is made.
+ */
+export async function transcribeVoice(voice: TgVoice, userId: string): Promise<string> {
+  await assertAiBudget(userId);
   const { bytes, path } = await downloadFile(voice.file_id);
   const name = path.split("/").pop() || "voice.ogg";
   const file = await toFile(bytes, name, { type: voice.mime_type ?? "audio/ogg" });
   const result = await openai().audio.transcriptions.create({ file, model: OPENAI_TRANSCRIBE_MODEL, language: "pt", prompt: PROMPT });
+  const usage: TokenUsage =
+    result.usage?.type === "tokens"
+      ? { inputTokens: result.usage.input_tokens, cachedInputTokens: 0, outputTokens: result.usage.output_tokens }
+      : { inputTokens: Math.ceil(voice.duration * AUDIO_TOKENS_PER_SECOND), cachedInputTokens: 0, outputTokens: 0 };
+  await recordAiUsage(userId, OPENAI_TRANSCRIBE_MODEL, usage, false);
   return result.text.trim();
 }

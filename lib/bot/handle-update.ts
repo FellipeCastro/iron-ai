@@ -158,13 +158,19 @@ export async function handleUpdate(update: TgUpdate, opts: HandleOptions): Promi
     }
     await sendTyping(chat.id);
     try {
-      text = await transcribeVoice(voice);
+      text = await transcribeVoice(voice, link.userId);
     } catch (err) {
-      if (!opts.isLastAttempt) throw err; // let the task retry
-      opts.log("error", "Transcription failed on last attempt", { user_id: link.userId });
-      opts.report(err);
+      const budget = err instanceof BudgetExceededError;
+      const userBudget = err instanceof UserBudgetExceededError;
+      if (!budget && !userBudget && !opts.isLastAttempt) throw err; // let the task retry
+      if (budget || userBudget) {
+        opts.log("error", budget ? "OpenAI daily budget exceeded" : "OpenAI per-user daily budget exceeded", { user_id: link.userId });
+      } else {
+        opts.log("error", "Transcription failed on last attempt", { user_id: link.userId });
+        opts.report(err);
+      }
       await finish("failed");
-      await sendMessage(chat.id, render.unavailable());
+      await sendMessage(chat.id, userBudget ? render.rateLimited() : render.unavailable());
       return { status: "failed", kind: "message", userId: link.userId };
     }
     if (!text) {
@@ -372,7 +378,7 @@ async function execute(ctx: Ctx, intent: Intent, overrides: Record<string, strin
     } else if (result.candidates.length) {
       const id = newPendingId();
       const candidates = result.candidates.map((c) => ({ id: c.id, name: c.name }));
-      await saveState(ctx, { pending: { kind: "pick", id, intent, overrides: resolved, slot, candidates, confidence } });
+      await saveState(ctx, { pending: { kind: "pick", id, intent, overrides, slot, candidates, confidence } });
       return [{ text: render.pickExercise(query), keyboard: pickKeyboard(id, candidates) }];
     } else {
       return [{ text: render.unknownExercise(query) }];
@@ -389,7 +395,8 @@ async function execute(ctx: Ctx, intent: Intent, overrides: Record<string, strin
       if (!fork) continue;
       const id = newPendingId();
       const candidates = [fork.next, fork.current];
-      await saveState(ctx, { pending: { kind: "pick", id, intent, overrides: resolved, slot, candidates, confidence } });
+      // Only explicit choices are kept: groups resolved automatically must be re-checked for their own fork.
+      await saveState(ctx, { pending: { kind: "pick", id, intent, overrides, slot, candidates, confidence } });
       return [
         {
           text: render.askWhichExercise(fork.current.name, fork.next.name),
