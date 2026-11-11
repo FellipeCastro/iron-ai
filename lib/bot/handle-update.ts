@@ -2,10 +2,11 @@ import { eq } from "drizzle-orm";
 import { db, messages, telegramLinks, users, type User } from "@/db";
 import { fastParse, fastPathMode, sameIntent } from "@/lib/ai/fast-parse";
 import { parseMessage, type ParseResult } from "@/lib/ai/parse-message";
+import { MAX_VOICE_SECONDS, transcribeVoice, voiceTooLong } from "@/lib/ai/transcribe";
 import type { Intent } from "@/lib/ai/schemas";
 import { durationPrompt } from "@/lib/bot/duration";
 import { parseDurationInput } from "@/lib/engine/duration";
-import { findDayByQuery } from "@/lib/engine/session";
+import { findDayByQuery, remainingSets } from "@/lib/engine/session";
 import { matchExercise, type MatchCandidate } from "@/lib/engine/match";
 import { isNoReminder, parseTimeInput, parseWeekdaysInput } from "@/lib/engine/reminders";
 import { BudgetExceededError, UserBudgetExceededError } from "@/lib/limits";
@@ -113,15 +114,16 @@ export async function handleUpdate(update: TgUpdate, opts: HandleOptions): Promi
     return { status: "processed", kind: "callback", userId: link.userId };
   }
 
-  const text = message?.text?.trim();
-  if (!text) {
+  let text = message?.text?.trim();
+  const voice = message?.voice ?? message?.audio;
+  if (!text && !voice) {
     await finish("ignored");
     await sendMessage(chat.id, render.nonText());
     return { status: "ignored", kind: "message", userId: link?.userId };
   }
 
   // /start <token> links the chat; works whether or not this chat is already linked.
-  const start = text.match(/^\/start(?:@\w+)?(?:\s+([A-Za-z0-9_-]{16,64}))?$/);
+  const start = text?.match(/^\/start(?:@\w+)?(?:\s+([A-Za-z0-9_-]{16,64}))?$/);
   if (start?.[1]) {
     const result = await consumeLinkToken(start[1], chat.id, message?.from?.username ?? null);
     await finish("processed");
@@ -146,6 +148,33 @@ export async function handleUpdate(update: TgUpdate, opts: HandleOptions): Promi
     await sendMessage(chat.id, render.subscriptionRequired());
     return { status: "ignored", kind: "message", userId: link.userId };
   }
+
+  // Voice notes are transcribed only now, after linking and access checks, so no one else costs a model call.
+  if (!text && voice) {
+    if (voiceTooLong(voice)) {
+      await finish("ignored");
+      await sendMessage(chat.id, render.audioTooLong(MAX_VOICE_SECONDS));
+      return { status: "ignored", kind: "message", userId: link.userId };
+    }
+    await sendTyping(chat.id);
+    try {
+      text = await transcribeVoice(voice);
+    } catch (err) {
+      if (!opts.isLastAttempt) throw err; // let the task retry
+      opts.log("error", "Transcription failed on last attempt", { user_id: link.userId });
+      opts.report(err);
+      await finish("failed");
+      await sendMessage(chat.id, render.unavailable());
+      return { status: "failed", kind: "message", userId: link.userId };
+    }
+    if (!text) {
+      await finish("clarify");
+      await sendMessage(chat.id, render.audioUnclear());
+      return { status: "clarify", kind: "message", userId: link.userId };
+    }
+    await db.update(messages).set({ rawText: text }).where(eq(messages.updateId, update.update_id));
+  }
+  if (!text) return { status: "ignored", kind: "message", userId: link.userId };
 
   const ctx = await loadCtx(chat.id, link.user, link.chatState);
 
@@ -350,6 +379,26 @@ async function execute(ctx: Ctx, intent: Intent, overrides: Record<string, strin
     }
   }
 
+  // A message with only numbers, sent right after the last planned set of an exercise, could belong to the
+  // next exercise: ask instead of guessing (the answer replaces the missing confirmation).
+  if (intent.type === "log_sets") {
+    for (const [i, g] of intent.groups.entries()) {
+      const slot = `g${i}`;
+      if (g.exercise_named || slot in overrides) continue;
+      const fork = await exerciseFork(ctx, resolved[slot]);
+      if (!fork) continue;
+      const id = newPendingId();
+      const candidates = [fork.next, fork.current];
+      await saveState(ctx, { pending: { kind: "pick", id, intent, overrides: resolved, slot, candidates, confidence } });
+      return [
+        {
+          text: render.askWhichExercise(fork.current.name, fork.next.name),
+          keyboard: pickKeyboard(id, [{ name: `${fork.next.name} · 1ª série` }, { name: `${fork.current.name} · série extra` }]),
+        },
+      ];
+    }
+  }
+
   if (isWrite(intent) && !confirmed && confidence < CONFIRM_BELOW) {
     const id = newPendingId();
     await saveState(ctx, { pending: { kind: "confirm", id, intent, overrides: resolved } });
@@ -357,6 +406,23 @@ async function execute(ctx: Ctx, intent: Intent, overrides: Record<string, strin
   }
 
   return apply(ctx, intent, resolved);
+}
+
+/**
+ * Set only when the exercise in progress has all its planned sets done and another one of the day is still
+ * pending: the two things a nameless "11x20kg" can mean.
+ */
+async function exerciseFork(ctx: Ctx, exerciseId: string | undefined) {
+  const open = await findOpenSession(ctx.user.id);
+  if (!open?.dayId || !exerciseId) return null;
+  const [day, sets] = await Promise.all([loadDay(open.dayId), loadLog(ctx.user.id, { sessionId: open.id })]);
+  const last = sets.at(-1);
+  if (!day || !last || last.exerciseId !== exerciseId) return null;
+  const missing = remainingSets(day, sets);
+  const upcoming = missing[0];
+  if (!upcoming || missing.some((r) => r.exerciseId === exerciseId)) return null;
+  const next = day.exercises.find((e) => e.exerciseId === upcoming.exerciseId);
+  return next ? { current: { id: exerciseId, name: last.exerciseName }, next: { id: next.exerciseId, name: next.name } } : null;
 }
 
 async function confirmText(ctx: Ctx, intent: Intent, ids: Record<string, string>) {

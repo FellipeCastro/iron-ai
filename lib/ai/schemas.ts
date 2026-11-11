@@ -12,6 +12,9 @@ const exerciseName = z
 
 const SetGroup = z.object({
   exercise: exerciseName,
+  exercise_named: z
+    .boolean()
+    .describe("true when the user wrote the exercise name (even partially or misspelled). false when the message has only numbers and the exercise was inferred from the exercise in progress."),
   weight_kg: z.number().nullable().describe("Load in kg. Per-side loads stay as written. null when not said (same load / bodyweight)."),
   reps: z.number().int().describe("Repetitions per set."),
   sets: z.number().int().describe("How many sets with this exact load and reps. '3x10' = 3 sets of 10 reps. Default 1."),

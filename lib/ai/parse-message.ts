@@ -11,7 +11,7 @@ export const OPENAI_PARSER_MODEL = process.env.OPENAI_PARSER_MODEL ?? "gpt-5.4-m
 export const OPENAI_FALLBACK_MODEL = process.env.OPENAI_FALLBACK_MODEL ?? "gpt-5.5";
 
 // Bump when PARSER_INSTRUCTIONS or the schema change, so the cache key follows the shared prompt prefix.
-const PROMPT_CACHE_KEY = "parser-v1";
+const PROMPT_CACHE_KEY = "parser-v2";
 
 const format = zodTextFormat(ParsedMessage, "parsed_message");
 

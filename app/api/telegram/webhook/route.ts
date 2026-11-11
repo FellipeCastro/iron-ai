@@ -108,6 +108,8 @@ function pick(update: TgUpdate): TgUpdate {
       chat: { id: m.chat.id, type: m.chat.type },
       from: m.from && { id: m.from.id, is_bot: m.from.is_bot, first_name: "", username: m.from.username },
       text: m.text,
+      voice: m.voice && { file_id: m.voice.file_id, duration: m.voice.duration, mime_type: m.voice.mime_type },
+      audio: m.audio && { file_id: m.audio.file_id, duration: m.audio.duration, mime_type: m.audio.mime_type },
     };
   return {
     update_id: update.update_id,

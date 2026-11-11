@@ -17,12 +17,12 @@ const groups = async (text: string) => {
 
 describe("fastParse", () => {
   it("reads sets x reps with load", async () => {
-    expect(await groups("supino 3x10 20kg")).toEqual([{ exercise: "supino", weight_kg: 20, reps: 10, sets: 3 }]);
-    expect(await groups("Supino 3x10 com 22,5 kg!")).toEqual([{ exercise: "supino", weight_kg: 22.5, reps: 10, sets: 3 }]);
+    expect(await groups("supino 3x10 20kg")).toEqual([{ exercise: "supino", exercise_named: true, weight_kg: 20, reps: 10, sets: 3 }]);
+    expect(await groups("Supino 3x10 com 22,5 kg!")).toEqual([{ exercise: "supino", exercise_named: true, weight_kg: 22.5, reps: 10, sets: 3 }]);
   });
 
   it("reads a single set in the three one-set shapes", async () => {
-    const one = [{ exercise: "supino", weight_kg: 20, reps: 10, sets: 1 }];
+    const one = [{ exercise: "supino", exercise_named: true, weight_kg: 20, reps: 10, sets: 1 }];
     expect(await groups("supino 10 reps 20kg")).toEqual(one);
     expect(await groups("supino 20kg x 10")).toEqual(one);
     expect(await groups("supino 10x20kg")).toEqual(one);
@@ -67,7 +67,7 @@ describe("sameIntent", () => {
   it("compares the shortcut with the model answer", async () => {
     const fast = (await fastParse("supino 3x10 20kg", get))!;
     const llm = (exercise: string, weight_kg: number | null, reps = 10) => ({
-      intent: { type: "log_sets" as const, groups: [{ exercise, weight_kg, reps, sets: 3 }] },
+      intent: { type: "log_sets" as const, groups: [{ exercise, exercise_named: true, weight_kg, reps, sets: 3 }] },
       confidence: 0.9,
     });
     expect(sameIntent(fast, llm("Supino reto", 20), pool)).toBe(true);
