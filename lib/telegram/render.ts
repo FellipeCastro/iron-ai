@@ -56,7 +56,7 @@ export const help = () =>
     "• Encerrar: <i>terminei</i> (ou depois de 90 min sem séries)",
     "• Consultar: <i>qual o treino de hoje?</i> · <i>como tá meu supino?</i> · <i>resumo da semana</i>",
     "",
-    "A meta de cada série sobe sozinha: bateu, +1 rep; chegou a 12, a carga sobe e volta para 8.",
+    "A meta de cada série sobe sozinha: bateu, +1 rep; chegou a 12, a carga sobe e volta para 6.",
     `Painel completo: ${link(DASHBOARD_URL, "iron.ai")}`,
   ].join("\n");
 
@@ -123,7 +123,7 @@ export function setsLogged(input: {
   }
   if (input.upNext) {
     const { kind, name, targets } = input.upNext;
-    lines.push("", `${kind === "same" ? "Faltam" : "Próximo exercício"}: <b>${esc(name)}</b>:`);
+    lines.push("", kind === "same" ? "🎯 Faltam:" : "➡️ Próximo exercício:", `<b>${esc(name)}</b>:`);
     for (const t of targets) lines.push(t ? setLine(t.weight, t.reps) : "  livre");
   }
   return lines.join("\n");

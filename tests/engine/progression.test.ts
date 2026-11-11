@@ -8,8 +8,8 @@ describe("nextTarget", () => {
     expect(nextTarget(null, { weight: 20, reps: 10 }, 2.5)).toEqual({ weight: 20, reps: 11 });
   });
 
-  it("baseline at 12 reps jumps the load and resets to 8", () => {
-    expect(nextTarget(null, { weight: 20, reps: 12 }, 2.5)).toEqual({ weight: 22.5, reps: 8 });
+  it("baseline at 12 reps jumps the load and resets to 6", () => {
+    expect(nextTarget(null, { weight: 20, reps: 12 }, 2.5)).toEqual({ weight: 22.5, reps: 6 });
   });
 
   it("hit → +1 rep", () => {
@@ -17,11 +17,11 @@ describe("nextTarget", () => {
   });
 
   it("hit at 12 → load + increment, reps 8", () => {
-    expect(nextTarget({ weight: 50, reps: 12 }, { weight: 50, reps: 12 }, 2.5)).toEqual({ weight: 52.5, reps: 8 });
+    expect(nextTarget({ weight: 50, reps: 12 }, { weight: 50, reps: 12 }, 2.5)).toEqual({ weight: 52.5, reps: 6 });
   });
 
   it("more reps than asked advances from what was done", () => {
-    expect(nextTarget({ weight: 50, reps: 9 }, { weight: 50, reps: 12 }, 5)).toEqual({ weight: 55, reps: 8 });
+    expect(nextTarget({ weight: 50, reps: 9 }, { weight: 50, reps: 12 }, 5)).toEqual({ weight: 55, reps: 6 });
   });
 
   it("missed reps keeps the target", () => {
@@ -46,7 +46,7 @@ describe("helpers", () => {
 
   it("roundKg keeps 0.25 precision", () => {
     expect(roundKg(21.3)).toBe(21.25);
-    expect(advance({ weight: 10.1, reps: 12 }, 1.25)).toEqual({ weight: 11.25, reps: 8 });
+    expect(advance({ weight: 10.1, reps: 12 }, 1.25)).toEqual({ weight: 11.25, reps: 6 });
   });
 });
 

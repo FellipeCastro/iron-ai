@@ -7,7 +7,7 @@ Iron AI é um assistente de treino no Telegram (registro de séries por texto li
 - Site primeiro (Clerk) → deep link `t.me/<bot>?start=<token>` vincula o chat. 1 chat privado por conta, pt-BR, kg.
 - Webhook Next.js → task trigger.dev (`concurrencyKey` = userId, `idempotencyKey` = `update_id`).
 - LLM só interpreta (Structured Outputs + Zod); progressão, PRs, respostas = código determinístico/templates.
-- Meta por série (posição), faixa 8–12 global, rodízio A→B→C sequencial, sessão implícita (fecha: "terminei" / todos concluídos / 90 min inativo).
+- Meta por série (posição), faixa 6–12 global, rodízio A→B→C sequencial, sessão implícita (fecha: "terminei" / todos concluídos / 90 min inativo).
 - Log imutável de séries com versão válida; exercícios de um catálogo pt-BR com aliases; fora-do-plano registrado como "extra".
 - Cron global de 5 min (lembretes + fechamento por inatividade), idempotente por chave.
 - Grátis + rate limit (150 msg/dia, ASSUMPTION) + teto global de gasto OpenAI.
@@ -63,7 +63,7 @@ Status conferido no código em 2026-11-03. `[x]` = implementado no repositório;
 - [x] Seed do catálogo pt-BR com aliases (94 exercícios; a estimativa era ~150)
 
 ### 2. Motor determinístico (`lib/engine`)
-- [x] `nextTarget` (+1 rep; 12 ⇒ carga + incremento, reps = 8; senão mantém) e baseline na 1ª série
+- [x] `nextTarget` (+1 rep; 12 ⇒ carga + incremento, reps = 6; senão mantém) e baseline na 1ª série
 - [x] Sessão (abrir, fechar, resumo)
 - [x] PRs (maior carga; melhor série na carga)
 - [x] Estagnação (3 sessões sem progresso, mín. 4)

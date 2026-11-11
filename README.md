@@ -41,7 +41,7 @@ O registro do treino acontece na conversa.
 ### 2. Motor de Progressão
 Código puro, sem I/O, coberto por testes.
 
-- **Progressão 8→12:** +1 rep a cada treino; ao chegar em 12, sobe a carga e volta para 8.
+- **Progressão 6→12:** +1 rep a cada treino; ao chegar em 12, sobe a carga e volta para 6.
 - **Recordes:** maior carga e melhor série em cada carga.
 - **Estagnação:** detecta 3 sessões sem progresso.
 - **Rodízio:** define o próximo treino (A→B→C) e fecha sessões paradas há 90 minutos.

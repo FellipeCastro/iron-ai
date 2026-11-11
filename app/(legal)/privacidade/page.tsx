@@ -89,7 +89,7 @@ const sections: LegalSection[] = [
       <>
         <List>
           <li>
-            <Strong>Prestar o serviço</Strong> — registrar séries, calcular a progressão (8 a 12 repetições), montar o próximo
+            <Strong>Prestar o serviço</Strong> — registrar séries, calcular a progressão (6 a 12 repetições), montar o próximo
             treino, gerar resumos, relatórios e gráficos e enviar lembretes nos dias e horário que você escolheu. Base legal:
             execução de contrato (art. 7º, V, da LGPD).
           </li>
