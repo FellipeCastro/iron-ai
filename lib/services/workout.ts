@@ -256,10 +256,34 @@ export async function logSets(user: User, routine: Routine | null, inputs: SetIn
     missing: r.missing,
   }));
 
+  // Targets for what comes next: the rest of the exercise just logged, or (once its planned sets are done)
+  // the first exercise of the day that still has sets missing.
+  const lastExerciseId = rows.at(-1)!.exerciseId;
+  const missing = remainingSets(day, allSessionSets);
+  const nextEntry = missing.find((r) => r.exerciseId === lastExerciseId) ?? missing[0];
+  let upNext: { kind: "same" | "next"; name: string; targets: ({ weight: number; reps: number } | null)[] } | null = null;
+  if (day && nextEntry) {
+    const planned = day.exercises.find((e) => e.exerciseId === nextEntry.exerciseId)!;
+    const byPosition = new Map<number, { weight: number; reps: number }>();
+    if (newTargets.has(nextEntry.exerciseId)) {
+      for (const [position, t] of newTargets.get(nextEntry.exerciseId)!) byPosition.set(position, t);
+    } else {
+      for (const t of (await loadTargets(user.id, [nextEntry.exerciseId])).get(nextEntry.exerciseId) ?? []) byPosition.set(t.position, t);
+    }
+    const done = planned.plannedSets - nextEntry.missing;
+    upNext = {
+      kind: nextEntry.exerciseId === lastExerciseId ? "same" : "next",
+      name: planned.name,
+      // `null` = no target yet for that position (rendered as "livre").
+      targets: Array.from({ length: nextEntry.missing }, (_, i) => byPosition.get(done + i + 1) ?? null),
+    };
+  }
+
   return {
     closedBefore,
     sessionId: session.id,
     opened: opened && day ? { letter: day.letter, title: day.title } : null,
+    upNext,
     items: rows.map((r) => {
       const t = r.isExtra ? undefined : newTargets.get(r.exerciseId)?.get(r.setPosition);
       return {

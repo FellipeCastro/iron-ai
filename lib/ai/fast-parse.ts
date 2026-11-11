@@ -62,7 +62,7 @@ export async function fastParse(text: string, getPool: () => Promise<MatchCandid
     if (NOT_A_NAME.test(name)) return null;
     const { sets, reps, weight } = read(m);
     const parsed = validateIntent({
-      intent: { type: "log_sets", groups: [{ exercise: name, weight_kg: Number(weight.replace(",", ".")), reps, sets }] },
+      intent: { type: "log_sets", groups: [{ exercise: name, exercise_named: true, weight_kg: Number(weight.replace(",", ".")), reps, sets }] },
       confidence: CONFIDENCE,
     });
     if (parsed.intent.type !== "log_sets") return null; // out of range: let the model ask

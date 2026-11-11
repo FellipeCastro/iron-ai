@@ -112,7 +112,7 @@ export type LoggedItem = {
 export function setsLogged(input: {
   items: LoggedItem[];
   opened: { letter: string; title: string } | null;
-  remaining: { name: string; missing: number }[];
+  upNext: { kind: "same" | "next"; name: string; targets: ({ weight: number; reps: number } | null)[] } | null;
 }) {
   const lines: string[] = [];
   if (input.opened) lines.push(`🏋️ Treino <b>${esc(input.opened.letter)} · ${esc(input.opened.title)}</b> iniciado`, "");
@@ -121,12 +121,17 @@ export function setsLogged(input: {
     const rec = it.record ? ` ${RECORD_LABEL[it.record]}` : "";
     lines.push(`✅ <b>${esc(it.name)}</b> — ${ordinal(it.setPosition)}: ${load(it.weight, it.reps)}${tag}${rec}`);
   }
-  if (input.remaining.length) {
-    const next = input.remaining.slice(0, 3).map((r) => `${esc(r.name)} (${plural(r.missing, "série", "séries")})`);
-    lines.push("", `Faltam: ${next.join(", ")}${input.remaining.length > 3 ? "…" : ""}`);
+  if (input.upNext) {
+    const { kind, name, targets } = input.upNext;
+    lines.push("", `${kind === "same" ? "Faltam" : "Próximo exercício"}: <b>${esc(name)}</b>:`);
+    for (const t of targets) lines.push(t ? setLine(t.weight, t.reps) : "  livre");
   }
   return lines.join("\n");
 }
+
+/** Asked when a message has no exercise name, the exercise in progress is done and another one is next. */
+export const askWhichExercise = (current: string, next: string) =>
+  `Essa foi a primeira série de <b>${esc(next)}</b> ou uma série extra de <b>${esc(current)}</b>?`;
 
 export function confirmLog(items: { name: string; weight: number | null; reps: number; sets: number }[]) {
   const lines = ["Entendi assim, confere?", ""];
@@ -295,4 +300,8 @@ export const monthlyLimited = (limit: number) =>
 export const unavailable = () =>
   "Estou com instabilidade agora e não consegui ler sua mensagem. Tente de novo em alguns minutos — nada foi registrado.";
 
-export const nonText = () => "Por enquanto eu só entendo mensagens de texto. ✍️";
+export const nonText = () => "Por enquanto eu só entendo mensagens de texto e de áudio. ✍️🎙️";
+
+export const audioTooLong = (maxSeconds: number) => `Esse áudio ficou longo demais. Mande áudios de até ${maxSeconds} segundos, uma série por vez.`;
+
+export const audioUnclear = () => "Não consegui entender o áudio. Pode repetir ou mandar por texto? Ex.: <i>supino 10 reps 20kg</i>.";
