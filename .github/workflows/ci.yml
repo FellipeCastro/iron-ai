@@ -17,7 +17,14 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
+      - run: npm run db:check
       - run: npm test
+      - run: npm run build
+        env:
+          # Placeholders: the build only needs these to exist, nothing connects.
+          DATABASE_URL: postgresql://user:pass@localhost:5432/db
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_ZXhhbXBsZS5jbGVyay5hY2NvdW50cy5kZXYk
+          CLERK_SECRET_KEY: sk_test_placeholder
 
   deploy-trigger:
     needs: check

@@ -157,7 +157,6 @@ Telegram → POST /api/telegram/webhook   valida o secret, aplica os limites (60
    npm run dev
 
    # Terminal 2 — worker do Trigger.dev (executa as tasks em ./trigger)
-   npx trigger.dev@4.8.1 dev
    npm run trigger:dev
 
    # Terminal 3 — túnel público para os webhooks do Clerk e do Telegram
@@ -165,7 +164,6 @@ Telegram → POST /api/telegram/webhook   valida o secret, aplica os limites (60
 
    # Terminal 4 — encaminha os webhooks do Stripe para o site local
    stripe listen --forward-to localhost:3000/api/webhooks/stripe
-   stripe listen --all-snapshot --forward-to localhost:3000/api/webhooks/stripe
    ```
 
    A versão do CLI (`trigger.dev@4.8.1`) deve ser a mesma de `@trigger.dev/sdk` no `package.json`.
