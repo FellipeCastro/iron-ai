@@ -1,7 +1,7 @@
 # Iron AI — Plano de implementação v1
 
 ## Context
-Iron AI é um assistente de treino no Telegram (registro de séries por texto livre, progressão automática 8→12 reps, lembretes, resumos, relatórios) com um site Next.js (painel, rotina, histórico, gráficos, configurações). A entrevista de alinhamento está concluída (spec e assumptions aprovados). O repo hoje é um `create-next-app` limpo: Next **16.4.3**, React 19.3.0, Tailwind 4, TS, sem nenhuma outra dependência. Convenções do Next 16 a respeitar (AGENTS.md): consultar `node_modules/next/dist/docs/` antes de codar; `proxy.ts` substitui `middleware.ts`.
+Iron AI é um assistente de treino no Telegram (registro de séries por texto livre, progressão automática 6→12 reps, lembretes, resumos, relatórios) com um site Next.js (painel, rotina, histórico, gráficos, configurações). A entrevista de alinhamento está concluída (spec e assumptions aprovados). O repo hoje é um `create-next-app` limpo: Next **16.4.3**, React 19.3.0, Tailwind 4, TS, sem nenhuma outra dependência. Convenções do Next 16 a respeitar (AGENTS.md): consultar `node_modules/next/dist/docs/` antes de codar; `proxy.ts` substitui `middleware.ts`.
 
 ## Decisões travadas (resumo)
 - Site primeiro (Clerk) → deep link `t.me/<bot>?start=<token>` vincula o chat. 1 chat privado por conta, pt-BR, kg.
@@ -30,7 +30,7 @@ app/
 proxy.ts                           clerkMiddleware (rotas (app) protegidas; /api/telegram público)
 db/ schema.ts, index.ts, seed/exercises.ts
 drizzle/                           migrações
-trigger/ handle-message.ts, tick.ts (cron 5min), close-session.ts
+trigger/ handle-message.ts, tick.ts (cron 15min), close-session.ts
 lib/
   telegram/ client.ts, render.ts (templates pt-BR), keyboards.ts
   ai/ schemas.ts (Zod das ações), parse-message.ts, prompts.ts

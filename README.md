@@ -77,7 +77,7 @@ Telegram → POST /api/telegram/webhook   valida o secret, aplica os limites (60
         → task telegram-handle-update    1 run por update_id (idempotencyKey), 1 por usuário por vez (concurrencyKey)
             → lib/ai/fast-parse.ts        atalho sem LLM para mensagens simples (FAST_PATH)
             → OpenAI responses.parse      Structured Outputs (Zod estrito, lib/ai/schemas.ts): só interpreta
-            → lib/engine                  progressão 8→12, recordes, sessão, rodízio
+            → lib/engine                  progressão 6→12, recordes, sessão, rodízio
             → lib/telegram/render.ts      toda resposta é template pt-BR
 ```
 
