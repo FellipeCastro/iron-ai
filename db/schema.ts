@@ -283,6 +283,21 @@ export const reminderLog = pgTable(
   (t) => [primaryKey({ columns: [t.userId, t.date] })],
 );
 
+// One row per automatic report sent (or deliberately skipped): the claim that keeps a rerun from sending it twice.
+// `period` is the first local date of the reported period.
+export const reportLog = pgTable(
+  "report_log",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    kind: text("kind", { enum: ["week", "month"] }).notNull(),
+    period: date("period").notNull(),
+    sentAt: timestamp("sent_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.kind, t.period] })],
+);
+
 export const usageCounters = pgTable(
   "usage_counters",
   {
