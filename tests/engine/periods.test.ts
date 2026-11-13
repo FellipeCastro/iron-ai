@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { addDays, dueReports, monthPeriods, weekPeriods, zonedMidnight } from "@/lib/engine/periods";
+import { addDays, dueReports, monthPeriods, periodsFor, retryReports, weekPeriods, zonedMidnight } from "@/lib/engine/periods";
 
-const sunday = (date: string, minutes: number) => ({ date, minutes, isoWeekday: 7 });
+const monday = (date: string, minutes: number) => ({ date, minutes, isoWeekday: 1 });
 
 describe("zonedMidnight", () => {
   it("is local midnight as an instant", () => {
@@ -27,6 +27,13 @@ describe("weekPeriods", () => {
   });
 });
 
+describe("periodsFor", () => {
+  it("weekly report sent on Monday covers the week that ended yesterday", () => {
+    const { current } = periodsFor("week", "2026-11-09", "UTC");
+    expect([current.from, current.to]).toEqual(["2026-11-02", "2026-11-08"]);
+  });
+});
+
 describe("monthPeriods", () => {
   it("reports the month that just ended, against the one before", () => {
     const { current, previous } = monthPeriods("2026-11-01", "UTC");
@@ -42,19 +49,37 @@ describe("monthPeriods", () => {
 });
 
 describe("dueReports", () => {
-  it("nothing before 20:00 or on other days", () => {
-    expect(dueReports(sunday("2026-11-08", 19 * 60 + 59))).toEqual([]);
-    expect(dueReports({ date: "2026-11-07", minutes: 21 * 60, isoWeekday: 6 })).toEqual([]);
+  it("nothing before 09:00 Monday or on other days, Sunday included", () => {
+    expect(dueReports(monday("2026-11-09", 8 * 60 + 59))).toEqual([]);
+    expect(dueReports({ date: "2026-11-08", minutes: 23 * 60 + 59, isoWeekday: 7 })).toEqual([]);
+    expect(dueReports({ date: "2026-11-10", minutes: 21 * 60, isoWeekday: 2 })).toEqual([]);
   });
 
-  it("weekly on Sunday evening, still due late at night", () => {
-    expect(dueReports(sunday("2026-11-15", 20 * 60))).toEqual(["week"]);
-    expect(dueReports(sunday("2026-11-15", 23 * 60 + 59))).toEqual(["week"]);
+  it("weekly on Monday, still due late in the day", () => {
+    expect(dueReports(monday("2026-11-16", 9 * 60))).toEqual(["week"]);
+    expect(dueReports(monday("2026-11-16", 23 * 60 + 59))).toEqual(["week"]);
   });
 
-  it("monthly joins on the first Sunday of the month", () => {
-    expect(dueReports(sunday("2026-11-01", 20 * 60))).toEqual(["week", "month"]);
-    expect(dueReports(sunday("2026-11-08", 20 * 60))).toEqual(["week"]);
+  it("monthly joins on the first Monday of the month", () => {
+    expect(dueReports(monday("2026-11-02", 9 * 60))).toEqual(["week", "month"]);
+    expect(dueReports(monday("2026-11-09", 9 * 60))).toEqual(["week"]);
+  });
+});
+
+describe("retryReports", () => {
+  const tuesday = (date: string, minutes: number) => ({ date, minutes, isoWeekday: 2 });
+
+  it("retries Monday's reports on Tuesday morning, targeting that Monday", () => {
+    expect(retryReports(tuesday("2026-11-17", 0))).toEqual([{ kind: "week", date: "2026-11-16" }]);
+    expect(retryReports(tuesday("2026-11-03", 60))).toEqual([
+      { kind: "week", date: "2026-11-02" },
+      { kind: "month", date: "2026-11-02" },
+    ]);
+  });
+
+  it("stops after the retry window and never runs on other days", () => {
+    expect(retryReports(tuesday("2026-11-17", 12 * 60))).toEqual([]);
+    expect(retryReports(monday("2026-11-16", 23 * 60))).toEqual([]);
   });
 });
 

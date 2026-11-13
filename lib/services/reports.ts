@@ -84,7 +84,7 @@ export async function weekReportText(user: User) {
 }
 
 /**
- * Automatic weekly/monthly report for the period that `localDate` (the user's Sunday) closes. Null when the
+ * Automatic weekly/monthly report for the period that closed before `localDate` (the user's Monday). Null when the
  * user did not train in it: an empty report is noise.
  */
 export async function periodReportText(user: User, kind: ReportKind, localDate: string) {

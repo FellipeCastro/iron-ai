@@ -289,7 +289,7 @@ const percentChange = (now: number, before: number) => {
   return `${pct >= 0 ? "+" : "−"}${Math.abs(pct)}%`;
 };
 
-/** Automatic Sunday report. `range` holds the local dates of the period (inclusive). */
+/** Automatic Monday report. `range` holds the local dates of the period (inclusive). */
 export function periodReportText(kind: ReportKind, range: { from: string; to: string }, r: PeriodReport) {
   const prev = kind === "week" ? "semana anterior" : "mês anterior";
   const title =

@@ -1,7 +1,7 @@
 import { schedules } from "@trigger.dev/sdk";
 import { and, eq, inArray, or } from "drizzle-orm";
 import { db, reportLog, subscriptions, telegramLinks, users } from "@/db";
-import { dueReports, periodsFor } from "@/lib/engine/periods";
+import { dueReports, periodsFor, retryReports } from "@/lib/engine/periods";
 import { localTime } from "@/lib/engine/reminders";
 import { ACCESS_STATUSES } from "@/lib/services/access";
 import { periodReportText } from "@/lib/services/reports";
@@ -9,8 +9,9 @@ import { sendMessage, TelegramError } from "@/lib/telegram/client";
 import { errorAttrs, log } from "./log";
 
 /**
- * Weekly report every Sunday evening (local time), plus the monthly one on the first Sunday of the month.
- * Runs hourly: each user's 20:00 falls in some hour's run, and a late run still sends the same night.
+ * Weekly report every Monday morning (local time) for the week that ended Sunday, plus the monthly one on the
+ * first Monday of the month. Runs hourly: each user's 09:00 falls in some hour's run, and a late run still sends the same day.
+ * Tuesday morning retries Monday's reports whose send failed in the last Monday run.
  * Safe to run twice: the (user, kind, period) row is claimed before sending.
  */
 export const reports = schedules.task({
@@ -34,13 +35,14 @@ export const reports = schedules.task({
     let blocked = 0;
     for (const { user, chatId } of candidates) {
       const local = localTime(now, user.timezone);
-      for (const kind of dueReports(local)) {
-        const { current } = periodsFor(kind, local.date, user.timezone);
+      const due = [...dueReports(local).map((kind) => ({ kind, date: local.date })), ...retryReports(local)];
+      for (const { kind, date } of due) {
+        const { current } = periodsFor(kind, date, user.timezone);
         const claimed = await db.insert(reportLog).values({ userId: user.id, kind, period: current.from }).onConflictDoNothing().returning();
         if (claimed.length === 0) continue;
 
         try {
-          const text = await periodReportText(user, kind, local.date);
+          const text = await periodReportText(user, kind, date);
           if (!text) {
             skipped++; // no training in the period: keep the row so later runs don't recompute
             continue;

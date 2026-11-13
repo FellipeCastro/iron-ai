@@ -83,7 +83,7 @@ Telegram → POST /api/telegram/webhook   valida o secret, aplica os limites (60
 
 ### Tarefas agendadas
 - **`tick`** (a cada 15 min): fecha sessões paradas há 90 min e envia os lembretes.
-- **`periodic-reports`** (de hora em hora): no domingo, a partir das 20h no fuso de cada usuário, envia o resumo semanal (segunda a domingo) com volume por grupo muscular, recordes e comparação com a semana anterior. No primeiro domingo do mês envia também o resumo do mês anterior. Só para quem tem acesso ativo; semanas sem treino não geram mensagem.
+- **`periodic-reports`** (de hora em hora): na segunda-feira, a partir das 9h no fuso de cada usuário, envia o resumo da semana encerrada (segunda a domingo) com volume por grupo muscular, recordes e comparação com a semana anterior. Na primeira segunda-feira do mês envia também o resumo do mês anterior. Só para quem tem acesso ativo; semanas sem treino não geram mensagem.
 - **`purge`** (diário): apaga o texto bruto das mensagens após 30 dias, tokens usados ou expirados e contadores antigos.
 
 ### Controle de custos

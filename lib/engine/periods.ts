@@ -4,8 +4,8 @@ import { localTime, type LocalTime } from "./reminders";
 
 export type ReportKind = "week" | "month";
 
-/** Reports go out on Sunday at this local time (minutes since midnight), so the week is nearly over. */
-export const REPORT_MINUTE = 20 * 60;
+/** Reports go out on Monday from this local time (minutes since midnight), once the reported week has closed. */
+export const REPORT_MINUTE = 9 * 60;
 
 export type Period = {
   /** First local date of the period. Also the dedupe key. */
@@ -63,15 +63,30 @@ export function monthPeriods(date: string, timeZone: string) {
 }
 
 /**
- * Reports due at this local time. The weekly one goes every Sunday from REPORT_MINUTE on (a late run still
- * sends it the same evening); the monthly one rides along on the first Sunday of the month, when the previous
- * month is complete.
+ * Reports due at this local time. The weekly one goes every Monday from REPORT_MINUTE on (a late run still
+ * sends it the same day), always for the week that ended yesterday; the monthly one rides along on the first
+ * Monday of the month, when the previous month is complete.
  */
 export function dueReports(local: LocalTime): ReportKind[] {
-  if (local.isoWeekday !== 7 || local.minutes < REPORT_MINUTE) return [];
+  if (local.isoWeekday !== 1 || local.minutes < REPORT_MINUTE) return [];
   return Number(local.date.slice(8)) <= 7 ? ["week", "month"] : ["week"];
 }
 
+/** Tuesday morning, until this local time (minutes since midnight), still retries Monday's reports that went unsent. */
+export const RETRY_UNTIL_MINUTE = 12 * 60;
+
+/**
+ * Retries of Monday's reports, due on Tuesday morning: a send that failed in the last Monday run had its claim
+ * released, and no later run would be a Monday. `date` is that Monday, the one to pass to `periodsFor`. Reports
+ * already claimed (sent, skipped or blocked) are no-ops at the claim, so this never resends.
+ */
+export function retryReports(local: LocalTime): { kind: ReportKind; date: string }[] {
+  if (local.isoWeekday !== 2 || local.minutes >= RETRY_UNTIL_MINUTE) return [];
+  const date = addDays(local.date, -1);
+  return dueReports({ date, minutes: 24 * 60 - 1, isoWeekday: 1 }).map((kind) => ({ kind, date }));
+}
+
 export function periodsFor(kind: ReportKind, localDate: string, timeZone: string) {
-  return kind === "week" ? weekPeriods(localDate, timeZone) : monthPeriods(localDate, timeZone);
+  // `localDate` is the Monday the report goes out: the week it covers ended yesterday.
+  return kind === "week" ? weekPeriods(addDays(localDate, -1), timeZone) : monthPeriods(localDate, timeZone);
 }
