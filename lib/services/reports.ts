@@ -1,6 +1,7 @@
 import { and, desc, eq, gte, isNotNull } from "drizzle-orm";
 import { db, sessions, type MuscleGroup, type User } from "@/db";
-import { caloriesOf, exerciseReport, muscleGroupReport, recordsByExercise, sessionSummary } from "@/lib/engine/reports";
+import { periodsFor, type ReportKind } from "@/lib/engine/periods";
+import { caloriesOf, exerciseReport, muscleGroupReport, periodReport, recordsByExercise, sessionSummary } from "@/lib/engine/reports";
 import * as render from "@/lib/telegram/render";
 import { loadDay, type RoutineDayFull, type Routine } from "./routine";
 import { findOpenSession, loadLog, loadTargets, nextRoutineDay, sessionMinutes } from "./workout";
@@ -42,6 +43,7 @@ export async function lastWorkoutText(user: User, routine: Routine | null) {
   return render.summary({
     sessionId: last.id,
     closeReason: last.closeReason ?? "user",
+    label: "Relatório do treino",
     day: day ? { letter: day.letter, title: day.title } : null,
     // The session's own start/end, so a duration the user corrected wins over the first-to-last-set estimate.
     data: { ...sessionSummary(last.id, upTo, []), durationMin: last.endedAt ? sessionMinutes(last.startedAt, last.endedAt) : 0 },
@@ -79,4 +81,14 @@ export async function weekReportText(user: User) {
     calories: caloriesOf(week),
     records: week.filter((s) => records.get(s)).length,
   });
+}
+
+/**
+ * Automatic weekly/monthly report for the period that closed before `localDate` (the user's Monday). Null when the
+ * user did not train in it: an empty report is noise.
+ */
+export async function periodReportText(user: User, kind: ReportKind, localDate: string) {
+  const { current, previous } = periodsFor(kind, localDate, user.timezone);
+  const report = periodReport(await loadLog(user.id), current, previous);
+  return report.sets === 0 ? null : render.periodReportText(kind, current, report);
 }

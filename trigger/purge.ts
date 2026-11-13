@@ -1,6 +1,6 @@
 import { schedules } from "@trigger.dev/sdk";
 import { lt, or, isNotNull } from "drizzle-orm";
-import { db, linkTokens, messages, reminderLog, usageCounters } from "@/db";
+import { db, linkTokens, messages, reminderLog, reportLog, usageCounters } from "@/db";
 import { log } from "./log";
 
 const DAY = 86_400_000;
@@ -16,7 +16,7 @@ export const purge = schedules.task({
     const now = payload.timestamp.getTime();
     const counterCutoff = new Date(now - COUNTERS_DAYS * DAY).toISOString().slice(0, 10);
 
-    const [msgs, tokens, counters, reminders] = await Promise.all([
+    const [msgs, tokens, counters, reminders, reportRows] = await Promise.all([
       db
         .delete(messages)
         .where(lt(messages.createdAt, new Date(now - RAW_TEXT_DAYS * DAY)))
@@ -27,15 +27,17 @@ export const purge = schedules.task({
         .returning({ id: linkTokens.id }),
       db.delete(usageCounters).where(lt(usageCounters.date, counterCutoff)).returning({ date: usageCounters.date }),
       db.delete(reminderLog).where(lt(reminderLog.date, counterCutoff)).returning({ date: reminderLog.date }),
+      db.delete(reportLog).where(lt(reportLog.period, counterCutoff)).returning({ period: reportLog.period }),
     ]);
 
-    const result = { messages: msgs.length, linkTokens: tokens.length, usageCounters: counters.length, reminderLog: reminders.length };
+    const result = { messages: msgs.length, linkTokens: tokens.length, usageCounters: counters.length, reminderLog: reminders.length, reportLog: reportRows.length };
     // Retention audit: proves the 30-day raw-text deletion ran and how much it removed.
     log.info("Purge done", {
       messages_deleted: result.messages,
       link_tokens_deleted: result.linkTokens,
       usage_counters_deleted: result.usageCounters,
       reminder_log_deleted: result.reminderLog,
+      report_log_deleted: result.reportLog,
     });
     return result;
   },

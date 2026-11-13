@@ -36,6 +36,13 @@
       "when": 1793211785992,
       "tag": "0004_complimentary_access",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1793212785992,
+      "tag": "0005_report_log",
+      "breakpoints": true
     }
   ]
 }

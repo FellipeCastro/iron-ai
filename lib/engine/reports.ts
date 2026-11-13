@@ -15,7 +15,10 @@ export type ReportSet = Load & {
   createdAt: Date;
 };
 
-export const caloriesOf = (sets: Load[]) => estimateCalories(sets.reduce((sum, s) => sum + s.weight * s.reps, 0));
+/** Total lifted volume: Σ weight × reps, in kg. */
+export const volumeOf = (sets: Load[]) => sets.reduce((sum, s) => sum + s.weight * s.reps, 0);
+
+export const caloriesOf = (sets: Load[]) => estimateCalories(volumeOf(sets));
 
 function groupBy<T, K>(items: T[], key: (t: T) => K) {
   const map = new Map<K, T[]>();
@@ -111,3 +114,57 @@ export function muscleGroupReport<T extends ReportSet>(history: T[], now: Date, 
     }))
     .sort((a, b) => b.calories - a.calories);
 }
+
+export type DateRange = { start: Date; end: Date };
+
+/**
+ * Weekly/monthly report: volume (Σ weight × reps) per muscle group, records set in the period, and the same
+ * numbers for the period before it. Ranges are [start, end). `history` is the whole chronological log, since
+ * a record is only a record against everything that came before it.
+ */
+export function periodReport<T extends ReportSet>(history: T[], current: DateRange, previous: DateRange) {
+  const records = recordsByExercise(history, { includeFirst: false });
+  const within = (s: T, r: DateRange) => s.createdAt >= r.start && s.createdAt < r.end;
+
+  const totals = (range: DateRange) => {
+    const sets = history.filter((s) => within(s, range));
+    // The latest record per exercise: it necessarily beats any earlier one in the same period.
+    const latest = new Map<string, { exerciseId: string; name: string; weight: number; reps: number; kind: PrKind }>();
+    for (const s of sets) {
+      const kind = records.get(s);
+      if (kind) latest.set(s.exerciseId, { exerciseId: s.exerciseId, name: s.exerciseName, weight: s.weight, reps: s.reps, kind });
+    }
+    return {
+      sets,
+      sessions: new Set(sets.map((s) => s.sessionId)).size,
+      setCount: sets.length,
+      volume: volumeOf(sets),
+      records: [...latest.values()],
+    };
+  };
+
+  const now = totals(current);
+  const before = totals(previous);
+  const nowByGroup = groupBy(now.sets, (s) => s.muscleGroup);
+  const beforeByGroup = groupBy(before.sets, (s) => s.muscleGroup);
+
+  const groups = [...new Set([...nowByGroup.keys(), ...beforeByGroup.keys()])]
+    .map((group) => ({
+      group,
+      sets: nowByGroup.get(group)?.length ?? 0,
+      volume: volumeOf(nowByGroup.get(group) ?? []),
+      previousVolume: volumeOf(beforeByGroup.get(group) ?? []),
+    }))
+    .sort((a, b) => b.volume - a.volume || b.previousVolume - a.previousVolume);
+
+  return {
+    sessions: now.sessions,
+    sets: now.setCount,
+    volume: now.volume,
+    records: now.records,
+    groups,
+    previous: { sessions: before.sessions, sets: before.setCount, volume: before.volume, records: before.records.length },
+  };
+}
+
+export type PeriodReport = ReturnType<typeof periodReport>;

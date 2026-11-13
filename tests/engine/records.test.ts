@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { matchExercise } from "@/lib/engine/match";
 import { bestSet, markRecords } from "@/lib/engine/records";
-import { exerciseReport, muscleGroupReport, recordsByExercise, sessionSummary, type ReportSet } from "@/lib/engine/reports";
+import { exerciseReport, muscleGroupReport, periodReport, recordsByExercise, sessionSummary, type ReportSet } from "@/lib/engine/reports";
 import { isStagnant } from "@/lib/engine/stagnation";
 import { estimateCalories } from "@/lib/format";
 
@@ -132,4 +132,53 @@ describe("matchExercise", () => {
     expect(matchExercise("supino", planned).match?.id).toBe("inclinado");
   });
   it("no match", () => expect(matchExercise("agachamento", pool)).toEqual({ match: null, candidates: [] }));
+});
+
+describe("periodReport", () => {
+  const day = (iso: string) => new Date(`${iso}T12:00:00Z`);
+  const set = (sessionId: string, date: string, exerciseId: string, muscleGroup: string, weight: number, reps: number): ReportSet => ({
+    exerciseId,
+    exerciseName: exerciseId,
+    muscleGroup,
+    sessionId,
+    setPosition: 1,
+    isExtra: false,
+    weight,
+    reps,
+    createdAt: day(date),
+  });
+  const current = { start: day("2026-11-02"), end: day("2026-11-09") };
+  const previous = { start: day("2026-10-26"), end: day("2026-11-02") };
+
+  const history = [
+    set("s0", "2026-10-20", "supino", "peito", 40, 10), // baseline, before both periods
+    set("s1", "2026-10-27", "supino", "peito", 40, 10), // previous week: 400
+    set("s1", "2026-10-27", "remada", "costas", 30, 10), // previous week: 300
+    set("s2", "2026-11-03", "supino", "peito", 50, 8), // this week: 400, record
+    set("s2", "2026-11-03", "supino", "peito", 50, 6), // this week: 300
+    set("s3", "2026-11-05", "agachamento", "quadriceps", 100, 5), // this week: 500, first session = baseline
+  ];
+  const report = periodReport(history, current, previous);
+
+  it("totals the period", () => {
+    expect(report).toMatchObject({ sessions: 2, sets: 3, volume: 1200 });
+    expect(report.previous).toMatchObject({ sessions: 1, sets: 2, volume: 700 });
+  });
+
+  it("volume per muscle group against the previous period, biggest first", () => {
+    expect(report.groups).toEqual([
+      { group: "peito", sets: 2, volume: 700, previousVolume: 400 },
+      { group: "quadriceps", sets: 1, volume: 500, previousVolume: 0 },
+      { group: "costas", sets: 0, volume: 0, previousVolume: 300 },
+    ]);
+  });
+
+  it("lists records set in the period, not baselines", () => {
+    expect(report.records).toEqual([{ exerciseId: "supino", name: "supino", weight: 50, reps: 8, kind: "weight" }]);
+    expect(report.previous.records).toBe(0);
+  });
+
+  it("is empty when nothing was logged", () => {
+    expect(periodReport([], current, previous)).toMatchObject({ sessions: 0, sets: 0, volume: 0, groups: [], records: [] });
+  });
 });

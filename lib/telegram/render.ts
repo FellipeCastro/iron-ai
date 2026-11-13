@@ -1,5 +1,6 @@
 import type { PrKind } from "@/lib/engine/records";
-import type { exerciseReport, muscleGroupReport, sessionSummary } from "@/lib/engine/reports";
+import type { ReportKind } from "@/lib/engine/periods";
+import type { PeriodReport, exerciseReport, muscleGroupReport, sessionSummary } from "@/lib/engine/reports";
 import { siteUrl } from "@/lib/env";
 import { MUSCLE_LABEL, formatKcal, formatNumber } from "@/lib/format";
 import { DASHBOARD_URL, ROUTINE_URL, SETTINGS_URL, exerciseUrl, sessionUrl } from "@/lib/routes";
@@ -181,10 +182,12 @@ export function summary(input: {
   day: { letter: string; title: string } | null;
   data: ReturnType<typeof sessionSummary>;
   next: { letter: string; title: string } | null;
+  /** Replaces the close-reason label, e.g. "Relatório do treino" when the user asks for the last workout. */
+  label?: string;
 }) {
   const { data } = input;
   const lines = [
-    `<b>${CLOSE_LABEL[input.closeReason]}</b>${input.day ? ` · ${esc(input.day.letter)} ${esc(input.day.title)}` : ""}`,
+    `<b>${input.label ?? CLOSE_LABEL[input.closeReason]}</b>${input.day ? ` · ${esc(input.day.letter)} ${esc(input.day.title)}` : ""}`,
     "",
     `⏱️ ${data.durationMin} min · ${plural(data.setCount, "série", "séries")} · ${formatKcal(data.calories)} gastas (estimativa)`,
   ];
@@ -218,7 +221,7 @@ export type PlanView = {
 
 export function nextWorkout(day: PlanView | null, intro = "Seu próximo treino") {
   if (!day) return onboardingPrompt();
-  const lines = [`${intro}: <b>${esc(day.letter)} · ${esc(day.title)}</b>`, ""];
+  const lines = [`${intro}${intro.endsWith("!") ? "" : ":"} <b>${esc(day.letter)} · ${esc(day.title)}</b>`, ""];
   for (const e of day.exercises) {
     const metas = Array.from({ length: e.plannedSets }, (_, i) => {
       const t = e.targets.find((x) => x.position === i + 1);
@@ -229,7 +232,7 @@ export function nextWorkout(day: PlanView | null, intro = "Seu próximo treino")
   return lines.join("\n");
 }
 
-export const reminder = (day: PlanView | null) => `⏰ Hora do treino!\n\n${nextWorkout(day, "Hoje é")}`;
+export const reminder = (day: PlanView | null) => nextWorkout(day, "⏰ Seu treino está chegando!");
 
 // ---------- Reports ----------
 
@@ -275,6 +278,51 @@ export function weekReport(input: { sessions: number; planned: number; sets: num
     "",
     link(DASHBOARD_URL, "Abrir painel"),
   ].join("\n");
+}
+
+const MAX_RECORD_LINES = 10;
+const shortDate = (iso: string) => `${iso.slice(8)}/${iso.slice(5, 7)}`;
+/** "+12%" / "−8%" against the previous period; null when there is nothing to compare with. */
+const percentChange = (now: number, before: number) => {
+  if (before <= 0) return null;
+  const pct = Math.round(((now - before) / before) * 100);
+  return `${pct >= 0 ? "+" : "−"}${Math.abs(pct)}%`;
+};
+
+/** Automatic Monday report. `range` holds the local dates of the period (inclusive). */
+export function periodReportText(kind: ReportKind, range: { from: string; to: string }, r: PeriodReport) {
+  const prev = kind === "week" ? "semana anterior" : "mês anterior";
+  const title =
+    kind === "week"
+      ? `Resumo da semana · ${shortDate(range.from)} a ${shortDate(range.to)}`
+      : `Resumo de ${new Date(`${range.from}T00:00:00Z`).toLocaleDateString("pt-BR", { month: "long", timeZone: "UTC" })}`;
+  const volumeChange = percentChange(r.volume, r.previous.volume);
+
+  const lines = [
+    `<b>${title}</b>`,
+    "",
+    `🗓️ ${plural(r.sessions, "treino", "treinos")} · ${plural(r.sets, "série", "séries")}`,
+    `📦 Volume total: <b>${kg(Math.round(r.volume))}</b>${volumeChange ? ` (${volumeChange} vs ${prev})` : ""}`,
+  ];
+  if (r.previous.sets === 0) lines.push(`<i>Sem treinos ${kind === "week" ? "na semana" : "no mês"} anterior para comparar.</i>`);
+
+  lines.push("", "<b>Volume por grupo muscular</b>");
+  for (const g of r.groups) {
+    const change = percentChange(g.volume, g.previousVolume);
+    const detail = g.sets ? `${kg(Math.round(g.volume))} · ${plural(g.sets, "série", "séries")}` : "sem treino";
+    lines.push(`• <b>${groupLabel(g.group)}</b>: ${detail}${change ? ` (${change})` : ""}`);
+  }
+
+  lines.push("", `<b>Recordes batidos</b>${r.records.length ? ` (${r.records.length})` : ""}`);
+  if (r.records.length === 0) lines.push("Nenhum desta vez. A constância constrói os próximos. 💪");
+  for (const rec of r.records.slice(0, MAX_RECORD_LINES)) lines.push(`🏆 ${esc(rec.name)}: ${load(rec.weight, rec.reps)}`);
+  if (r.records.length > MAX_RECORD_LINES) lines.push(`… e mais ${r.records.length - MAX_RECORD_LINES}`);
+  if (r.previous.records > 0 || r.records.length > 0) {
+    lines.push(`<i>${kind === "week" ? "Semana" : "Mês"} anterior: ${plural(r.previous.records, "recorde", "recordes")}.</i>`);
+  }
+
+  lines.push("", link(DASHBOARD_URL, "Abrir painel"));
+  return lines.join("\n");
 }
 
 export const noHistory = () => "Ainda não tenho séries suas registradas. Mande a primeira!";
