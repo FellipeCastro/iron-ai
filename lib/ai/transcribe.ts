@@ -29,8 +29,11 @@ const AUDIO_TOKENS_PER_SECOND = 10;
 export async function transcribeVoice(voice: TgVoice, userId: string): Promise<string> {
   await assertAiBudget(userId);
   const { bytes, path } = await downloadFile(voice.file_id);
-  const name = path.split("/").pop() || "voice.ogg";
-  const file = await toFile(bytes, name, { type: voice.mime_type ?? "audio/ogg" });
+  // Telegram serves voice notes as "*.oga" (Ogg/Opus), an extension OpenAI rejects ("Unsupported file format oga").
+  // The bytes are valid Ogg, so only the name has to change.
+  const original = path.split("/").pop() || "voice.ogg";
+  const name = original.replace(/\.oga$/i, ".ogg");
+  const file = await toFile(bytes, name, { type: "audio/ogg" });
   const result = await openai().audio.transcriptions.create({ file, model: OPENAI_TRANSCRIBE_MODEL, language: "pt", prompt: PROMPT });
   const usage: TokenUsage =
     result.usage?.type === "tokens"
