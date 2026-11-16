@@ -90,6 +90,14 @@ function idempotent<T>(options: { idempotencyKey?: string } | undefined, scope: 
   return value;
 }
 
+async function createCheckoutSession(params: { customer?: string }, options?: { idempotencyKey?: string }) {
+  failIfSet("checkout.sessions.create");
+  return idempotent(options, "checkout", () => {
+    const id = `cs_test_${++stripeState.seq}`;
+    return { id, url: `https://checkout.stripe.test/${id}`, customer: params.customer };
+  });
+}
+
 // O SDK real só entra para verificar assinatura de webhook (`webhooks.constructEvent`) e gerar headers de teste.
 const realStripe = new Stripe("sk_test_fake");
 
@@ -131,15 +139,9 @@ export const stripeMock = {
   },
   checkout: {
     sessions: {
-      create: vi.fn(async (params: { customer?: string }, options?: { idempotencyKey?: string }) => {
-        failIfSet("checkout.sessions.create");
-        return idempotent(options, "checkout", () => {
-          const id = `cs_test_${++stripeState.seq}`;
-          return { id, url: `https://checkout.stripe.test/${id}`, customer: params.customer };
-        });
-      }),
+      create: vi.fn(createCheckoutSession),
       // Configure por teste: `stripeMock.checkout.sessions.retrieve.mockResolvedValueOnce({ ... })`.
-      retrieve: vi.fn(async (id: string) => {
+      retrieve: vi.fn(async (id: string): Promise<{ id: string; customer: string | null; subscription: string | null }> => {
         failIfSet("checkout.sessions.retrieve");
         throw new Error(`Sessão ${id} não configurada no Stripe falso`);
       }),
@@ -294,5 +296,7 @@ export function resetMocks() {
   openaiState.parsed = null;
   openaiState.error = null;
   nextHeadersState.headers = new Headers();
+  // clearAllMocks não descarta `mockImplementationOnce` pendentes: sem isso, um override não consumido vaza para o próximo teste.
+  stripeMock.checkout.sessions.create.mockReset().mockImplementation(createCheckoutSession);
   vi.clearAllMocks();
 }

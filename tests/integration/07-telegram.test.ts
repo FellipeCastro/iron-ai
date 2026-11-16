@@ -186,6 +186,7 @@ describe("POST /api/telegram/webhook", () => {
   const counter = async (userId: string) => (await db.select().from(usageCounters).where(eq(usageCounters.userId, userId)))[0]?.count ?? 0;
 
   it("quando o usuário passa do limite diário (60), então 200, avisa 1 vez só e NÃO enfileira", async () => {
+    vi.stubEnv("DAILY_MESSAGE_LIMIT", "60");
     const { user } = await linkedWithCount(60);
 
     const first = await POST(telegramWebhookRequest(update()));
@@ -210,6 +211,7 @@ describe("POST /api/telegram/webhook", () => {
   });
 
   it("quando o usuário manda exatamente o 60º do dia, então é processado; o 61º é bloqueado", async () => {
+    vi.stubEnv("DAILY_MESSAGE_LIMIT", "60");
     await linkedWithCount(59);
 
     await POST(telegramWebhookRequest(update()));
@@ -222,6 +224,7 @@ describe("POST /api/telegram/webhook", () => {
   });
 
   it("quando 70 mensagens chegam ao mesmo tempo, então o contador termina em 70 e exatamente 60 são enfileiradas, com 1 só aviso", async () => {
+    vi.stubEnv("DAILY_MESSAGE_LIMIT", "60");
     const { user } = await linkedWithCount(0);
 
     const responses = await Promise.all(Array.from({ length: 70 }, () => POST(telegramWebhookRequest(update()))));

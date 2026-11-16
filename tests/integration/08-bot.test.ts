@@ -72,7 +72,10 @@ describe("handleUpdate — registro de séries", () => {
     expect(sets).toHaveLength(3);
     expect(sets.every((s) => s.exerciseId === supino.id && s.weight === 80 && s.reps === 8 && !s.voidedAt)).toBe(true);
     expect(sets.map((s) => s.setPosition).sort()).toEqual([1, 2, 3]);
-    expect((await db.select().from(setTargets).where(eq(setTargets.userId, user.id))).length).toBeGreaterThan(0);
+    const targets = await db.select().from(setTargets).where(eq(setTargets.userId, user.id));
+    expect(targets.map((t) => ({ exerciseId: t.exerciseId, setPosition: t.setPosition, weight: t.weight, reps: t.reps })).sort((a, b) => a.setPosition - b.setPosition)).toEqual(
+      [1, 2, 3].map((setPosition) => ({ exerciseId: supino.id, setPosition, weight: 80, reps: 8 })),
+    );
   });
 
   it("quando o mesmo update_id é processado 2 vezes, então as séries são gravadas uma vez só", async () => {

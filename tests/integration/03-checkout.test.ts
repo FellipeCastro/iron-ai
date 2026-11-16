@@ -110,7 +110,9 @@ describe("startCheckoutAction", () => {
 
     const results = await Promise.all([startCheckoutAction({ plan: "monthly" }), startCheckoutAction({ plan: "monthly" })]);
 
-    const urls = results.map((r) => (r.ok ? r.data.url : r.error));
+    expect(results.every((r) => r.ok)).toBe(true);
+    const urls = results.map((r) => (r.ok ? r.data.url : null));
+    expect(urls.every((u) => typeof u === "string" && u.includes("checkout.stripe.test"))).toBe(true);
     expect(new Set(urls).size).toBe(1);
   });
 });
