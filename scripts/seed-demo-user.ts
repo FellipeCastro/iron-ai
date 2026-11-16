@@ -76,9 +76,9 @@ async function main() {
 
     const rows = day.exercises.flatMap(([name, base], e) =>
       Array.from({ length: SETS }, (_, s) => {
-        // Every other week the load goes up and reps restart at 8; reps climb to 12 within a block.
+        // Every other week the load goes up and reps restart at 6; reps climb to 12 within a block.
         const weight = base + Math.floor(week / 2) * 2.5;
-        const reps = Math.min(12, 8 + (week % 2) * 2 + s);
+        const reps = Math.min(12, 6 + (week % 2) * 2 + s);
         return { sessionId: session.id, exerciseId: idOf.get(name)!, setPosition: s + 1, weight, reps, createdAt: new Date(startedAt.getTime() + (e * 15 + s * 4) * 60_000) };
       }),
     );

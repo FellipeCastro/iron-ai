@@ -14,7 +14,7 @@ const bricolage = Bricolage_Grotesque({
 });
 
 const description =
-  "Registre séries por mensagem, receba metas automáticas de 8 a 12 reps, lembretes, resumos e gráficos de evolução. O contato inteligente que organiza seus treinos.";
+  "Registre séries por mensagem, receba metas automáticas de 6 a 12 reps, lembretes, resumos e gráficos de evolução. O contato inteligente que organiza seus treinos.";
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl()),

@@ -1,7 +1,7 @@
 // Double progression per set position: hit the target → +1 rep; at 12 reps the load goes up and reps
-// reset to 8. Pure functions, no I/O: the services feed them the valid log and persist the result.
+// reset to 6. Pure functions, no I/O: the services feed them the valid log and persist the result.
 
-export const REP_MIN = 8;
+export const REP_MIN = 6;
 export const REP_MAX = 12;
 
 export type Load = { weight: number; reps: number };

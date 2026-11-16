@@ -11,7 +11,7 @@ import { EXERCISES_URL } from "@/lib/routes";
 
 export const metadata: Metadata = { title: "Evolução" };
 
-const REP_RANGE = [8, 9, 10, 11, 12];
+const REP_RANGE = [6, 7, 8, 9, 10, 11, 12];
 
 export default async function ExercisePage({ params }: PageProps<"/exercises/[id]">) {
   await auth.protect();
@@ -68,7 +68,7 @@ export default async function ExercisePage({ params }: PageProps<"/exercises/[id
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
         {targets.length > 0 && (
           <Card>
-            <CardTitle title="Metas por série" subtitle="Faixa de 8 a 12 reps. Ao chegar em 12, a carga sobe." />
+            <CardTitle title="Metas por série" subtitle="Faixa de 6 a 12 reps. Ao chegar em 12, a carga sobe." />
             <ul className="mt-6 grid gap-4">
               {targets.map((t) => (
                 <li key={t.position} className="flex items-center gap-4">

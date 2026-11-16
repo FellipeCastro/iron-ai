@@ -92,15 +92,24 @@ export async function syncSubscription(subscriptionId: string) {
     trialEnd: sub.trial_end ? new Date(sub.trial_end * 1000) : null,
     cancelAtPeriodEnd: sub.cancel_at_period_end,
   };
-  await db
-    .insert(subscriptions)
-    .values({ userId: user.id, ...row })
-    .onConflictDoUpdate({
-      target: subscriptions.userId,
-      set: row,
-      // A late event of an old subscription must not overwrite a newer one that is still alive.
-      setWhere: or(eq(subscriptions.stripeSubscriptionId, sub.id), inArray(subscriptions.status, FINISHED_STATUSES)),
-    });
+  const upsert = () =>
+    db
+      .insert(subscriptions)
+      .values({ userId: user.id, ...row })
+      .onConflictDoUpdate({
+        target: subscriptions.userId,
+        set: row,
+        // A late event of an old subscription must not overwrite a newer one that is still alive.
+        setWhere: or(eq(subscriptions.stripeSubscriptionId, sub.id), inArray(subscriptions.status, FINISHED_STATUSES)),
+      });
+  try {
+    await upsert();
+  } catch (err) {
+    // The success redirect and the webhook sync the same new subscription at the same moment. Both see no row, and the
+    // loser trips the unique stripe_subscription_id (not the ON CONFLICT target). The row exists now, so one retry takes the update path.
+    if (!isUniqueViolation(err)) throw err;
+    await upsert();
+  }
   Sentry.logger.info("Subscription synced", { user_id: user.id, status: sub.status, cancel_at_period_end: sub.cancel_at_period_end });
   return true;
 }
@@ -117,6 +126,14 @@ export async function cancelCustomerSubscriptions(customerId: string) {
     await syncSubscription(sub.id);
   }
   return live.length;
+}
+
+/** Postgres error 23505; Drizzle wraps the driver error, so look through `cause`. */
+function isUniqueViolation(err: unknown) {
+  for (let e: unknown = err, depth = 0; e && typeof e === "object" && depth < 5; e = (e as { cause?: unknown }).cause, depth++) {
+    if ((e as { code?: unknown }).code === "23505") return true;
+  }
+  return false;
 }
 
 function randomLetters(length: number) {

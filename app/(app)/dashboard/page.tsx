@@ -3,7 +3,7 @@ import Link from "next/link";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { Badge, Card, CardTitle, DayBadge, PageHeader, StatTile, buttonPrimary } from "@/components/app/ui";
 import { TelegramConnect } from "@/components/app/telegram-connect";
-import { BarChart } from "@/components/charts/bar-chart";
+import { LineChart } from "@/components/charts/line-chart";
 import { ArrowRightIcon, TelegramColorIcon } from "@/components/landing/icons";
 import { getDashboard } from "@/lib/data";
 import { formatCompact, formatDuration, formatKg, formatRelativeDay, formatSigned } from "@/lib/format";
@@ -226,16 +226,16 @@ export default async function DashboardPage() {
 
       <div className="mt-6 grid gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-3">
-          <CardTitle title="Calorias por semana" subtitle="Estimativa das calorias gastas nos treinos. A barra clara é a semana atual." />
+          <CardTitle title="Calorias por semana" subtitle="Estimativa das calorias gastas nos treinos. O último ponto é a semana atual." />
           <div className="mt-6">
-            <BarChart
+            <LineChart
               label="Calorias estimadas por semana nas últimas 8 semanas"
               unit="kcal"
-              data={data.weeklyCalories.map((w) => ({
+              dots
+              points={data.weeklyCalories.map((w) => ({
                 label: w.label,
                 value: w.value,
                 detail: w.detail,
-                muted: w.current,
               }))}
             />
           </div>

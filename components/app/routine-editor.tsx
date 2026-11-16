@@ -323,7 +323,7 @@ export function RoutineEditor({ initial, catalog }: { initial: Routine; catalog:
         )}
 
         <p className="mt-6 text-[13px] text-[#8a8a94]">
-          As metas de cada série são atualizadas automaticamente: bateu a meta, +1 rep; chegou a 12, a carga sobe e as reps voltam para 8.
+          As metas de cada série são atualizadas automaticamente: bateu a meta, +1 rep; chegou a 12, a carga sobe e as reps voltam para 6.
         </p>
       </Card>
 

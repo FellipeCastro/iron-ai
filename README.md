@@ -1,12 +1,12 @@
-# Iron AI
+# 🏋️‍♂️ Iron AI
 
-**O contato inteligente que organiza os seus treinos. Você conta o treino em texto livre, o código cuida da progressão.**
+> O contato inteligente que organiza os seus treinos. Você conta o treino em texto livre, o código cuida da progressão.
 
 ## Sobre o Projeto
 
-A proposta de valor do Iron AI é ser um **contato inteligente**: um contato na sua lista de conversas que organiza os seus treinos. Para quem treina musculação e quer parar de anotar série em planilha, é só mandar mensagem em linguagem natural ("supino 3x10 20kg", "terminei") e o contato registra, calcula a próxima meta, lembra do treino e mostra a evolução. O canal da conversa é o Telegram, e o site Next.js entrega painel, treinos, histórico e gráficos de evolução.
+Um contato na sua lista de conversas que organiza os seus treinos. Para quem treina musculação e quer parar de anotar série em planilha, é só mandar mensagem em linguagem natural ("supino 3x10 20kg", "terminei") e o contato registra, calcula a próxima meta, lembra do treino e mostra a evolução. O canal da conversa é o Telegram, e o site Next.js entrega painel, treinos, histórico e gráficos de evolução.
 
-Não é um chatbot que "opina" sobre treino: o contato inteligente organiza, não aconselha. A IA tem uma única função: **interpretar** o que o usuário escreveu. Progressão de carga, recordes, rodízio de treinos e respostas são código determinístico e templates em pt-BR, o que torna o resultado previsível e barato. A saída do modelo passa por Structured Outputs (via schemas Zod) antes de tocar no banco.
+Não é um chatbot que "opina" sobre treino: o Iron organiza, não aconselha. A IA tem uma única função: **interpretar** o que o usuário escreveu. Progressão de carga, recordes, rodízio de treinos e respostas são código determinístico e templates em pt-BR, o que torna o resultado previsível e barato. A saída do modelo passa por Structured Outputs (via schemas Zod) antes de tocar no banco.
 
 ## 🛠️ Stack Tecnológica
 
@@ -41,7 +41,7 @@ O registro do treino acontece na conversa.
 ### 2. Motor de Progressão
 Código puro, sem I/O, coberto por testes.
 
-- **Progressão 8→12:** +1 rep a cada treino; ao chegar em 12, sobe a carga e volta para 8.
+- **Progressão 6→12:** +1 rep a cada treino; ao chegar em 12, sobe a carga e volta para 6.
 - **Recordes:** maior carga e melhor série em cada carga.
 - **Estagnação:** detecta 3 sessões sem progresso.
 - **Rodízio:** define o próximo treino (A→B→C) e fecha sessões paradas há 90 minutos.
@@ -77,7 +77,7 @@ Telegram → POST /api/telegram/webhook   valida o secret, aplica os limites (60
         → task telegram-handle-update    1 run por update_id (idempotencyKey), 1 por usuário por vez (concurrencyKey)
             → lib/ai/fast-parse.ts        atalho sem LLM para mensagens simples (FAST_PATH)
             → OpenAI responses.parse      Structured Outputs (Zod estrito, lib/ai/schemas.ts): só interpreta
-            → lib/engine                  progressão 8→12, recordes, sessão, rodízio
+            → lib/engine                  progressão 6→12, recordes, sessão, rodízio
             → lib/telegram/render.ts      toda resposta é template pt-BR
 ```
 
