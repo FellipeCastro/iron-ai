@@ -35,6 +35,7 @@ describe("startCheckoutAction", () => {
         client_reference_id: user.id,
         line_items: [{ price: process.env[priceEnv], quantity: 1 }],
       }),
+      expect.objectContaining({ idempotencyKey: expect.any(String) }),
     );
   });
 

@@ -4,12 +4,13 @@ import { advance, computeTargets, hitTarget, nextTarget, roundKg } from "@/lib/e
 const set = (setPosition: number, weight: number, reps: number, isExtra = false) => ({ setPosition, weight, reps, isExtra });
 
 describe("nextTarget", () => {
-  it("first set is the baseline: +1 rep", () => {
-    expect(nextTarget(null, { weight: 20, reps: 10 }, 2.5)).toEqual({ weight: 20, reps: 11 });
+  it("first set is the baseline: the target is what was done", () => {
+    expect(nextTarget(null, { weight: 20, reps: 10 }, 2.5)).toEqual({ weight: 20, reps: 10 });
   });
 
-  it("baseline at 12 reps jumps the load and resets to 6", () => {
-    expect(nextTarget(null, { weight: 20, reps: 12 }, 2.5)).toEqual({ weight: 22.5, reps: 6 });
+  it("baseline at 12 reps stays at 12; hitting it next time jumps the load", () => {
+    expect(nextTarget(null, { weight: 20, reps: 12 }, 2.5)).toEqual({ weight: 20, reps: 12 });
+    expect(nextTarget({ weight: 20, reps: 12 }, { weight: 20, reps: 12 }, 2.5)).toEqual({ weight: 22.5, reps: 6 });
   });
 
   it("hit → +1 rep", () => {
@@ -53,29 +54,29 @@ describe("helpers", () => {
 describe("computeTargets", () => {
   it("tracks each set position independently", () => {
     const t = computeTargets([set(1, 20, 10), set(2, 20, 9), set(3, 20, 8)], 2.5);
-    expect(t.get(1)).toMatchObject({ weight: 20, reps: 11 });
-    expect(t.get(2)).toMatchObject({ weight: 20, reps: 10 });
-    expect(t.get(3)).toMatchObject({ weight: 20, reps: 9 });
+    expect(t.get(1)).toMatchObject({ weight: 20, reps: 10 });
+    expect(t.get(2)).toMatchObject({ weight: 20, reps: 9 });
+    expect(t.get(3)).toMatchObject({ weight: 20, reps: 8 });
   });
 
   it("ignores extra sets", () => {
     const t = computeTargets([set(1, 20, 10), set(2, 40, 12, true)], 2.5);
-    expect(t.get(1)).toMatchObject({ weight: 20, reps: 11 });
+    expect(t.get(1)).toMatchObject({ weight: 20, reps: 10 });
     expect(t.has(2)).toBe(false);
   });
 
   it("a correction cascades into later targets", () => {
-    // Session 1: 20×10 → target 20×11. Session 2: 20×11 → target 20×12.
+    // Session 1: 20×10 → baseline, target 20×10. Session 2: 20×11 beats it → target 20×12.
     const original = [set(1, 20, 10), set(1, 20, 11)];
     expect(computeTargets(original, 2.5).get(1)).toMatchObject({ weight: 20, reps: 12 });
 
-    // The first set was actually 25 kg: target becomes 25×11, and 20×11 later is a lighter (missed) set.
+    // The first set was actually 25 kg: the baseline becomes 25×10, and 20×11 later is a lighter (missed) set.
     const corrected = [set(1, 25, 10), set(1, 20, 11)];
-    expect(computeTargets(corrected, 2.5).get(1)).toMatchObject({ weight: 25, reps: 11 });
+    expect(computeTargets(corrected, 2.5).get(1)).toMatchObject({ weight: 25, reps: 10 });
   });
 
   it("points at the set that produced the target", () => {
-    const log = [set(1, 20, 10), set(1, 20, 8)];
+    const log = [set(1, 20, 10), set(1, 20, 10)];
     expect(computeTargets(log, 2.5).get(1)!.source).toBe(log[1]);
   });
 });

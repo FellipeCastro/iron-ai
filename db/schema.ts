@@ -175,7 +175,7 @@ export const routineExercises = pgTable(
       .references(() => routineDays.id, { onDelete: "cascade" }),
     exerciseId: uuid("exercise_id")
       .notNull()
-      .references(() => exercises.id),
+      .references(() => exercises.id, { onDelete: "cascade" }),
     order: smallint("order").notNull(),
     plannedSets: smallint("planned_sets").notNull(),
   },
@@ -217,7 +217,7 @@ export const setEntries = pgTable(
       .references(() => sessions.id, { onDelete: "cascade" }),
     exerciseId: uuid("exercise_id")
       .notNull()
-      .references(() => exercises.id),
+      .references(() => exercises.id, { onDelete: "cascade" }),
     setPosition: smallint("set_position").notNull(),
     weight: kg("weight").notNull(),
     reps: smallint("reps").notNull(),
@@ -241,7 +241,7 @@ export const setTargets = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
     exerciseId: uuid("exercise_id")
       .notNull()
-      .references(() => exercises.id),
+      .references(() => exercises.id, { onDelete: "cascade" }),
     setPosition: smallint("set_position").notNull(),
     weight: kg("weight").notNull(),
     reps: smallint("reps").notNull(),

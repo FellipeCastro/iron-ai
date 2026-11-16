@@ -7,9 +7,16 @@ import { db, subscriptions, users } from "@/db";
 /** Statuses that keep the product unlocked. past_due stays on while Stripe retries the card. */
 export const ACCESS_STATUSES = ["trialing", "active", "past_due"];
 
+/** Statuses whose access also ends when the paid period ends. past_due is exempt: its period is already over while Stripe retries the card. */
+const PERIOD_BOUND_STATUSES = ["trialing", "active"];
+
 /** `complimentary` accounts (created before billing launched) never need a subscription. */
-export const hasAccess = (sub: { status: string } | null | undefined, complimentary = false) =>
-  complimentary || Boolean(sub && ACCESS_STATUSES.includes(sub.status));
+export const hasAccess = (sub: { status: string; currentPeriodEnd: Date } | null | undefined, complimentary = false) => {
+  if (complimentary) return true;
+  if (!sub || !ACCESS_STATUSES.includes(sub.status)) return false;
+  // Guards against a missed/late Stripe webhook leaving a lapsed subscription as "active".
+  return !PERIOD_BOUND_STATUSES.includes(sub.status) || sub.currentPeriodEnd.getTime() > Date.now();
+};
 
 export const findSubscription = (userId: string) => db.query.subscriptions.findFirst({ where: eq(subscriptions.userId, userId) });
 
