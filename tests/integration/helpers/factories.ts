@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { db, exercises, subscriptions, telegramLinks, users } from "@/db";
+import { db, exercises, sessions, setEntries, subscriptions, telegramLinks, users } from "@/db";
 
 // Linhas no banco real, direto pelo Drizzle (sem passar pelas actions que estão sendo testadas).
 
@@ -51,4 +51,30 @@ export async function createExercise(overrides: Partial<typeof exercises.$inferI
     .values({ name: `Exercício ${next()}`, muscleGroup: "peito", ...overrides })
     .returning();
   return exercise;
+}
+
+/** Sessão encerrada (por padrão, há 1 dia, com 60 min). `open: true` cria uma sessão ainda aberta. */
+export async function createSession(userId: string, overrides: Partial<typeof sessions.$inferInsert> & { open?: boolean } = {}) {
+  const { open, ...rest } = overrides;
+  const startedAt = rest.startedAt ?? new Date(Date.now() - 86_400_000);
+  const [session] = await db
+    .insert(sessions)
+    .values({
+      userId,
+      startedAt,
+      lastSetAt: startedAt,
+      ...(open ? {} : { endedAt: new Date(startedAt.getTime() + 60 * 60_000), closeReason: "user" as const }),
+      ...rest,
+    })
+    .returning();
+  return session;
+}
+
+/** Série válida numa sessão. */
+export async function createSet(sessionId: string, exerciseId: string, overrides: Partial<typeof setEntries.$inferInsert> = {}) {
+  const [set] = await db
+    .insert(setEntries)
+    .values({ sessionId, exerciseId, setPosition: 1, weight: 80, reps: 8, ...overrides })
+    .returning();
+  return set;
 }

@@ -269,6 +269,11 @@ export const openaiParse = vi.fn(async (..._args: unknown[]) => {
 export const openaiTranscribe = vi.fn(async (..._args: unknown[]) => ({ text: "" }));
 
 export class FakeOpenAI {
+  // O parser faz `err instanceof OpenAI.APIError` para decidir se tenta o modelo de fallback.
+  static APIError = class APIError extends Error {
+    status?: number;
+  };
+  static APIConnectionError = class APIConnectionError extends Error {};
   responses = { parse: openaiParse, create: openaiParse };
   audio = { transcriptions: { create: openaiTranscribe } };
 }
