@@ -1,173 +1,184 @@
-# Iron AI — Plano de implementação v1
+# Testes de integração (estilo request spec) — iron-ai
 
-## Context
-Iron AI é um assistente de treino no Telegram (registro de séries por texto livre, progressão automática 6→12 reps, lembretes, resumos, relatórios) com um site Next.js (painel, rotina, histórico, gráficos, configurações). A entrevista de alinhamento está concluída (spec e assumptions aprovados). O repo hoje é um `create-next-app` limpo: Next **16.4.3**, React 19.3.0, Tailwind 4, TS, sem nenhuma outra dependência. Convenções do Next 16 a respeitar (AGENTS.md): consultar `node_modules/next/dist/docs/` antes de codar; `proxy.ts` substitui `middleware.ts`.
+## Contexto
+O app (Next 16 + Clerk + Stripe + Neon/Drizzle + Trigger.dev + bot do Telegram) só tem testes unitários do motor (`tests/engine`, `tests/ai`). Nenhuma rota, server action ou webhook é testada com banco real. Objetivo: cobrir os fluxos que mexem com dinheiro, permissão e dado de outro usuário. Você é a fonte da verdade: **as frases abaixo precisam da sua confirmação antes de eu escrever qualquer teste.**
 
-## Decisões travadas (resumo)
-- Site primeiro (Clerk) → deep link `t.me/<bot>?start=<token>` vincula o chat. 1 chat privado por conta, pt-BR, kg.
-- Webhook Next.js → task trigger.dev (`concurrencyKey` = userId, `idempotencyKey` = `update_id`).
-- LLM só interpreta (Structured Outputs + Zod); progressão, PRs, respostas = código determinístico/templates.
-- Meta por série (posição), faixa 6–12 global, rodízio A→B→C sequencial, sessão implícita (fecha: "terminei" / todos concluídos / 90 min inativo).
-- Log imutável de séries com versão válida; exercícios de um catálogo pt-BR com aliases; fora-do-plano registrado como "extra".
-- Cron global de 5 min (lembretes + fechamento por inatividade), idempotente por chave.
-- Grátis + rate limit (150 msg/dia, ASSUMPTION) + teto global de gasto OpenAI.
-- Drizzle + Neon (HTTP driver), Vercel, dev/prod, Sentry sem PII, texto bruto 30 dias, hard delete.
-- Data-Driven UI só no site.
+## Fluxos críticos encontrados
+1. Cadastro / sincronização de usuário (webhook Clerk → Trigger, `ensureUser`)
+2. Login / acesso (`currentAppUser`, gate de assinatura nas páginas, actions e bot)
+3. Checkout (`startCheckoutAction`, `createCheckoutUrl`, `/assinar/sucesso`)
+4. Webhook Stripe (`/api/webhooks/stripe`, `syncSubscription`, disputa, reembolso)
+5. Portal de cobrança e exclusão de conta
+6. Dados de treino na web (actions de série, sessão, rotina, exercício): isolamento entre usuários
+7. Vínculo do Telegram (token de link) e webhook do Telegram (segredo, limites, duplicidade)
+8. Registro de séries pelo bot (`handleUpdate` / `logSets`) e limites de custo (mensagens/dia, mês, orçamento OpenAI)
 
-## Ajustes à stack informada (a confirmar na aprovação)
-- **`zod-to-json-schema` dispensável**: o SDK `openai` já converte Zod via `zodTextFormat` + `openai.responses.parse` (confirmado na doc atual). Só instalar se algum caso fugir disso.
-- **"Sanitização de markdown artifacts"** vira desnecessária com Structured Outputs estrito; manter apenas validação Zod pós-parse.
-- Modelo OpenAI: id exato e suporte a Structured Outputs serão confirmados na doc no momento de codar a Fase 3 (não fixado aqui); constante única `OPENAI_PARSER_MODEL` + `OPENAI_FALLBACK_MODEL`.
+Fora do escopo (sem dinheiro/permissão): relatórios, lembretes, gráficos, SEO, landing.
 
-## Estrutura de pastas proposta
-```
-app/
-  (marketing)/page.tsx            landing + CTA
-  (auth)/sign-in, sign-up         Clerk
-  (app)/dashboard, routine, history, exercises/[id], settings
-  api/telegram/webhook/route.ts   valida secret, enqueue
-  api/account/route.ts            DELETE conta
-proxy.ts                           clerkMiddleware (rotas (app) protegidas; /api/telegram público)
-db/ schema.ts, index.ts, seed/exercises.ts
-drizzle/                           migrações
-trigger/ handle-message.ts, tick.ts (cron 15min), close-session.ts
-lib/
-  telegram/ client.ts, render.ts (templates pt-BR), keyboards.ts
-  ai/ schemas.ts (Zod das ações), parse-message.ts, prompts.ts
-  engine/ progression.ts, session.ts, records.ts, stagnation.ts, reports.ts   (puro, sem I/O)
-  limits.ts, strings.ts
-components/ ui/ (shadcn), charts/, cards/
-tests/ engine/*.test.ts
-trigger.config.ts, drizzle.config.ts
-```
+## Frases de comportamento
+Marcadores: ✅ = comportamento que o código já tem hoje; ❓ = **não sei se é o esperado, preciso da sua decisão**.
 
-## Modelo de dados (Drizzle / Neon)
-- `users` (id, clerk_id unique, timezone, reminder_time, training_days[], weight_increment_kg, created_at)
-- `telegram_links` (user_id unique, chat_id unique, linked_at) + `link_tokens` (token hash, user_id, expires_at, used_at)
-- `exercises` (catálogo: id, name, muscle_group, aliases[]; `owner_user_id` nullable p/ customizados)
-- `routines` (user_id, version) → `routine_days` (letter A/B/C, position) → `routine_exercises` (day_id, exercise_id, order, planned_sets)
-- `sessions` (user_id, day_id, started_at, ended_at, close_reason: user|complete|inactive, last_set_at, summary_sent_at)
-- `set_entries` (append-only: id, session_id, exercise_id, set_position, weight, reps, is_extra, supersedes_id, voided_at, created_at)
-- `set_targets` (user_id, exercise_id, set_position, weight, reps, source_entry_id) — alvo vigente, recalculável do log
-- `messages` (update_id unique, user_id, raw_text, parsed_json, status, created_at; purge 30d)
-- `reminder_log` (user_id, date, sent_at; unique) · `usage_counters` (user_id, date, count)
+### 1. Cadastro
+describe("POST /api/webhooks/clerk")
+- it("quando a assinatura svix é inválida, então responde 400 e não enfileira nada")
+- it("quando chega user.created válido, então enfileira 1 tarefa com a chave de idempotência do svix-id e responde 200")
+- it("quando o mesmo svix-id chega duas vezes, então a segunda entrega usa a mesma idempotencyKey")
+- it("quando o evento não traz id de usuário, então responde 200 sem enfileirar")
+describe("tarefas clerk-user-created/updated/deleted (rodam no banco real)")
+- it("quando user.created roda duas vezes para o mesmo clerkId, então existe 1 só usuário")
+- it("quando user.updated chega antes de user.created, então o usuário é criado (backfill)")
+- it("quando user.deleted roda, então apaga o usuário e tudo que depende dele (assinatura, treinos, vínculo Telegram)")
+- it("quando user.deleted roda, então o cliente Stripe dele é cancelado") ✔ CONFIRMADO. Hoje o código NÃO faz isso: este teste vai falhar e entrar em BUGS.md.
+describe("ensureUser")
+- it("quando o webhook ainda não chegou, então cria o usuário na hora")
+- it("quando 2 requisições simultâneas pedem o mesmo clerkId novo, então só 1 usuário é criado e ambas recebem o mesmo id")
 
-## Fases
-Status conferido no código em 2026-11-03. `[x]` = implementado no repositório; `[ ]` = pendente ou sem evidência no repositório.
+### 2. Login / acesso
+describe("actions protegidas por assinatura (saveRoutine, updateSet, deleteSet, addSet, deleteSession, updateDuration, deleteExerciseFromSession)")
+- it("quando não há sessão Clerk, então a action é rejeitada (auth.protect)")
+- it("quando o usuário não tem assinatura nem é complimentary, então retorna ok:false com 'Sua assinatura não está ativa' e nada é gravado")
+- it("quando o status é active ou trialing, então a action executa")
+- it("quando o status é past_due, então a action executa") ✅ (acesso mantido enquanto o Stripe tenta o cartão) — confirme
+- it("quando o status é canceled, unpaid, incomplete ou incomplete_expired, então é bloqueado")
+- it("quando a conta é complimentary sem assinatura, então tem acesso")
+- it("quando a assinatura está active mas current_period_end já passou, então o acesso é totalmente removido") ✔ CONFIRMADO (corrigido por você). Hoje `hasAccess` só olha o status, então este teste deve falhar e entrar em BUGS.md.
+describe("actions liberadas sem assinatura (saveSettings, createTelegramLink, disconnectTelegram, startCheckout, openBillingPortal, deleteAccount)")
+- it("quando o usuário está sem assinatura, então consegue usar essas actions") ✅ (para poder pagar ou sair)
+describe("GET /assinar/sucesso")
+- it("quando não há sessão, então redireciona para o login")
 
-### 1. Fundação
-- [x] Instalar as dependências: Clerk, drizzle-orm + drizzle-kit, @neondatabase/serverless, zod, openai, @trigger.dev/sdk, @sentry/nextjs, vitest (framer-motion, lucide-react e shadcn não foram usados; ver "Mudanças em relação ao plano original")
-- [x] `proxy.ts` com `clerkMiddleware`
-- [x] Sentry e variáveis de ambiente
-- [x] Schema e migrações (`drizzle/0000` a `0004`)
-- [x] Seed do catálogo pt-BR com aliases (94 exercícios; a estimativa era ~150)
+### 3. Checkout
+describe("startCheckoutAction")
+- it("quando o plano é monthly ou annual e o usuário não tem assinatura, então devolve a URL do Checkout com o price do plano, client_reference_id = id do usuário e o customer salvo")
+- it("quando o plano é inválido (ex.: 'weekly', vazio), então retorna 'Plano inválido.' e não chama o Stripe")
+- it("quando o Stripe falha, então retorna mensagem de erro amigável, não grava assinatura e não lança exceção")
+- it("quando o usuário já tem acesso, então devolve a URL do dashboard e NÃO cria outro Checkout")
+- it("quando o usuário pagou mas o webhook ainda não chegou (Stripe lista assinatura ativa), então sincroniza a assinatura e devolve o dashboard em vez de cobrar de novo")
+- it("quando o usuário não tinha cliente Stripe, então cria 1 cliente e salva o id antes de abrir o Checkout")
+- it("quando o usuário clica 2 vezes em 'assinar' ao mesmo tempo, então só existe 1 cliente Stripe e 1 stripeCustomerId") ✅ (chave de idempotência)
+- it("quando o usuário clica 2 vezes ao mesmo tempo, então só 1 Checkout Session é criada") ✔ CONFIRMADO. Hoje cada clique cria uma sessão (sem idempotency key): provável falha, vai para BUGS.md.
+describe("GET /assinar/sucesso?session_id=")
+- it("quando o session_id é do cliente do próprio usuário, então sincroniza a assinatura e redireciona para o dashboard")
+- it("quando o session_id pertence ao cliente de OUTRO usuário, então NÃO sincroniza nada e o acesso do usuário não muda")
+- it("quando o session_id não começa com 'cs_' ou falta, então não chama o Stripe")
+- it("quando o Stripe falha, então redireciona para /settings?checkout=success sem derrubar a rota")
+- it("quando o webhook ainda não ativou a assinatura, então redireciona para /settings?checkout=success")
 
-### 2. Motor determinístico (`lib/engine`)
-- [x] `nextTarget` (+1 rep; 12 ⇒ carga + incremento, reps = 6; senão mantém) e baseline na 1ª série
-- [x] Sessão (abrir, fechar, resumo)
-- [x] PRs (maior carga; melhor série na carga)
-- [x] Estagnação (3 sessões sem progresso, mín. 4)
-- [x] Rodízio do próximo treino
-- [x] Recomputação das metas após correção
-- [x] Testes unitários de progressão, sessão, recordes, lembretes e duração
+### 4. Webhook Stripe
+describe("POST /api/webhooks/stripe")
+- it("quando falta o header stripe-signature, então 400")
+- it("quando a assinatura é forjada ou o corpo foi alterado, então 400 e o banco não muda")
+- it("quando chega customer.subscription.created de um cliente conhecido, então grava status, price, current_period_end, trial_end e cancel_at_period_end")
+- it("quando chega checkout.session.completed / invoice.paid / invoice.payment_failed, então sincroniza a assinatura referenciada")
+- it("quando invoice.payment_failed deixa a assinatura past_due, então o usuário mantém acesso")
+- it("quando customer.subscription.deleted chega, então o status vira canceled e o acesso é removido")
+- it("quando cancel_at_period_end é true, então o acesso continua até o fim do período")
+- it("quando o mesmo evento chega duas vezes, então o banco fica igual (1 linha) e responde 200")
+- it("quando 2 entregas do mesmo evento chegam ao mesmo tempo, então continua 1 linha e nenhuma dá erro")
+- it("quando chegam eventos fora de ordem, então vale o estado atual lido do Stripe, não a ordem de chegada")
+- it("quando o evento é de um cliente sem usuário local, então responde 200, não grava nada") ✔ CONFIRMADO (200)
+- it("quando o evento de uma assinatura ANTIGA chega depois de uma nova ativa, então a nova não é sobrescrita")
+- it("quando uma assinatura antiga já terminou e o usuário assina de novo, então a nova substitui a antiga")
+- it("quando o Stripe falha ao ler a assinatura, então 500 (para o Stripe reenviar)")
+- it("quando chega charge.dispute.created, então cancela todas as assinaturas vivas do cliente e o acesso acaba na hora")
+- it("quando chega charge.refunded TOTAL, então cancela as assinaturas; se for reembolso PARCIAL, então nada é cancelado")
+- it("quando chega early_fraud_warning, então só alerta (nenhuma assinatura muda)")
+- it("quando chega um tipo de evento desconhecido, então 200 sem efeito")
 
-### 3. Pipeline do Telegram
-- [x] Webhook: valida `X-Telegram-Bot-Api-Secret-Token`, aplica rate limit e enfileira com `idempotencyKey`/`concurrencyKey`
-- [x] Task `telegram-handle-update` (`trigger/handle-message.ts`, com a lógica em `lib/bot/handle-update.ts`)
-- [x] Onboarding conversacional da rotina
-- [x] Parser com `responses.parse` + `zodTextFormat` e união discriminada de intenções
-- [x] Baixa confiança ⇒ botões/pergunta sem gravar
-- [x] Respostas por templates, callbacks de botões e indicador "digitando"
+### 5. Portal e exclusão de conta
+describe("openBillingPortalAction")
+- it("quando o usuário está logado, então devolve a URL do portal com return_url em /settings")
+- it("quando o Stripe falha, então retorna erro amigável")
+describe("deleteAccountAction")
+- it("quando tudo dá certo, então cancela o cliente no Stripe, apaga o usuário e todos os seus dados, e apaga o login na Clerk")
+- it("quando o Stripe falha, então NADA é apagado e o usuário pode tentar de novo")
+- it("quando a Clerk falha depois de apagar os dados, então retorna erro avisando que o login ficou")
+- it("quando o usuário A apaga a conta, então os dados do usuário B continuam intactos")
+- it("quando 2 exclusões simultâneas disparam, então nenhuma dá erro 500 e os dados somem uma vez só")
 
-### 4. Vínculo e site
-- [x] Sign-up/sign-in
-- [x] "Conectar Telegram" com token de uso único e expiração
-- [x] Dashboard (próximo treino, metas, PRs, métricas)
-- [x] Rotina (edição), histórico e gráficos por exercício
-- [x] Configurações (horário, dias, incremento, fuso)
-- [x] Excluir conta (Neon cascade, Clerk `deleteUser` e desvínculo)
+### 6. Dados de treino (web) — acesso indevido
+describe("updateSetAction / deleteSetAction / addSetAction / deleteExerciseFromSessionAction / deleteSessionAction / updateSessionDurationAction")
+- it("quando o usuário edita a própria série, então cria a correção (a antiga fica anulada) e os alvos são recalculados")
+- it("quando o usuário A tenta editar, apagar ou adicionar série na sessão/série do usuário B, então recebe 'não encontrada' e nada muda no banco")
+- it("quando A tenta apagar a sessão ou duração de B, então 'não encontrado' e nada muda")
+- it("quando A tenta adicionar série usando exercício personalizado de B, então é recusado")
+- it("quando o uuid é inválido, então retorna erro de validação sem tocar no banco")
+- it("quando weight < 0 ou > 1000, ou reps < 1 ou > 100, então rejeita") — limites
+- it("quando weight = 0, então aceita (peso corporal)") ✔ CONFIRMADO
+- it("quando reps = 0 ou negativo, então rejeita")
+- it("quando a duração é 0, negativa ou > 600 min, então rejeita")
+- it("quando a duração é editada numa sessão ainda aberta, então 'não encontrado'")
+- it("quando o mesmo 'apagar série' é enviado 2 vezes (duplo clique), então a segunda retorna 'não encontrada' e nada quebra")
+- it("quando 2 'apagar exercício' simultâneos chegam, então a sessão é removida só se ficou sem séries e não dá erro")
+- it("quando apago a última série, então a sessão some (sessionEmpty = true)")
+describe("saveRoutineAction")
+- it("quando a rotina é válida, então salva uma NOVA versão e as sessões antigas continuam apontando para a versão em que foram feitas")
+- it("quando usa exercício personalizado de outro usuário, então 'Exercício inválido na rotina' e nada é salvo")
+- it("quando há 0 dias, mais de 5 dias, mais de 20 exercícios por dia ou séries planejadas fora de 1–6, então rejeita")
+- it("quando 2 salvamentos simultâneos chegam, então não existem 2 versões iguais (unique user+version) e nenhum perde dado silenciosamente")
+- it("quando o exercício do catálogo global é renomeado, então o usuário ganha uma cópia própria e o catálogo global não muda para os outros")
+describe("saveSettingsAction")
+- it("quando o fuso, horário (HH:MM), dias (1–7) ou incremento (0.25–10) é inválido, então rejeita")
+- it("quando a requisição é válida, então altera só o usuário logado")
 
-### 5. Agendados
-- [x] Cron `tick` com lembretes (fuso, dia, horário, sem sessão aberta, `reminder_log` unique)
-- [x] Fechamento por inatividade + resumo (`close-inactive-session`)
-- [x] Relatórios por exercício/grupo (código, Telegram em texto + link ao site)
+### 7. Telegram: vínculo e webhook
+describe("createTelegramLinkAction + /start <token>")
+- it("quando o usuário gera o link, então só o hash do token vai ao banco e expira em 15 min")
+- it("quando o token é usado, então vincula o chat ao usuário")
+- it("quando o mesmo token é usado de novo, então 'link inválido'")
+- it("quando o token está expirado ou não existe, então 'link inválido' e nada é vinculado")
+- it("quando 2 chats usam o mesmo token ao mesmo tempo, então só 1 vincula")
+- it("quando o chat já pertence a OUTRO usuário, então 'chat ocupado' e o vínculo do outro não muda") ✔ CONFIRMADO: o token é consumido e o usuário gera outro (comportamento atual, teste deve passar)
+- it("quando o usuário vincula um novo chat, então o chat anterior é substituído (1 chat por conta)")
+describe("POST /api/telegram/webhook")
+- it("quando o segredo é errado, ausente ou não configurado, então 401 e nada é enfileirado")
+- it("quando o corpo não é JSON, então 400")
+- it("quando o chat não é privado ou o update não tem update_id, então 200 e ignora")
+- it("quando o chat é de usuário vinculado, então enfileira com idempotencyKey por update_id e concurrencyKey por usuário")
+- it("quando o mesmo update_id chega 2 vezes, então a chave de idempotência é a mesma")
+- it("quando o usuário passa do limite diário (60), então 200, avisa 1 vez só e NÃO enfileira")
+- it("quando passa do limite mensal, então avisa 1 vez só e NÃO enfileira")
+- it("quando o usuário manda exatamente o 60º do dia, então é processado; o 61º é bloqueado") — limite
+- it("quando 70 mensagens chegam ao mesmo tempo, então o contador termina em 70 e exatamente 60 são enfileiradas, com 1 só aviso")
+- it("quando o usuário toca num botão (callback), então não conta para o limite")
+- it("quando o chat não está vinculado, então não conta nem consome limite de ninguém")
 
-### 6. Qualidade e operação
-- [x] Sentry sem PII (scrubbing)
-- [x] Teto de gasto OpenAI + alerta
-- [x] Purge de `messages` > 30 dias (cron diário)
-- [x] CI (lint, typecheck, vitest)
-- [x] Script de `setWebhook` (`npm run telegram:webhook`)
-- [x] Deploy Vercel + trigger.dev Cloud (dev/prod): sem evidência no repositório; confirmar
-- [x] Bots separados dev/prod: documentado no README; configuração a confirmar
-- [x] Avaliação do parser: `npm run ai:export-golden` (gera `scripts/golden/golden.json` a partir de mensagens reais) e `npm run ai:eval -- [modelo] [--fast]` (acurácia, custo e atalho sem LLM)
+### 8. Bot e limites de custo
+describe("handleUpdate (Telegram e OpenAI simulados)")
+- it("quando o usuário sem assinatura manda mensagem ou toca botão, então recebe 'assinatura necessária' e NENHUMA chamada ao OpenAI é feita")
+- it("quando o usuário sem assinatura manda /start <token>, então o vínculo funciona")
+- it("quando a mensagem 'supino 80x8 3 séries' chega, então grava 3 séries do usuário certo e recalcula alvos")
+- it("quando o mesmo update_id é processado 2 vezes, então as séries são gravadas uma vez só")
+- it("quando 2 updates diferentes do mesmo usuário rodam ao mesmo tempo sem sessão aberta, então existe no máximo 1 sessão aberta") ✔ CONFIRMADO (uma única sessão; sem erro para o usuário)
+- it("quando o orçamento diário global ou do usuário do OpenAI estoura, então não há chamada ao modelo e o usuário recebe aviso")
+- it("quando o usuário A está vinculado ao chat X, então nenhuma gravação cai na conta do usuário B")
+- it("quando a sessão está parada há 90 min e chega uma série nova, então a antiga fecha e abre outra")
+- it("quando se fecha a mesma sessão duas vezes ao mesmo tempo, então só uma gera resumo")
+- it("quando uma sessão fecha sem séries válidas, então é removida")
 
-### 7. Entregas fora do plano original
-**Assinatura (Stripe)**
-- [x] Checkout sem teste grátis, planos mensal (R$ 14,90) e anual (R$ 139,90) (`/assinar`, `/assinar/sucesso`)
-- [x] Webhook do Stripe sincronizando `subscriptions` e Customer Portal
-- [x] Controle de acesso no painel, no bot e nos lembretes (`lib/services/access.ts`)
-- [x] Tratamento de risco: disputa, reembolso total e alerta de fraude
-- [x] Acesso cortesia para contas anteriores à cobrança (`users.complimentary`)
-- [x] Exclusão do customer no Stripe ao excluir a conta
+## Setup (decidido por você)
+- **Vitest** (já existe; `npm test` = `vitest run`). Sem trocar de ferramenta.
+- **Banco:** branch de teste dedicada no Neon. Você disse que o `DATABASE_URL` do `.env` já é essa branch. Mantém o driver `neon-http`, então `db.batch` e `for("update")` rodam de verdade.
+- **Proteção contra produção:** crio `.env.test` (no `.gitignore`) com `DATABASE_URL` copiado do `.env` e `TEST_DB_HOST` com o host da branch. O `globalSetup` **aborta** se o host da URL não for igual a `TEST_DB_HOST`, e os testes nunca leem `.env` diretamente. Assim, trocar o `.env` para produção por engano não faz os testes apagarem produção.
+- **Atenção:** a suíte faz `TRUNCATE … CASCADE` nas tabelas dessa branch antes de cada teste. Qualquer dado nela será apagado.
+- Migrations aplicadas com `drizzle-kit migrate` no `globalSetup`; arquivos rodam em série (`fileParallelism: false`).
+- **Só simulado:** Clerk (`auth`, `clerkClient`), Stripe SDK, Trigger.dev `tasks.trigger`, Telegram client, OpenAI, Sentry, `next/headers`, `next/cache`, `server-only`. Banco, regras e a lógica de acesso rodam de verdade. O webhook do Stripe é assinado de verdade com `stripe.webhooks.generateTestHeaderString`.
+- **Concorrência:** `Promise.all` contra o banco real.
+- Estrutura: `tests/integration/*.test.ts`, `tests/integration/helpers/` (usuários, assinaturas, mocks), `vitest.integration.config.ts`, `tests/BUGS.md`.
+- **Comando único:** `npm run test:all` = testes unitários + integração (o `globalSetup` migra e valida o banco).
+- **E2E Playwright:** fora de escopo por enquanto (você decidiu).
 
-**Bot e IA**
-- [x] Atalho de parsing sem LLM (`lib/ai/fast-parse.ts`, `FAST_PATH` off/shadow/on)
-- [x] Intenção `delete_set`
-- [x] Controle de custo: tetos diários por usuário e para o fallback, limite mensal de mensagens, tabelas `ai_usage` e `ai_usage_user`, preços em `lib/ai/pricing.ts`
-- [x] Matching de exercícios por nome/alias (`lib/engine/match.ts`)
-- [x] Confirmação e edição da duração do treino
-- [x] Onboarding com escolha de dias da semana e horário
-- [x] Comandos registrados no bot: `/treino`, `/terminei`, `/semana`, `/ajuda`
+## Regras de execução
+- Teste que falha por bug real fica falhando e vai para `tests/BUGS.md`. Não apago, não pulo, não afrouxo.
+- Se um teste parecer errado, eu paro e pergunto.
 
-**Site**
-- [x] Landing page completa (funcionalidades, showcase, preços) e sistema visual próprio
-- [x] Lista de exercícios (`/exercises`) e detalhe da sessão (`/history/[id]`)
-- [x] Edição e exclusão de séries, e edição da duração, no histórico
-- [x] Editor de rotina com arrastar e soltar (`@dnd-kit`) e renomeação de exercícios
-- [x] Desconectar Telegram
-- [x] Páginas de privacidade e termos
-- [x] Open Graph, `robots.txt` e `sitemap`
-- [x] Skeletons de carregamento e `global-error`
-- [x] Botão de feedback pelo Sentry
+## Falhas esperadas (bugs reais; ficam falhando e entram em `tests/BUGS.md`)
+1. Clerk `user.deleted` não cancela o cliente/assinatura no Stripe.
+2. `hasAccess` ignora `current_period_end`: assinatura `active` com período vencido ainda dá acesso.
+3. Sem idempotency key na criação da Checkout Session: clique duplo cria 2 sessões.
 
-**Infra e ferramentas**
-- [x] Webhook do Clerk com tasks de sincronização de usuários (`trigger/clerk-users.ts`)
-- [x] Rastreamento de ponta a ponta do webhook até as tasks (`lib/trace.ts`, `trigger/init.ts`)
-- [x] Script de usuário demo (`npm run db:seed-demo`)
-- [x] README com setup local, variáveis de ambiente e operação
-
-### 8. Pendências encontradas na conferência
-Todas resolvidas em 2026-11-03.
-- [x] `npm run typecheck` passa: o `stripe` instalado agora traz os `.d.ts` (0 erros)
-- [x] Criados `scripts/export-golden.ts`, `scripts/eval-parser.ts` e `scripts/golden-shared.ts` (`ai:export-golden` e `ai:eval`)
-- [x] Testes de `stagnation.ts` e `reports.ts` (`tests/engine/records.test.ts`): sessão, exercício, estagnação, recordes por exercício e grupo muscular
-
-## Mudanças em relação ao plano original
-| Plano | Implementado |
-|---|---|
-| Grátis + rate limit | Assinatura paga + rate limit |
-| 150 msg/dia | 60 msg/dia e 1.000 msg/mês, configuráveis por env |
-| Cron a cada 5 min | Cron a cada 15 min, para deixar o Neon dormir entre execuções |
-| Recharts via shadcn charts | Gráficos próprios em `components/charts/` |
-| shadcn, framer-motion, lucide-react | Não usados; componentes e ícones próprios |
-| `app/(marketing)/page.tsx` | `app/page.tsx` |
-| `api/account/route.ts` (DELETE) | Server action `deleteAccountAction` |
-
-## Arquivos/padrões existentes a reutilizar
-- `app/layout.tsx`, `app/globals.css`, `eslint.config.mjs`, `tsconfig.json` (gerados pelo create-next-app) — estender, não recriar.
-- Docs locais: `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md` e `16-proxy.md`.
-- Padrões confirmados: Clerk `clerkMiddleware` em `proxy.ts` e `clerkClient().users.deleteUser`; trigger.dev `task.trigger(payload, {idempotencyKey, concurrencyKey})` e `schedules.task({cron})`; Drizzle `drizzle-orm/neon-http` + `neon()`; OpenAI `zodTextFormat` + `responses.parse`.
-
-## Verificação
-Resultado de 2026-11-03 (lint conferido em 2026-11-01 e, desde então, só nos arquivos novos). Os itens em aberto dependem de teste manual ou de ambiente e não têm registro no repositório.
-- [x] `npm run lint`: 0 erros, 2 avisos
-- [x] `vitest run`: 73 testes passando
-- [x] `tsc --noEmit`: 0 erros
-- [ ] Local: `next dev` + `npx trigger.dev dev` + túnel (cloudflared/ngrok) com `setWebhook` do bot de dev; fluxo: criar conta → conectar Telegram → montar rotina → "supino 10 reps 20kg" → ver meta 11 reps → "errei, foi 25kg" → "terminei" → resumo → conferir painel/gráfico.
-- [ ] Idempotência: reenviar o mesmo `update_id` não duplica séries; cron rodando duas vezes não duplica lembrete.
-- [ ] Limites: estourar 60 msg/dia retorna aviso; exclusão de conta zera dados no Neon e remove no Clerk.
-- [ ] Mini conjunto de ~60 frases reais para checar o parser (acurácia-alvo ≥95%): as ferramentas existem (`ai:export-golden` e `ai:eval`), falta exportar as mensagens, revisar o `expected` à mão e rodar o eval. O export não guarda o contexto da conversa; preencher `context` nos casos que dependem de séries anteriores.
-
-## Riscos a acompanhar
-Latência webhook→resposta; qualidade do parser (eval disponível, ainda sem conjunto revisado); recomputação em cascata após correção; duplicidade de lembrete; versões de libs (confirmar no momento de instalar).
+## Passos de execução (após aprovação)
+1. Criar `.env.test`, `vitest.integration.config.ts`, `globalSetup`, helpers e mocks.
+2. Escrever os testes por fluxo (1 a 8), batendo nas rotas e actions de verdade.
+3. Rodar tudo, relatar passa/falha, registrar bugs em `tests/BUGS.md`.
+4. Informar o comando único (`npm run test:all`).
