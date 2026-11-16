@@ -25,7 +25,8 @@ vi.mock("next/headers", () => nextHeadersMock);
 vi.mock("openai", () => ({ default: FakeOpenAI }));
 vi.mock("openai/helpers/zod", () => ({ zodTextFormat: (_schema: unknown, name: string) => ({ type: "json_schema", name }) }));
 // Mantém `planOf`/`priceId` reais; troca só o cliente do Stripe (a verificação de assinatura de webhook segue real).
-vi.mock("@/lib/stripe", async (importOriginal) => ({ ...(await importOriginal<typeof import("@/lib/stripe")>()), ...stripeModule }));
+// O cliente fica em `stripe-client` (usado também pelo worker do Trigger); `lib/stripe` o reexporta.
+vi.mock("@/lib/stripe-client", async (importOriginal) => ({ ...(await importOriginal<typeof import("@/lib/stripe-client")>()), ...stripeModule }));
 
 installFetchStub();
 

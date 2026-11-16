@@ -1,10 +1,8 @@
 import "server-only";
-import Stripe from "stripe";
 import { requireEnv } from "./env";
 
-// One client per server instance, created on first use so builds and tools do not need the key.
-let client: Stripe | null = null;
-export const stripe = () => (client ??= new Stripe(requireEnv("STRIPE_SECRET_KEY")));
+// Web entry point for Stripe (server-only). The client itself lives in stripe-client.ts so the Trigger.dev worker can use it.
+export { stripe } from "./stripe-client";
 
 export type Plan = "monthly" | "annual";
 

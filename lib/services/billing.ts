@@ -2,12 +2,13 @@ import "server-only";
 import { clerkClient } from "@clerk/nextjs/server";
 import * as Sentry from "@sentry/nextjs";
 import { eq, inArray, or } from "drizzle-orm";
-import { randomBytes } from "node:crypto";
+import { createHash } from "node:crypto";
 import { db, subscriptions, users, type User } from "@/db";
 import { siteUrl } from "@/lib/env";
 import { CHECKOUT_URL, DASHBOARD_URL, SETTINGS_URL } from "@/lib/routes";
 import { ACCESS_STATUSES, userHasAccess } from "@/lib/services/access";
 import { priceId, stripe, type Plan } from "@/lib/stripe";
+import { deleteStripeCustomerById } from "@/lib/stripe-customer";
 
 // Stripe is the source of truth: webhooks only say "this subscription changed", and syncSubscription
 // reads its current state back, so late or out-of-order deliveries cannot leave stale data behind.
@@ -46,17 +47,25 @@ export async function createCheckoutUrl(user: User, plan: Plan) {
     return dashboard;
   }
 
-  const session = await stripe().checkout.sessions.create({
-    mode: "subscription",
-    customer,
-    client_reference_id: user.id,
-    line_items: [{ price: priceId(plan), quantity: 1 }],
-    locale: "pt-BR",
-    success_url: `${siteUrl()}${CHECKOUT_URL}/sucesso?session_id={CHECKOUT_SESSION_ID}`,
-    // Back to the plan picker, which does not auto-redirect, so cancelling never loops.
-    cancel_url: `${siteUrl()}${CHECKOUT_URL}`,
-    integration_identifier: `iron-ai-${randomLetters(8)}`,
-  });
+  // A double click sends two requests at once, and both would pass the checks above. The idempotency key makes
+  // Stripe return the same Session to both. It is bucketed per minute so a later, deliberate retry (after
+  // cancelling, or after changing plan) gets a fresh Session instead of a stale one.
+  const idempotencyKey = `checkout-${user.id}-${plan}-${Math.floor(Date.now() / 60_000)}`;
+  const session = await stripe().checkout.sessions.create(
+    {
+      mode: "subscription",
+      customer,
+      client_reference_id: user.id,
+      line_items: [{ price: priceId(plan), quantity: 1 }],
+      locale: "pt-BR",
+      success_url: `${siteUrl()}${CHECKOUT_URL}/sucesso?session_id={CHECKOUT_SESSION_ID}`,
+      // Back to the plan picker, which does not auto-redirect, so cancelling never loops.
+      cancel_url: `${siteUrl()}${CHECKOUT_URL}`,
+      // Must be identical across calls sharing an idempotency key, or Stripe rejects the second one.
+      integration_identifier: `iron-ai-${createHash("sha256").update(idempotencyKey).digest("hex").slice(0, 8)}`,
+    },
+    { idempotencyKey },
+  );
   if (!session.url) throw new Error("Stripe returned a Checkout Session without a URL");
   return session.url;
 }
@@ -70,7 +79,7 @@ export async function createPortalUrl(user: User) {
 
 /** Deleting the customer cancels its subscriptions immediately, so nobody is billed after deleting the account. */
 export async function deleteStripeCustomer(user: User) {
-  if (user.stripeCustomerId) await stripe().customers.del(user.stripeCustomerId);
+  if (user.stripeCustomerId) await deleteStripeCustomerById(user.stripeCustomerId);
 }
 
 /** Rewrites the local subscription from Stripe's current state. Returns false when no user owns the customer. */
@@ -134,8 +143,4 @@ function isUniqueViolation(err: unknown) {
     if ((e as { code?: unknown }).code === "23505") return true;
   }
   return false;
-}
-
-function randomLetters(length: number) {
-  return Array.from(randomBytes(length), (b) => String.fromCharCode(97 + (b % 26))).join("");
 }

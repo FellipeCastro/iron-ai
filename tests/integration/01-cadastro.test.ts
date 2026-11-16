@@ -5,7 +5,7 @@ import { POST } from "@/app/api/webhooks/clerk/route";
 import { ensureUser } from "@/lib/services/users";
 import { clerkUserCreated, clerkUserDeleted, clerkUserUpdated } from "@/trigger/clerk-users";
 import { createExercise, createSession, createSet, createSubscription, createUser, linkTelegram } from "./helpers/factories";
-import { stripeMock, triggerMock } from "./helpers/mocks";
+import { stripeMock, stripeState, triggerMock } from "./helpers/mocks";
 import { clerkWebhookRequest } from "./helpers/requests";
 import { runTask } from "./helpers/tasks";
 
@@ -96,6 +96,39 @@ describe("tarefas clerk-user-created/updated/deleted (rodam no banco real)", () 
     const user = await createUser({ stripeCustomerId: "cus_to_cancel" });
     await runTask(clerkUserDeleted, { clerkId: user.clerkId });
     expect(stripeMock.customers.del).toHaveBeenCalledWith("cus_to_cancel");
+  });
+});
+
+describe("clerk-user-deleted — falhas do Stripe", () => {
+  it("quando o Stripe falha, então a tarefa lança erro (retry) e o usuário continua no banco", async () => {
+    const user = await createUser({ stripeCustomerId: "cus_x" });
+    stripeState.fail.set("customers.del", new Error("stripe down"));
+
+    await expect(runTask(clerkUserDeleted, { clerkId: user.clerkId })).rejects.toThrow("stripe down");
+    expect(await db.query.users.findFirst({ where: eq(users.id, user.id) })).toBeDefined();
+
+    stripeState.fail.clear();
+    await runTask(clerkUserDeleted, { clerkId: user.clerkId });
+    expect(await db.query.users.findFirst({ where: eq(users.id, user.id) })).toBeUndefined();
+  });
+
+  it("quando o cliente já não existe no Stripe (retry de uma execução parcial), então o usuário é apagado mesmo assim", async () => {
+    const user = await createUser({ stripeCustomerId: "cus_gone" });
+    stripeState.fail.set("customers.del", Object.assign(new Error("No such customer"), { code: "resource_missing" }));
+
+    expect(await runTask(clerkUserDeleted, { clerkId: user.clerkId })).toEqual({ deleted: true });
+    expect(await db.query.users.findFirst({ where: eq(users.id, user.id) })).toBeUndefined();
+  });
+
+  it("quando o usuário não tem cliente Stripe, então não chama o Stripe", async () => {
+    const user = await createUser();
+    await runTask(clerkUserDeleted, { clerkId: user.clerkId });
+    expect(stripeMock.customers.del).not.toHaveBeenCalled();
+  });
+
+  it("quando o usuário não existe, então não faz nada", async () => {
+    expect(await runTask(clerkUserDeleted, { clerkId: "user_ghost" })).toEqual({ deleted: false });
+    expect(stripeMock.customers.del).not.toHaveBeenCalled();
   });
 });
 

@@ -23,13 +23,13 @@ export function hitTarget(target: Load, done: Load) {
 
 /**
  * New target for one set position.
- * - No target yet (first time): the set is the baseline and the target advances from it.
+ * - No target yet (first time): the set is the baseline, so the target is what was done; the +1 rep starts the next time it is hit.
  * - Heavier than the target: the user chose a new load, so progression rebases on what was done.
  * - Same load, reps ≥ target: advances from the reps actually done (doing 12 when 10 was asked jumps the load).
  * - Otherwise (missed reps or lighter load): the target stays.
  */
 export function nextTarget(target: Load | null, done: Load, incrementKg: number): Load {
-  if (!target) return advance(done, incrementKg);
+  if (!target) return { weight: done.weight, reps: done.reps };
   return hitTarget(target, done) ? advance(done, incrementKg) : target;
 }
 

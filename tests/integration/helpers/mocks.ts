@@ -98,6 +98,11 @@ async function createCheckoutSession(params: { customer?: string }, options?: { 
   });
 }
 
+async function retrieveCheckoutSession(id: string): Promise<{ id: string; customer: string | null; subscription: string | null }> {
+  failIfSet("checkout.sessions.retrieve");
+  throw new Error(`Sessão ${id} não configurada no Stripe falso`);
+}
+
 // O SDK real só entra para verificar assinatura de webhook (`webhooks.constructEvent`) e gerar headers de teste.
 const realStripe = new Stripe("sk_test_fake");
 
@@ -141,10 +146,7 @@ export const stripeMock = {
     sessions: {
       create: vi.fn(createCheckoutSession),
       // Configure por teste: `stripeMock.checkout.sessions.retrieve.mockResolvedValueOnce({ ... })`.
-      retrieve: vi.fn(async (id: string): Promise<{ id: string; customer: string | null; subscription: string | null }> => {
-        failIfSet("checkout.sessions.retrieve");
-        throw new Error(`Sessão ${id} não configurada no Stripe falso`);
-      }),
+      retrieve: vi.fn(retrieveCheckoutSession),
     },
   },
   billingPortal: {
@@ -298,5 +300,6 @@ export function resetMocks() {
   nextHeadersState.headers = new Headers();
   // clearAllMocks não descarta `mockImplementationOnce` pendentes: sem isso, um override não consumido vaza para o próximo teste.
   stripeMock.checkout.sessions.create.mockReset().mockImplementation(createCheckoutSession);
+  stripeMock.checkout.sessions.retrieve.mockReset().mockImplementation(retrieveCheckoutSession);
   vi.clearAllMocks();
 }
