@@ -5,7 +5,7 @@ import { Chip } from "@/components/brand/chip";
 import { Logo } from "@/components/brand/logo";
 import { ArrowRightIcon, StarIcon } from "@/components/landing/icons";
 
-const highlights = ["Registro por texto livre", "Metas automáticas de 8 a 12 reps", "Gráficos de evolução e PRs"];
+const highlights = ["Registro por texto livre", "Metas automáticas de 6 a 12 reps", "Gráficos de evolução e PRs"];
 
 export const metadata: Metadata = { robots: { index: false, follow: true } };
 

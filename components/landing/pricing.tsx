@@ -8,7 +8,7 @@ const brl = (value: number) => value.toLocaleString("pt-BR", { style: "currency"
 
 const features = [
   "Registro de séries por texto livre no Telegram",
-  "Metas e progressão automática de 8 a 12 reps",
+  "Metas e progressão automática de 6 a 12 reps",
   "Lembretes nos seus dias e horários de treino",
   "Resumo ao final de cada treino",
   "Gráficos de evolução, 1RM estimado e calorias",

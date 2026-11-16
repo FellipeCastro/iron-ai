@@ -41,7 +41,7 @@ const sections: LegalSection[] = [
         <List>
           <li>registrar séries em texto livre pelo Telegram, corrigi-las ou apagá-las;</li>
           <li>montar seus treinos (A, B, C…) com rodízio automático;</li>
-          <li>receber metas calculadas por uma regra fixa de progressão de 8 a 12 repetições, com aumento de carga pelo incremento que você configurar;</li>
+          <li>receber metas calculadas por uma regra fixa de progressão de 6 a 12 repetições, com aumento de carga pelo incremento que você configurar;</li>
           <li>receber lembretes nos seus dias e horário de treino e resumos ao final de cada sessão;</li>
           <li>consultar histórico, recordes, relatórios e gráficos no painel web.</li>
         </List>

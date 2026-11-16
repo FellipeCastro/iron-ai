@@ -81,7 +81,7 @@ const reasons = [
   {
     icon: <ChartUpIcon className="size-7" />,
     title: "Progressão sem achismo",
-    text: "Bateu a meta, a próxima série ganha +1 rep. Chegou a 12 reps, a carga sobe e as reps voltam para 8. Você sempre sabe o que fazer na série seguinte.",
+    text: "Bateu a meta, a próxima série ganha +1 rep. Chegou a 12 reps, a carga sobe e as reps voltam para 6. Você sempre sabe o que fazer na série seguinte.",
   },
   {
     icon: <DumbbellIcon className="size-8" />,
@@ -125,8 +125,8 @@ const faqs = [
     a: "Basta escrever a correção no chat, como “errei, foi 25kg”. A série é corrigida e suas metas são recalculadas.",
   },
   {
-    q: "Como funciona a progressão automática de 8 a 12 repetições e quando a carga aumenta?",
-    a: "Cada série tem uma meta. Se você bate a meta, a próxima ganha +1 rep. Ao chegar em 12 reps, a carga sobe pelo seu incremento configurado e as reps voltam para 8.",
+    q: "Como funciona a progressão automática de 6 a 12 repetições e quando a carga aumenta?",
+    a: "Cada série tem uma meta. Se você bate a meta, a próxima ganha +1 rep. Ao chegar em 12 reps, a carga sobe pelo seu incremento configurado e as reps voltam para 6.",
   },
   {
     q: "Posso mudar o horário do treino?",
