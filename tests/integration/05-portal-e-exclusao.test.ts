@@ -104,8 +104,9 @@ describe("deleteAccountAction", () => {
     const b = await populatedUser();
     signIn(a.clerkId);
 
-    await deleteAccountAction();
+    expect(await deleteAccountAction()).toEqual({ ok: true, data: undefined });
 
+    expect(await userExists(a.id)).toBe(false);
     expect(await userExists(b.id)).toBe(true);
     expect(await rowsOf(b.id)).toEqual({ sessions: 1, subscriptions: 1, telegram: 1 });
     expect(stripeMock.customers.del).not.toHaveBeenCalledWith(b.stripeCustomerId);
