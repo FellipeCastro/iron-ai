@@ -1,5 +1,10 @@
+<<<<<<< HEAD
 import { and, asc, desc, eq, inArray, isNull, notExists, notInArray, or, sql, type SQL } from "drizzle-orm";
 import { db, exercises, routineDays, sessions, setEntries, setTargets, type Session, type User } from "@/db";
+=======
+import { and, asc, desc, eq, inArray, isNull, notExists, or, sql, type SQL } from "drizzle-orm";
+import { db, exercises, routineDays, sessions, setEntries, setTargets, type Session, type User } from "@/db/client";
+>>>>>>> 704d237d67683df0333fbae43fd56a0ef7782e98
 import { computeTargets, type Load } from "@/lib/engine/progression";
 import { markRecords, type PrKind } from "@/lib/engine/records";
 import { sessionSummary, type ReportSet, type TargetChange } from "@/lib/engine/reports";
@@ -133,20 +138,20 @@ export type CloseReason = NonNullable<Session["closeReason"]>;
  * for the summary, or null if it was already closed. Sessions left without valid sets are dropped.
  */
 export async function closeSession(user: User, sessionId: string, reason: CloseReason, routine: Routine | null) {
-  const session = await db.query.sessions.findFirst({ where: eq(sessions.id, sessionId) });
+  const session = await db.query.sessions.findFirst({ where: and(eq(sessions.id, sessionId), eq(sessions.userId, user.id)) });
   if (!session || session.endedAt) return null;
 
   const endedAt = reason === "inactive" && session.lastSetAt ? session.lastSetAt : new Date();
   const [closed] = await db
     .update(sessions)
     .set({ endedAt, closeReason: reason })
-    .where(and(eq(sessions.id, sessionId), isNull(sessions.endedAt)))
+    .where(and(eq(sessions.id, sessionId), eq(sessions.userId, user.id), isNull(sessions.endedAt)))
     .returning();
   if (!closed) return null;
 
   const sessionSets = await loadLog(user.id, { sessionId });
   if (sessionSets.length === 0) {
-    await db.delete(sessions).where(eq(sessions.id, sessionId));
+    await db.delete(sessions).where(and(eq(sessions.id, sessionId), eq(sessions.userId, user.id)));
     return null;
   }
 
@@ -189,11 +194,15 @@ export async function setSessionDuration(userId: string, sessionId: string, minu
   await db
     .update(sessions)
     .set({ endedAt: new Date(session.startedAt.getTime() + minutes * 60_000) })
-    .where(eq(sessions.id, sessionId));
+    .where(and(eq(sessions.id, sessionId), eq(sessions.userId, userId)));
   return true;
 }
 
-export const markSummarySent = (sessionId: string) => db.update(sessions).set({ summarySentAt: new Date() }).where(eq(sessions.id, sessionId));
+export const markSummarySent = (userId: string, sessionId: string) =>
+  db.update(sessions).set({ summarySentAt: new Date() }).where(and(eq(sessions.id, sessionId), eq(sessions.userId, userId)));
+
+/** Ids das sessões do usuário. `set_entries` não tem `user_id`: escritas nelas se prendem ao dono por aqui. */
+const ownSessionIds = (userId: string) => db.select({ id: sessions.id }).from(sessions).where(eq(sessions.userId, userId));
 
 // ---------- Logging ----------
 
@@ -251,7 +260,7 @@ export async function logSets(user: User, routine: Routine | null, inputs: SetIn
     }
   }
 
-  await db.batch([db.insert(setEntries).values(rows), db.update(sessions).set({ lastSetAt: now }).where(eq(sessions.id, session.id))]);
+  await db.batch([db.insert(setEntries).values(rows), db.update(sessions).set({ lastSetAt: now }).where(and(eq(sessions.id, session.id), eq(sessions.userId, user.id)))]);
 
   const log = await loadLog(user.id, { exerciseIds });
   const newTargets = await recomputeTargets(user.id, user.weightIncrementKg, log, exerciseIds);
@@ -341,7 +350,7 @@ async function applyCorrection(user: User, old: LogRow, change: { weight: number
   const to = { weight: change.weight ?? old.weight, reps: change.reps ?? old.reps };
 
   await db.batch([
-    db.update(setEntries).set({ voidedAt: new Date() }).where(eq(setEntries.id, old.id)),
+    db.update(setEntries).set({ voidedAt: new Date() }).where(and(eq(setEntries.id, old.id), inArray(setEntries.sessionId, ownSessionIds(user.id)))),
     db.insert(setEntries).values({
       sessionId: old.sessionId,
       exerciseId: old.exerciseId,
@@ -368,7 +377,7 @@ export async function deleteSet(user: User, selector: SetSelector) {
 }
 
 async function applyDelete(user: User, old: LogRow) {
-  await db.update(setEntries).set({ voidedAt: new Date() }).where(eq(setEntries.id, old.id));
+  await db.update(setEntries).set({ voidedAt: new Date() }).where(and(eq(setEntries.id, old.id), inArray(setEntries.sessionId, ownSessionIds(user.id))));
   const log = await loadLog(user.id, { exerciseIds: [old.exerciseId] });
   await recomputeTargets(user.id, user.weightIncrementKg, log, [old.exerciseId]);
   return { name: old.exerciseName, setPosition: old.setPosition, weight: old.weight, reps: old.reps };
@@ -390,7 +399,7 @@ export async function deleteSetById(user: User, setId: string) {
   if (!old) return null;
   await applyDelete(user, old);
   const remaining = await loadLog(user.id, { sessionId: old.sessionId });
-  if (remaining.length === 0) await db.delete(sessions).where(eq(sessions.id, old.sessionId));
+  if (remaining.length === 0) await db.delete(sessions).where(and(eq(sessions.id, old.sessionId), eq(sessions.userId, user.id)));
   return { sessionEmpty: remaining.length === 0 };
 }
 
@@ -407,16 +416,24 @@ export async function deleteExerciseFromSession(user: User, sessionId: string, e
   // inserts (which take a key-share lock on the session via their FK) wait; the delete then runs as a new
   // statement that sees them and only removes the session if no valid set is left.
   const results = await db.batch([
-    db.select({ id: sessions.id }).from(sessions).where(eq(sessions.id, sessionId)).for("update"),
+    db.select({ id: sessions.id }).from(sessions).where(and(eq(sessions.id, sessionId), eq(sessions.userId, user.id))).for("update"),
     db
       .update(setEntries)
       .set({ voidedAt: new Date() })
-      .where(and(eq(setEntries.sessionId, sessionId), eq(setEntries.exerciseId, exerciseId), isNull(setEntries.voidedAt))),
+      .where(
+        and(
+          eq(setEntries.sessionId, sessionId),
+          eq(setEntries.exerciseId, exerciseId),
+          isNull(setEntries.voidedAt),
+          inArray(setEntries.sessionId, ownSessionIds(user.id)),
+        ),
+      ),
     db
       .delete(sessions)
       .where(
         and(
           eq(sessions.id, sessionId),
+          eq(sessions.userId, user.id),
           notExists(db.select({ one: sql`1` }).from(setEntries).where(and(eq(setEntries.sessionId, sessionId), isNull(setEntries.voidedAt)))),
         ),
       )
@@ -460,7 +477,7 @@ export async function deleteSessionById(user: User, sessionId: string) {
   const session = await db.query.sessions.findFirst({ where: and(eq(sessions.id, sessionId), eq(sessions.userId, user.id)) });
   if (!session) return false;
   const touched = await db.selectDistinct({ exerciseId: setEntries.exerciseId }).from(setEntries).where(eq(setEntries.sessionId, sessionId));
-  await db.delete(sessions).where(eq(sessions.id, sessionId));
+  await db.delete(sessions).where(and(eq(sessions.id, sessionId), eq(sessions.userId, user.id)));
   const exerciseIds = touched.map((t) => t.exerciseId);
   if (exerciseIds.length) await recomputeTargets(user.id, user.weightIncrementKg, await loadLog(user.id, { exerciseIds }), exerciseIds);
   return true;

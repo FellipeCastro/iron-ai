@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { db, messages, telegramLinks, users, type User } from "@/db";
+import { db, messages, telegramLinks, users, type User } from "@/db/client";
 import { fastParse, fastPathMode, sameIntent } from "@/lib/ai/fast-parse";
 import { parseMessage, type ParseResult } from "@/lib/ai/parse-message";
 import { MAX_VOICE_SECONDS, transcribeVoice, voiceTooLong } from "@/lib/ai/transcribe";
@@ -110,7 +110,7 @@ export async function handleUpdate(update: TgUpdate, opts: HandleOptions): Promi
     const outs = await handleCallback(ctx, callback.data);
     await finish("processed");
     await answerCallbackQuery(callback.id).catch(() => undefined);
-    await deliver(chat.id, outs, callback.message?.message_id);
+    await deliver(ctx.user.id, chat.id, outs, callback.message?.message_id);
     return { status: "processed", kind: "callback", userId: link.userId };
   }
 
@@ -189,7 +189,7 @@ export async function handleUpdate(update: TgUpdate, opts: HandleOptions): Promi
     const awaited = await handleAwaitedText(ctx, ctx.state.pending, text);
     if (awaited) {
       await finish("processed");
-      await deliver(chat.id, awaited);
+      await deliver(ctx.user.id, chat.id, awaited);
       return { status: "processed", kind: "message", userId: link.userId };
     }
   }
@@ -200,7 +200,7 @@ export async function handleUpdate(update: TgUpdate, opts: HandleOptions): Promi
   const command = await handleCommand(ctx, text);
   if (command) {
     await finish("processed");
-    await deliver(chat.id, command);
+    await deliver(ctx.user.id, chat.id, command);
     return { status: "processed", kind: "command", userId: link.userId, command: text.match(/^\/(\w+)/)?.[1]?.toLowerCase() };
   }
 
@@ -243,7 +243,7 @@ export async function handleUpdate(update: TgUpdate, opts: HandleOptions): Promi
   const outs = await execute(ctx, parsed.parsed.intent, {}, parsed.parsed.confidence, false);
   const status = parsed.parsed.intent.type === "clarify" ? "clarify" : "processed";
   await finish(status, { ...parsed.parsed, model: parsed.model });
-  await deliver(chat.id, outs);
+  await deliver(ctx.user.id, chat.id, outs);
   return {
     status,
     kind: "message",
@@ -648,11 +648,11 @@ async function handleCallback(ctx: Ctx, data: string | undefined): Promise<Out[]
 // ---------- Delivery ----------
 
 /** Sends replies in order; after a button tap the first one replaces the message that had the keyboard. */
-async function deliver(chatId: number, outs: Out[], editMessageId?: number) {
+async function deliver(userId: string, chatId: number, outs: Out[], editMessageId?: number) {
   for (const [i, out] of outs.entries()) {
     // Editing fails for old or unchanged messages; the reply still has to arrive, so send it instead.
     const edited = i === 0 && editMessageId ? await editMessageText(chatId, editMessageId, out.text, out.keyboard).catch(() => null) : null;
     if (!edited) await sendMessage(chatId, out.text, out.keyboard);
-    if (out.sessionId) await markSummarySent(out.sessionId);
+    if (out.sessionId) await markSummarySent(userId, out.sessionId);
   }
 }

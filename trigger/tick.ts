@@ -1,6 +1,6 @@
 import { idempotencyKeys, schedules } from "@trigger.dev/sdk";
 import { and, eq, gte, inArray, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
-import { db, reminderLog, sessions, subscriptions, telegramLinks, users } from "@/db";
+import { db, reminderLog, sessions, subscriptions, telegramLinks, users } from "@/db/client";
 import { isReminderDue, localTime } from "@/lib/engine/reminders";
 import { INACTIVITY_MINUTES } from "@/lib/engine/session";
 import { ACCESS_STATUSES } from "@/lib/services/access";

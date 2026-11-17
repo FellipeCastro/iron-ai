@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import { and, eq, gt, isNull } from "drizzle-orm";
-import { db, linkTokens, telegramLinks, users } from "@/db";
+import { db, linkTokens, telegramLinks, users } from "@/db/client";
 
 /** The app user for a Clerk id, created on the fly if the Clerk webhook has not arrived yet. */
 export async function ensureUser(clerkId: string) {

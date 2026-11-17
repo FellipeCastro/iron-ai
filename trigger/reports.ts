@@ -1,6 +1,6 @@
 import { schedules } from "@trigger.dev/sdk";
 import { and, eq, inArray, or } from "drizzle-orm";
-import { db, reportLog, subscriptions, telegramLinks, users } from "@/db";
+import { db, reportLog, subscriptions, telegramLinks, users } from "@/db/client";
 import { dueReports, periodsFor, retryReports } from "@/lib/engine/periods";
 import { localTime } from "@/lib/engine/reminders";
 import { ACCESS_STATUSES } from "@/lib/services/access";

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Callout, LegalPage, List, Strong, type LegalSection } from "@/components/legal/legal-page";
-import { ANNUAL_PRICE, MONTHLY_PRICE } from "@/components/landing/pricing";
+import { ANNUAL_PRICE, MONTHLY_PRICE } from "@/lib/pricing";
 import { PRIVACY_URL, SETTINGS_URL } from "@/lib/routes";
 
 export const metadata: Metadata = {

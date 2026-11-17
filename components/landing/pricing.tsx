@@ -1,8 +1,6 @@
 import Link from "next/link";
+import { ANNUAL_PRICE, MONTHLY_PRICE } from "@/lib/pricing";
 import { signUpForPlan } from "@/lib/routes";
-
-export const MONTHLY_PRICE = 14.9;
-export const ANNUAL_PRICE = 139.9;
 
 const brl = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 

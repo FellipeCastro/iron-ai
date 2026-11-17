@@ -205,6 +205,20 @@ describe("fechamento de sessão", () => {
     expect(await db.select().from(sessions).where(eq(sessions.id, session.id))).toHaveLength(0);
   });
 
+  it("quando outro usuário tenta fechar a sessão, então nada acontece e a sessão segue aberta", async () => {
+    const { user: owner } = await createSubscribedUser("active");
+    const { user: intruder } = await createSubscribedUser("active");
+    const exercise = await createExercise();
+    const session = await createSession(owner.id, { open: true });
+    await createSet(session.id, exercise.id);
+
+    expect(await closeSession(intruder, session.id, "user", null)).toBeNull();
+
+    const [row] = await db.select().from(sessions).where(eq(sessions.id, session.id));
+    expect(row.endedAt).toBeNull();
+    expect(row.closeReason).toBeNull();
+  });
+
   it("não envia nada ao Telegram em updates ignorados de chat desconhecido além do aviso", async () => {
     await handle(telegramTextUpdate(31337, "oi"));
     expect(telegramTexts()).toEqual([render.notLinked()]);

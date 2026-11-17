@@ -1,6 +1,6 @@
 import { concurrencyLimit, task } from "@trigger.dev/sdk";
 import { eq } from "drizzle-orm";
-import { db, users } from "@/db";
+import { db, users } from "@/db/client";
 import { deleteStripeCustomerById } from "@/lib/stripe-customer";
 import { log } from "./log";
 

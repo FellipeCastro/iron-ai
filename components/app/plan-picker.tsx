@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { startCheckoutAction } from "@/app/(app)/actions";
-import { ANNUAL_PRICE, MONTHLY_PRICE } from "@/components/landing/pricing";
+import { ANNUAL_PRICE, MONTHLY_PRICE } from "@/lib/pricing";
 import { useToast } from "./toast";
 import { buttonPrimary } from "./ui";
 

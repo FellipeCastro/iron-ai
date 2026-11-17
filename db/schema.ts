@@ -66,7 +66,7 @@ export const users = pgTable("users", {
     .notNull()
     .defaultNow()
     .$onUpdate(() => new Date()),
-});
+}).enableRLS();
 
 // Local copy of the user's Stripe subscription, rewritten from Stripe on every subscription event.
 // One row per user: a new subscription replaces a finished one (see syncSubscription).
@@ -85,7 +85,7 @@ export const subscriptions = pgTable("subscriptions", {
     .notNull()
     .defaultNow()
     .$onUpdate(() => new Date()),
-});
+}).enableRLS();
 
 export const telegramLinks = pgTable("telegram_links", {
   userId: uuid("user_id")
@@ -96,7 +96,7 @@ export const telegramLinks = pgTable("telegram_links", {
   // Conversation state between messages (pending confirmations, routine draft). See lib/telegram/state.ts.
   chatState: jsonb("chat_state"),
   linkedAt: timestamp("linked_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}).enableRLS();
 
 export const linkTokens = pgTable(
   "link_tokens",
@@ -112,7 +112,7 @@ export const linkTokens = pgTable(
     createdAt: createdAt(),
   },
   (t) => [index("link_tokens_user_idx").on(t.userId)],
-);
+).enableRLS();
 
 // ---------- Exercise catalog ----------
 
@@ -132,7 +132,7 @@ export const exercises = pgTable(
     unique("exercises_owner_name_uq").on(t.ownerUserId, t.name),
     index("exercises_aliases_gin").using("gin", t.aliases),
   ],
-);
+).enableRLS();
 
 // ---------- Routine (versioned) ----------
 
@@ -147,7 +147,7 @@ export const routines = pgTable(
     createdAt: createdAt(),
   },
   (t) => [unique("routines_user_version_uq").on(t.userId, t.version)],
-);
+).enableRLS();
 
 export const routineDays = pgTable(
   "routine_days",
@@ -164,7 +164,7 @@ export const routineDays = pgTable(
     unique("routine_days_letter_uq").on(t.routineId, t.letter),
     unique("routine_days_position_uq").on(t.routineId, t.position),
   ],
-);
+).enableRLS();
 
 export const routineExercises = pgTable(
   "routine_exercises",
@@ -180,7 +180,7 @@ export const routineExercises = pgTable(
     plannedSets: smallint("planned_sets").notNull(),
   },
   (t) => [unique("routine_exercises_order_uq").on(t.dayId, t.order)],
-);
+).enableRLS();
 
 // ---------- Workout log ----------
 
@@ -205,7 +205,7 @@ export const sessions = pgTable(
     // Inactivity sweep by the 5-min cron.
     index("sessions_open_last_set_idx").on(t.lastSetAt).where(sql`${t.endedAt} is null`),
   ],
-);
+).enableRLS();
 
 // Append-only: corrections insert a new row pointing to the old one via `supersedes_id`.
 export const setEntries = pgTable(
@@ -230,7 +230,7 @@ export const setEntries = pgTable(
     index("set_entries_session_idx").on(t.sessionId),
     index("set_entries_exercise_idx").on(t.exerciseId, t.createdAt),
   ],
-);
+).enableRLS();
 
 // Current target per set position; derived from the log and recomputable.
 export const setTargets = pgTable(
@@ -252,7 +252,7 @@ export const setTargets = pgTable(
       .$onUpdate(() => new Date()),
   },
   (t) => [primaryKey({ columns: [t.userId, t.exerciseId, t.setPosition] })],
-);
+).enableRLS();
 
 // ---------- Telegram messages & operational ----------
 
@@ -269,7 +269,7 @@ export const messages = pgTable(
     createdAt: createdAt(),
   },
   (t) => [index("messages_created_idx").on(t.createdAt)],
-);
+).enableRLS();
 
 export const reminderLog = pgTable(
   "reminder_log",
@@ -281,7 +281,7 @@ export const reminderLog = pgTable(
     sentAt: timestamp("sent_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [primaryKey({ columns: [t.userId, t.date] })],
-);
+).enableRLS();
 
 // One row per automatic report sent (or deliberately skipped): the claim that keeps a rerun from sending it twice.
 // `period` is the first local date of the reported period.
@@ -296,7 +296,7 @@ export const reportLog = pgTable(
     sentAt: timestamp("sent_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [primaryKey({ columns: [t.userId, t.kind, t.period] })],
-);
+).enableRLS();
 
 export const usageCounters = pgTable(
   "usage_counters",
@@ -308,7 +308,7 @@ export const usageCounters = pgTable(
     count: integer("count").notNull().default(0),
   },
   (t) => [primaryKey({ columns: [t.userId, t.date] })],
-);
+).enableRLS();
 
 // Global (all users) OpenAI usage per UTC day, for the spend ceiling.
 export const aiUsage = pgTable("ai_usage", {
@@ -321,7 +321,7 @@ export const aiUsage = pgTable("ai_usage", {
   // Share of costUsd spent on the fallback model, capped separately so an outage cannot burn the budget.
   fallbackCostUsd: numeric("fallback_cost_usd", { precision: 10, scale: 4, mode: "number" }).notNull().default(0),
   alertedAt: timestamp("alerted_at", { withTimezone: true }),
-});
+}).enableRLS();
 
 // OpenAI spend per user and UTC day, for the per-user ceiling.
 export const aiUsageUser = pgTable(
@@ -335,7 +335,7 @@ export const aiUsageUser = pgTable(
     costUsd: numeric("cost_usd", { precision: 10, scale: 4, mode: "number" }).notNull().default(0),
   },
   (t) => [primaryKey({ columns: [t.userId, t.date] })],
-);
+).enableRLS();
 
 // ---------- Relations (for db.query.*) ----------
 
