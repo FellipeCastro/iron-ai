@@ -2,7 +2,7 @@
 
 import { useTransition } from "react";
 import { openBillingPortalAction, startCheckoutAction } from "@/app/(app)/actions";
-import { ANNUAL_PRICE, MONTHLY_PRICE } from "@/components/landing/pricing";
+import { ANNUAL_PRICE, MONTHLY_PRICE } from "@/lib/pricing";
 import type { Billing } from "@/lib/data/types";
 import { formatDate } from "@/lib/format";
 import { useToast } from "./toast";

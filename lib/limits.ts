@@ -1,5 +1,5 @@
 import { and, eq, gte, sql } from "drizzle-orm";
-import { aiUsage, aiUsageUser, db, usageCounters } from "@/db";
+import { aiUsage, aiUsageUser, db, usageCounters } from "@/db/client";
 import { aiCostUsd, type TokenUsage } from "./ai/pricing";
 import { numberEnv } from "./env";
 

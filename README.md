@@ -111,6 +111,7 @@ Telegram → POST /api/telegram/webhook   valida o secret, aplica os limites (60
    CLERK_SECRET_KEY=                    # Clerk Dashboard → API Keys
    CLERK_WEBHOOK_SIGNING_SECRET=        # Clerk Dashboard → Webhooks → endpoint → Signing Secret
    DATABASE_URL=                        # Neon → Connection string
+   # DATABASE_URL_OWNER=                # (opcional) role dona, só para migrations/drizzle-kit; ver drizzle/0008_app_runtime_role.sql
    TRIGGER_SECRET_KEY=                  # Trigger.dev → API Keys → Development (tr_dev_...)
 
    NEXT_PUBLIC_SITE_URL=http://localhost:3000   # links enviados pelo bot
@@ -120,7 +121,6 @@ Telegram → POST /api/telegram/webhook   valida o secret, aplica os limites (60
    OPENAI_API_KEY=                      # platform.openai.com → API keys
 
    STRIPE_SECRET_KEY=                   # Stripe → Developers → API keys (sk_test_... em dev; prefira uma chave restrita rk_...)
-   NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=  # Stripe → Developers → API keys (pk_test_...)
    STRIPE_WEBHOOK_SECRET=               # whsec_... do `stripe listen` (dev) ou do endpoint de webhook (prod)
    STRIPE_PRICE_MONTHLY=                # price_... do plano mensal (R$ 14,90/mês)
    STRIPE_PRICE_ANNUAL=                 # price_... do plano anual (R$ 139,90/ano, à vista)
@@ -183,7 +183,7 @@ Telegram → POST /api/telegram/webhook   valida o secret, aplica os limites (60
 No Trigger.dev Cloud (ambiente **prod**), cadastre as variáveis usadas pelas tasks: `DATABASE_URL`, `OPENAI_API_KEY`, `TELEGRAM_BOT_TOKEN`, `NEXT_PUBLIC_SITE_URL`, as opcionais da OpenAI e `NEXT_PUBLIC_SENTRY_DSN` / `NEXT_PUBLIC_SENTRY_ENVIRONMENT`. Em dev, o `trigger.dev dev` lê o `.env` local.
 
 ### Stripe
-Crie no produto do Iron AI um preço recorrente mensal de R$ 14,90 e um anual de R$ 139,90 (em teste e em `live`) e copie os IDs `price_...` para `STRIPE_PRICE_MONTHLY` e `STRIPE_PRICE_ANNUAL`. Os valores em `components/landing/pricing.tsx` precisam bater com os do Stripe. Ative o Customer Portal no Dashboard. Em dev, teste com o cartão `4242 4242 4242 4242`.
+Crie no produto do Iron AI um preço recorrente mensal de R$ 14,90 e um anual de R$ 139,90 (em teste e em `live`) e copie os IDs `price_...` para `STRIPE_PRICE_MONTHLY` e `STRIPE_PRICE_ANNUAL`. Os valores em `lib/pricing.ts` precisam bater com os do Stripe (o teste `tests/stripe-prices.test.ts` confere quando `STRIPE_SECRET_KEY` está definida). Ative o Customer Portal no Dashboard. Em dev, teste com o cartão `4242 4242 4242 4242`.
 
 Em produção, crie o endpoint `https://<dominio>/api/webhooks/stripe` com os eventos `customer.subscription.created|updated|deleted`, `checkout.session.completed`, `invoice.paid`, `invoice.payment_failed`, `charge.dispute.created`, `charge.refunded` e `radar.early_fraud_warning.created`. Use as chaves `live` e cadastre as variáveis `STRIPE_*` no host do site.
 

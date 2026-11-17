@@ -19,6 +19,14 @@ jobs:
       - run: npm run typecheck
       - run: npm run db:check
       - run: npm test
+        env:
+          # Confere os preços exibidos (lib/pricing.ts) com os price IDs do Stripe em modo teste.
+          # Use uma chave restrita (rk_test_...) só com leitura de Prices. Sem o secret (ex.: PR de fork) o teste
+          # é pulado; com o secret, REQUIRE_STRIPE_PRICES=1 faz faltar qualquer variável virar falha, não skip.
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_TEST_SECRET_KEY }}
+          STRIPE_PRICE_MONTHLY: ${{ vars.STRIPE_PRICE_MONTHLY }}
+          STRIPE_PRICE_ANNUAL: ${{ vars.STRIPE_PRICE_ANNUAL }}
+          REQUIRE_STRIPE_PRICES: ${{ secrets.STRIPE_TEST_SECRET_KEY != '' && '1' || '' }}
       - run: npm run build
         env:
           # Placeholders: the build only needs these to exist, nothing connects.
@@ -83,6 +91,6 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npx trigger.dev@4.8.1 deploy
+      - run: npx trigger.dev@4.8.5 deploy
         env:
           TRIGGER_ACCESS_TOKEN: ${{ secrets.TRIGGER_ACCESS_TOKEN }}
