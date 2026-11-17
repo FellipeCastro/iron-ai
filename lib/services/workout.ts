@@ -1,10 +1,5 @@
-<<<<<<< HEAD
 import { and, asc, desc, eq, inArray, isNull, notExists, notInArray, or, sql, type SQL } from "drizzle-orm";
-import { db, exercises, routineDays, sessions, setEntries, setTargets, type Session, type User } from "@/db";
-=======
-import { and, asc, desc, eq, inArray, isNull, notExists, or, sql, type SQL } from "drizzle-orm";
 import { db, exercises, routineDays, sessions, setEntries, setTargets, type Session, type User } from "@/db/client";
->>>>>>> 704d237d67683df0333fbae43fd56a0ef7782e98
 import { computeTargets, type Load } from "@/lib/engine/progression";
 import { markRecords, type PrKind } from "@/lib/engine/records";
 import { sessionSummary, type ReportSet, type TargetChange } from "@/lib/engine/reports";
