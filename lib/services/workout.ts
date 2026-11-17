@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, isNull, notExists, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, notExists, notInArray, or, sql, type SQL } from "drizzle-orm";
 import { db, exercises, routineDays, sessions, setEntries, setTargets, type Session, type User } from "@/db";
 import { computeTargets, type Load } from "@/lib/engine/progression";
 import { markRecords, type PrKind } from "@/lib/engine/records";
@@ -66,14 +66,26 @@ async function recomputeTargets(userId: string, incrementKg: number, log: LogRow
       incrementKg,
     );
     result.set(exerciseId, targets);
-    writes.push(db.delete(setTargets).where(and(eq(setTargets.userId, userId), eq(setTargets.exerciseId, exerciseId))));
+    // Upsert instead of delete + insert: two concurrent writes for the same user would otherwise collide on the
+    // primary key AFTER their sets were committed, and the retry of the failed run would log the sets twice.
+    const stale = and(eq(setTargets.userId, userId), eq(setTargets.exerciseId, exerciseId));
+    writes.push(db.delete(setTargets).where(targets.size ? and(stale, notInArray(setTargets.setPosition, [...targets.keys()])) : stale));
     if (targets.size) {
       writes.push(
         db
           .insert(setTargets)
           .values(
             [...targets].map(([setPosition, t]) => ({ userId, exerciseId, setPosition, weight: t.weight, reps: t.reps, sourceEntryId: t.source.id })),
-          ),
+          )
+          .onConflictDoUpdate({
+            target: [setTargets.userId, setTargets.exerciseId, setTargets.setPosition],
+            set: {
+              weight: sql`excluded.weight`,
+              reps: sql`excluded.reps`,
+              sourceEntryId: sql`excluded.source_entry_id`,
+              updatedAt: sql`now()`,
+            },
+          }),
       );
     }
   }
