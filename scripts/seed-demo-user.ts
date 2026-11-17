@@ -1,6 +1,6 @@
 import "../db/env";
 import { and, eq, inArray, isNull } from "drizzle-orm";
-import { db, exercises, routineDays, routineExercises, routines, sessions, setEntries, setTargets, users } from "../db/index";
+import { db, exercises, routineDays, routineExercises, routines, sessions, setEntries, setTargets, users } from "../db/client";
 
 /**
  * Gives an existing account full access plus a sample routine and ~5 weeks of workout history.

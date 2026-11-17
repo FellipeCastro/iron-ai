@@ -1,5 +1,5 @@
 import { and, desc, eq, inArray, isNull, or, type SQL } from "drizzle-orm";
-import { db, exercises, routineDays, routineExercises, routines, type MuscleGroup } from "@/db";
+import { db, exercises, routineDays, routineExercises, routines, type MuscleGroup } from "@/db/client";
 import type { PlanDay } from "@/lib/engine/session";
 
 // Routines are versioned: saving writes a new version, so past sessions keep pointing at the days

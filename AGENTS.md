@@ -50,7 +50,7 @@ npm run ai:eval -- <modelo> --fast   # compara modelos com mensagens reais (scri
 
 - O CLI `trigger.dev` e `@trigger.dev/sdk` devem ter a mesma versão (hoje 4.8.1). Atualize `package.json`, o script `trigger:dev` e `.github/workflows/ci.yml` juntos.
 - Antes de mexer em tasks, carregue a skill Trigger.dev adequada (ver `CLAUDE.md`).
-- Os preços em `components/landing/pricing.tsx` devem bater com os do Stripe.
+- Os preços em `lib/pricing.ts` devem bater com os do Stripe.
 - `FAST_PATH` aceita `off | shadow | on`; o padrão é `shadow` (o modelo ainda responde e os resultados são comparados).
 - Interface e mensagens do bot em pt-BR; comentários e commits seguem o padrão atual do repo.
 

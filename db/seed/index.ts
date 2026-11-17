@@ -1,6 +1,6 @@
 import "../env";
 import { sql } from "drizzle-orm";
-import { db, exercises } from "../index";
+import { db, exercises } from "../client";
 import { catalog } from "./exercises";
 
 async function main() {

@@ -1,5 +1,5 @@
 import { and, desc, eq, gte, isNotNull } from "drizzle-orm";
-import { db, sessions, type MuscleGroup, type User } from "@/db";
+import { db, sessions, type MuscleGroup, type User } from "@/db/client";
 import { periodsFor, type ReportKind } from "@/lib/engine/periods";
 import { caloriesOf, exerciseReport, muscleGroupReport, periodReport, recordsByExercise, sessionSummary } from "@/lib/engine/reports";
 import * as render from "@/lib/telegram/render";

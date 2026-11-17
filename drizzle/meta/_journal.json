@@ -50,6 +50,41 @@
       "when": 1794849050213,
       "tag": "0006_exercise_fk_cascade",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1794920955912,
+      "tag": "0007_enable_rls",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1794920975042,
+      "tag": "0008_app_runtime_role",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1794921743466,
+      "tag": "0009_rls_policies",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1794924861498,
+      "tag": "0010_users_column_privileges",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1794925474636,
+      "tag": "0011_least_privilege_grants",
+      "breakpoints": true
     }
   ]
 }

@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { db, subscriptions, users } from "@/db";
+import { db, subscriptions, users } from "@/db/client";
 
 // Who may use the product. Kept free of Next/Clerk imports: the Telegram bot and the reminder tick run in
 // Trigger.dev, outside the web app.

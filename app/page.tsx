@@ -6,7 +6,8 @@ import { HeaderAuth } from "@/components/brand/header-auth";
 import { Logo } from "@/components/brand/logo";
 import { CtaBadges, SIGN_IN_URL } from "@/components/landing/cta-badges";
 import { FeatureShowcase } from "@/components/landing/feature-showcase";
-import { ANNUAL_PRICE, MONTHLY_PRICE, Pricing } from "@/components/landing/pricing";
+import { Pricing } from "@/components/landing/pricing";
+import { ANNUAL_PRICE, MONTHLY_PRICE } from "@/lib/pricing";
 import {
   ArrowRightIcon,
   ChartUpIcon,

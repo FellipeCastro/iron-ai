@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { db, telegramLinks } from "@/db";
+import { db, telegramLinks } from "@/db/client";
 import type { ClosedSession } from "@/lib/services/workout";
 import type { InlineKeyboard } from "@/lib/telegram/client";
 import { durationKeyboard } from "@/lib/telegram/keyboards";

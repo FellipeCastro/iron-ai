@@ -2,7 +2,7 @@ import "../db/env";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { and, desc, isNotNull } from "drizzle-orm";
-import { db, messages } from "../db";
+import { db, messages } from "../db/client";
 import { ParsedMessage } from "../lib/ai/schemas";
 import { EMPTY_CONTEXT, GOLDEN_PATH, type GoldenCase } from "./golden-shared";
 

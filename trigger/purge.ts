@@ -1,6 +1,6 @@
 import { schedules } from "@trigger.dev/sdk";
 import { lt, or, isNotNull } from "drizzle-orm";
-import { db, linkTokens, messages, reminderLog, reportLog, usageCounters } from "@/db";
+import { db, linkTokens, messages, reminderLog, reportLog, usageCounters } from "@/db/client";
 import { log } from "./log";
 
 const DAY = 86_400_000;
