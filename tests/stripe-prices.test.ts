@@ -30,16 +30,17 @@ describe.runIf(required)("preços exibidos x Stripe: credenciais exigidas", () =
 
 // Sem credenciais (e sem exigência), pula; com elas, garante que o preço exibido é o cobrado.
 describe.skipIf(!configured)("preços exibidos x Stripe", () => {
-  const stripe = new Stripe(STRIPE_SECRET_KEY ?? "");
-
+  // O corpo do describe roda na coleta mesmo com skipIf: criar o cliente só dentro do teste.
   it.each([
     ["mensal", STRIPE_PRICE_MONTHLY, MONTHLY_PRICE, "month"],
     ["anual", STRIPE_PRICE_ANNUAL, ANNUAL_PRICE, "year"],
   ] as const)("plano %s bate com o preço do Stripe", async (_name, id, shown, interval) => {
+    const stripe = new Stripe(STRIPE_SECRET_KEY as string);
     const price = await stripe.prices.retrieve(id as string);
     expect(price.active, "preço arquivado no Stripe: o checkout quebraria").toBe(true);
     expect(price.currency).toBe("brl");
     expect(price.recurring?.interval).toBe(interval);
+    expect(price.recurring?.interval_count, "cobrança deve ser a cada 1 período, não multi-intervalo").toBe(1);
     expect(price.unit_amount).toBe(Math.round(shown * 100));
   });
 });

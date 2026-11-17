@@ -42,6 +42,16 @@ function devDatabaseHosts(baseDir: string): Set<string> {
 }
 
 /**
+ * No Neon, o endpoint pooled (`ep-xxx-pooler.região.neon.tech`) e o direto (`ep-xxx.região.neon.tech`) apontam
+ * para o mesmo banco. Remove o sufixo `-pooler` do primeiro rótulo para compará-los como o mesmo endpoint.
+ */
+function normalizeNeonHost(host: string): string {
+  const lower = host.toLowerCase();
+  if (!lower.endsWith(".neon.tech")) return lower;
+  return lower.replace(/^(ep-[^.]+?)-pooler(?=\.)/, "$1");
+}
+
+/**
  * Trava de segurança: a suíte faz TRUNCATE no banco. Só segue se o host de DATABASE_URL for exatamente
  * o host declarado em TEST_DB_HOST **e** não for o host de nenhum banco de dev/produção (`.env` etc.).
  */
@@ -52,7 +62,8 @@ export function assertTestDatabase(url: string | undefined, expectedHost: string
   if (host !== expectedHost) {
     throw new Error(`[testes] O host de DATABASE_URL (${host}) não é o TEST_DB_HOST (${expectedHost}). Abortando: a suíte apagaria esse banco.`);
   }
-  if (devDatabaseHosts(baseDir).has(host)) {
+  const normalizedHost = normalizeNeonHost(host);
+  if ([...devDatabaseHosts(baseDir)].some((devHost) => normalizeNeonHost(devHost) === normalizedHost)) {
     throw new Error(`[testes] O host de teste (${host}) é o mesmo de um banco de dev/produção em .env*. Abortando: a suíte apagaria esse banco.`);
   }
 }

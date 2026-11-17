@@ -54,6 +54,22 @@ describe("assertTestDatabase", () => {
     expect(() => assertTestDatabase(url(TEST_HOST), TEST_HOST, dir)).not.toThrow();
   });
 
+  it("recusa host de teste direto quando o .env usa o endpoint pooled do mesmo banco", () => {
+    writeFileSync(join(dir, ".env"), `DATABASE_URL=${url("ep-test-pooler.neon.tech")}\n`);
+    expect(() => assertTestDatabase(url(TEST_HOST), TEST_HOST, dir)).toThrow(/dev\/produção/);
+  });
+
+  it("recusa host de teste pooled quando o .env usa o endpoint direto do mesmo banco", () => {
+    const pooled = "ep-test-pooler.neon.tech";
+    writeFileSync(join(dir, ".env"), `DATABASE_URL=${url(TEST_HOST)}\n`);
+    expect(() => assertTestDatabase(url(pooled), pooled, dir)).toThrow(/dev\/produção/);
+  });
+
+  it("aceita um endpoint Neon distinto mesmo com pooler no .env", () => {
+    writeFileSync(join(dir, ".env"), `DATABASE_URL=${url("ep-dev-pooler.neon.tech")}\n`);
+    expect(() => assertTestDatabase(url(TEST_HOST), TEST_HOST, dir)).not.toThrow();
+  });
+
   it("recusa quando DATABASE_URL difere de TEST_DB_HOST", () => {
     expect(() => assertTestDatabase(url(DEV_HOST), TEST_HOST, dir)).toThrow(/não é o TEST_DB_HOST/);
   });
