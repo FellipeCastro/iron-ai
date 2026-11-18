@@ -293,7 +293,13 @@ export const openaiState = {
 };
 export const openaiParse = vi.fn(async (..._args: unknown[]) => {
   if (openaiState.error) throw openaiState.error;
-  return { output_parsed: openaiState.parsed, usage: { input_tokens: 0, output_tokens: 0 } };
+  const parsed = openaiState.parsed;
+  // O parser real usa `responses.create` e lê `output_text` (JSON); `output_parsed` fica por compatibilidade.
+  return {
+    output_parsed: parsed,
+    output_text: parsed == null ? "" : JSON.stringify(parsed),
+    usage: { input_tokens: 0, output_tokens: 0 },
+  };
 });
 export const openaiTranscribe = vi.fn(async (..._args: unknown[]) => ({ text: "" }));
 

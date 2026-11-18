@@ -259,7 +259,7 @@ describe("#4 orçamento de IA reservado antes da chamada", () => {
     // A chamada demora e custa de verdade (US$ 0,003 com esses tokens), como a real: o gasto fecha o teto de vez.
     openaiParse.mockImplementationOnce(async () => {
       await new Promise((r) => setTimeout(r, 300));
-      return { output_parsed: openaiState.parsed, usage: { input_tokens: 1000, output_tokens: 500 } };
+      return { output_parsed: openaiState.parsed, output_text: JSON.stringify(openaiState.parsed), usage: { input_tokens: 1000, output_tokens: 500 } };
     });
     // Falta 0,001 para o teto de US$ 5: a primeira reserva passa, as outras já encontram o teto atingido.
     await db.insert(aiUsage).values({ date: today(), requests: 100, costUsd: 4.999 });
