@@ -24,6 +24,11 @@ describe("role app_runtime", () => {
     usage_counters: "S",
     ai_usage_user: "S",
     ai_usage: "",
+    // Sem acesso para app_runtime de propósito. lib/limits.ts e lib/services/workout.ts ainda os acessam via `db`
+    // (DATABASE_URL = owner hoje). Antes de trocar DATABASE_URL para app_runtime, estas operações precisam de uma
+    // conexão separada (owner/server role) — não afrouxe este grant para fazer o app funcionar.
+    ai_reservations: "",
+    applied_updates: "",
     exercises: "SIUD",
     routines: "SIUD",
     routine_days: "SIUD",

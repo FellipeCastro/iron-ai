@@ -1,5 +1,5 @@
 import { and, asc, desc, eq, inArray, isNull, notExists, notInArray, or, sql, type SQL } from "drizzle-orm";
-import { db, exercises, routineDays, sessions, setEntries, setTargets, type Session, type User } from "@/db/client";
+import { appliedUpdates, db, exercises, routineDays, sessions, setEntries, setTargets, users, type Session, type User } from "@/db/client";
 import { computeTargets, type Load } from "@/lib/engine/progression";
 import { markRecords, type PrKind } from "@/lib/engine/records";
 import { sessionSummary, type ReportSet, type TargetChange } from "@/lib/engine/reports";
@@ -129,6 +129,28 @@ export async function nextRoutineDay(userId: string, routine: Routine | null) {
 export type CloseReason = NonNullable<Session["closeReason"]>;
 
 /**
+ * Deletes the session only if it has no valid set at that moment. One batch = one transaction (neon-http has no
+ * interactive ones): the row lock comes first, so a concurrent insert (which takes a key-share lock on the session
+ * via its FK) waits, and the delete then runs as a new statement that sees it. Returns whether it was deleted.
+ */
+async function dropSessionIfEmpty(userId: string, sessionId: string) {
+  const results = await db.batch([
+    db.select({ id: sessions.id }).from(sessions).where(and(eq(sessions.id, sessionId), eq(sessions.userId, userId))).for("update"),
+    db
+      .delete(sessions)
+      .where(
+        and(
+          eq(sessions.id, sessionId),
+          eq(sessions.userId, userId),
+          notExists(db.select({ one: sql`1` }).from(setEntries).where(and(eq(setEntries.sessionId, sessionId), isNull(setEntries.voidedAt)))),
+        ),
+      )
+      .returning({ id: sessions.id }),
+  ]);
+  return results[1].length > 0;
+}
+
+/**
  * Closes a session once (the `ended_at is null` guard makes concurrent closes no-ops) and returns the data
  * for the summary, or null if it was already closed. Sessions left without valid sets are dropped.
  */
@@ -144,10 +166,11 @@ export async function closeSession(user: User, sessionId: string, reason: CloseR
     .returning();
   if (!closed) return null;
 
-  const sessionSets = await loadLog(user.id, { sessionId });
+  let sessionSets = await loadLog(user.id, { sessionId });
   if (sessionSets.length === 0) {
-    await db.delete(sessions).where(and(eq(sessions.id, sessionId), eq(sessions.userId, user.id)));
-    return null;
+    if (await dropSessionIfEmpty(user.id, sessionId)) return null;
+    // A set landed between the read and the delete: the session is not empty after all.
+    sessionSets = await loadLog(user.id, { sessionId });
   }
 
   const exerciseIds = [...new Set(sessionSets.map((s) => s.exerciseId))];
@@ -204,11 +227,60 @@ const ownSessionIds = (userId: string) => db.select({ id: sessions.id }).from(se
 export type SetInput = { exerciseId: string; weight: number | null; reps: number; count: number };
 
 /**
+ * True when the Telegram update already wrote sets. A retried run (the first one failed after writing, before the
+ * reply) must not log them again. The evidence is the `applied_updates` marker, written in the same transaction as the
+ * sets and independent of them, so it survives the deletion of a set or of its emptied session. A marker that was
+ * never finalized means the previous run died before rebuilding the targets: that work is resumed here.
+ */
+export async function updateAlreadyLogged(sourceUpdateId: number, userId: string) {
+  const [row] = await db
+    .select()
+    .from(appliedUpdates)
+    .where(and(eq(appliedUpdates.updateId, sourceUpdateId), eq(appliedUpdates.userId, userId)))
+    .limit(1);
+  if (!row) return false;
+  if (!row.finalizedAt) {
+    const [owner] = await db.select({ increment: users.weightIncrementKg }).from(users).where(eq(users.id, row.userId));
+    if (owner && row.exerciseIds.length) await recomputeTargetsStable(row.userId, owner.increment, row.exerciseIds);
+    await markUpdateFinalized(sourceUpdateId);
+  }
+  return true;
+}
+
+/**
+ * Rebuilds targets and verifies the history did not change while doing so. neon-http has no interactive transactions,
+ * so the read-then-write cannot be locked; instead the valid-set ids (a correction voids one id and adds another) are
+ * compared after the write, and the rebuild reruns on a mismatch. A competing writer's own rebuild is always based on
+ * its committed change, so a rerun that sees a stable log leaves targets reflecting the latest history. Throws if it
+ * never settles, so the caller does not finalize and the update stays eligible for another repair.
+ */
+async function recomputeTargetsStable(userId: string, incrementKg: number, exerciseIds: string[]) {
+  const fingerprint = (log: LogRow[]) => log.map((s) => s.id).sort().join(",");
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const log = await loadLog(userId, { exerciseIds });
+    await recomputeTargets(userId, incrementKg, log, exerciseIds);
+    if (fingerprint(await loadLog(userId, { exerciseIds })) === fingerprint(log)) return;
+  }
+  throw new Error("Could not rebuild targets: history kept changing");
+}
+
+const markUpdateFinalized = (updateId: number) =>
+  db.update(appliedUpdates).set({ finalizedAt: new Date() }).where(and(eq(appliedUpdates.updateId, updateId), isNull(appliedUpdates.finalizedAt)));
+
+/**
  * Appends sets to the open session (opening one if needed), recomputes targets and detects records.
  * A stale open session (90 min idle) is closed first and returned in `closedBefore`.
+ * `chosenLetter`: day the user asked to train; it wins over the rotation when a new session opens.
+ * `sourceUpdateId`: Telegram update that asked for these sets. With the row index it is unique, so a concurrent duplicate inserts nothing.
  */
-/** `chosenLetter`: day the user asked to train; it wins over the rotation when a new session opens. */
-export async function logSets(user: User, routine: Routine | null, inputs: SetInput[], now = new Date(), chosenLetter?: string | null) {
+export async function logSets(
+  user: User,
+  routine: Routine | null,
+  inputs: SetInput[],
+  now = new Date(),
+  chosenLetter?: string | null,
+  sourceUpdateId?: number,
+) {
   let closedBefore: ClosedSession | null = null;
   let session = await findOpenSession(user.id);
   if (session && isInactive(session.lastSetAt ?? session.startedAt, now)) {
@@ -251,21 +323,64 @@ export async function logSets(user: User, routine: Routine | null, inputs: SetIn
         weight: input.weight ?? target?.weight ?? lastWeight ?? 0,
         reps: input.reps,
         createdAt: new Date(now.getTime() + rows.length),
+        ...(sourceUpdateId === undefined ? {} : { sourceUpdateId, sourceIdx: rows.length }),
       });
     }
   }
 
-  await db.batch([db.insert(setEntries).values(rows), db.update(sessions).set({ lastSetAt: now }).where(and(eq(sessions.id, session.id), eq(sessions.userId, user.id)))]);
+  // The sets are published only if this run wins the applied-update marker. With a source update, claim and sets are
+  // ONE statement (the sets are selected from the claim CTE), so a lost claim inserts nothing, and a failure while
+  // inserting the sets rolls the marker back with them, leaving the update claimable by a retry.
+  let inserted: { id: string }[];
+  if (sourceUpdateId === undefined) {
+    [inserted] = await db.batch([
+      db.insert(setEntries).values(rows).returning({ id: setEntries.id }),
+      db.update(sessions).set({ lastSetAt: now }).where(and(eq(sessions.id, session.id), eq(sessions.userId, user.id))),
+    ]);
+  } else {
+    const exerciseIdsSql = sql`array[${sql.join(exerciseIds.map((id) => sql`${id}::uuid`), sql`, `)}]::uuid[]`;
+    const values = sql.join(
+      rows.map(
+        (r) =>
+          sql`(${r.id}::uuid, ${r.sessionId}::uuid, ${r.exerciseId}::uuid, ${r.setPosition}::smallint, ${r.isExtra ?? false}::boolean, ${r.weight}::numeric, ${r.reps}::smallint, ${r.createdAt!.toISOString()}::timestamptz, ${sourceUpdateId}::bigint, ${r.sourceIdx}::smallint)`,
+      ),
+      sql`, `,
+    );
+    const [result] = await db.batch([
+      db.execute(sql`
+        with claim as (
+          insert into applied_updates (update_id, user_id, session_id, exercise_ids)
+          values (${sourceUpdateId}, ${user.id}, ${session.id}, ${exerciseIdsSql})
+          on conflict (update_id) do nothing
+          returning update_id
+        )
+        insert into set_entries (id, session_id, exercise_id, set_position, is_extra, weight, reps, created_at, source_update_id, source_idx)
+        select v.* from claim, (values ${values}) as v(id, session_id, exercise_id, set_position, is_extra, weight, reps, created_at, source_update_id, source_idx)
+        on conflict (source_update_id, source_idx) where source_update_id is not null do nothing
+        returning id
+      `),
+      db.update(sessions).set({ lastSetAt: now }).where(and(eq(sessions.id, session.id), eq(sessions.userId, user.id))),
+    ]);
+    inserted = result.rows as { id: string }[];
+  }
 
-  const log = await loadLog(user.id, { exerciseIds });
+  // Only rows that were actually persisted count. When the marker was already owned (a replayed or concurrent
+  // duplicate update) nothing was written: report it distinctly so the caller neither announces sets nor closes the
+  // session. A session we opened for nothing is dropped.
+  const persistedIds = new Set(inserted.map((r) => r.id));
+  const written = rows.filter((r) => persistedIds.has(r.id));
+  if (written.length === 0) {
+    if (opened) await dropSessionIfEmpty(user.id, session.id);
+    return { replay: true as const, closedBefore };
+  }
+
+  const [log, persistedSessionSets] = await Promise.all([loadLog(user.id, { exerciseIds }), loadLog(user.id, { sessionId: session.id })]);
   const newTargets = await recomputeTargets(user.id, user.weightIncrementKg, log, exerciseIds);
-  const records = recordsFor(log, new Set(rows.map((r) => r.id)));
+  if (sourceUpdateId !== undefined) await markUpdateFinalized(sourceUpdateId);
+  const records = recordsFor(log, persistedIds);
   const names = new Map(log.map((s) => [s.exerciseId, s.exerciseName]));
 
-  const allSessionSets = [
-    ...sessionSets,
-    ...rows.map((r) => ({ exerciseId: r.exerciseId, setPosition: r.setPosition, isExtra: r.isExtra ?? false })),
-  ];
+  const allSessionSets = persistedSessionSets;
   const complete = isSessionComplete(day, allSessionSets);
   const remaining = remainingSets(day, allSessionSets).map((r) => ({
     name: day!.exercises.find((e) => e.exerciseId === r.exerciseId)!.name,
@@ -274,7 +389,7 @@ export async function logSets(user: User, routine: Routine | null, inputs: SetIn
 
   // Targets for what comes next: the rest of the exercise just logged, or (once its planned sets are done)
   // the first exercise of the day that still has sets missing.
-  const lastExerciseId = rows.at(-1)!.exerciseId;
+  const lastExerciseId = written.at(-1)!.exerciseId;
   const missing = remainingSets(day, allSessionSets);
   const nextEntry = missing.find((r) => r.exerciseId === lastExerciseId) ?? missing[0];
   let upNext: { kind: "same" | "next"; name: string; targets: ({ weight: number; reps: number } | null)[] } | null = null;
@@ -296,11 +411,12 @@ export async function logSets(user: User, routine: Routine | null, inputs: SetIn
   }
 
   return {
+    replay: false as const,
     closedBefore,
     sessionId: session.id,
     opened: opened && day ? { letter: day.letter, title: day.title } : null,
     upNext,
-    items: rows.map((r) => {
+    items: written.map((r) => {
       const t = r.isExtra ? undefined : newTargets.get(r.exerciseId)?.get(r.setPosition);
       return {
         name: names.get(r.exerciseId) ?? "",
@@ -344,18 +460,20 @@ export async function correctSet(user: User, selector: SetSelector, change: { we
 async function applyCorrection(user: User, old: LogRow, change: { weight: number | null; reps: number | null }) {
   const to = { weight: change.weight ?? old.weight, reps: change.reps ?? old.reps };
 
-  await db.batch([
-    db.update(setEntries).set({ voidedAt: new Date() }).where(and(eq(setEntries.id, old.id), inArray(setEntries.sessionId, ownSessionIds(user.id)))),
-    db.insert(setEntries).values({
-      sessionId: old.sessionId,
-      exerciseId: old.exerciseId,
-      setPosition: old.setPosition,
-      isExtra: old.isExtra,
-      ...to,
-      supersedesId: old.id,
-      createdAt: old.createdAt,
-    }),
-  ]);
+  // One statement: the replacement is inserted from the row this very statement voided. If another correction or a
+  // delete got there first, the row is no longer valid, nothing is voided and nothing is inserted (the unique
+  // supersedes_id index is the backstop). `old` was read earlier and may be stale, so it only supplies the id.
+  const written = await db.execute(sql`
+    with voided as (
+      update set_entries set voided_at = now()
+      where id = ${old.id} and voided_at is null and session_id in (select id from sessions where user_id = ${user.id})
+      returning id, session_id, exercise_id, set_position, is_extra, created_at
+    )
+    insert into set_entries (session_id, exercise_id, set_position, is_extra, weight, reps, supersedes_id, created_at)
+    select session_id, exercise_id, set_position, is_extra, ${to.weight}::numeric, ${to.reps}::smallint, id, created_at from voided
+    returning id
+  `);
+  if (written.rows.length === 0) return null;
 
   const log = await loadLog(user.id, { exerciseIds: [old.exerciseId] });
   const targets = await recomputeTargets(user.id, user.weightIncrementKg, log, [old.exerciseId]);
@@ -393,9 +511,7 @@ export async function deleteSetById(user: User, setId: string) {
   const old = await findSetById(user.id, setId);
   if (!old) return null;
   await applyDelete(user, old);
-  const remaining = await loadLog(user.id, { sessionId: old.sessionId });
-  if (remaining.length === 0) await db.delete(sessions).where(and(eq(sessions.id, old.sessionId), eq(sessions.userId, user.id)));
-  return { sessionEmpty: remaining.length === 0 };
+  return { sessionEmpty: await dropSessionIfEmpty(user.id, old.sessionId) };
 }
 
 /** Removes every set of one exercise from a session. A session left without sets is dropped. */

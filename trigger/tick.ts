@@ -41,10 +41,10 @@ export const tick = schedules.task({
   },
 });
 
-async function closeIdleSessions(now: Date) {
+export async function closeIdleSessions(now: Date) {
   const cutoff = new Date(now.getTime() - INACTIVITY_MINUTES * 60_000);
   const idle = await db
-    .select({ id: sessions.id, userId: sessions.userId })
+    .select({ id: sessions.id, userId: sessions.userId, lastSetAt: sessions.lastSetAt, startedAt: sessions.startedAt })
     .from(sessions)
     .where(and(isNull(sessions.endedAt), lt(sql`coalesce(${sessions.lastSetAt}, ${sessions.startedAt})`, cutoff)));
   if (idle.length === 0) return 0;
@@ -53,7 +53,11 @@ async function closeIdleSessions(now: Date) {
     idle.map(async (s) => ({
       payload: { sessionId: s.id },
       options: {
-        idempotencyKey: await idempotencyKeys.create(`close-${s.id}`, { scope: "global" }),
+        // A run that finishes OK keeps its key (30 days by default; only failed runs release it). The run returns
+        // { closed: false } when a set arrived after this query, so a key per session would make the session's NEXT
+        // idle period reuse that finished run and never close. One key per idle period (its last activity) keeps
+        // repeated ticks deduped without that trap.
+        idempotencyKey: await idempotencyKeys.create(`close-${s.id}-${(s.lastSetAt ?? s.startedAt).getTime()}`, { scope: "global" }),
         concurrencyKey: s.userId,
         tags: [`user_${s.userId}`],
       },

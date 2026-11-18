@@ -45,7 +45,8 @@ export const muscleGroup = pgEnum("muscle_group", [
 
 export const sessionCloseReason = pgEnum("session_close_reason", ["user", "complete", "inactive"]);
 
-export const messageStatus = pgEnum("message_status", ["received", "processed", "clarify", "ignored", "failed"]);
+// "admitting": claimed by the webhook, quota decision not committed yet. The worker only runs on "received".
+export const messageStatus = pgEnum("message_status", ["admitting", "received", "processed", "clarify", "ignored", "failed"]);
 
 // ---------- Users & Telegram link ----------
 
@@ -81,6 +82,10 @@ export const subscriptions = pgTable("subscriptions", {
   currentPeriodEnd: timestamp("current_period_end", { withTimezone: true }).notNull(),
   trialEnd: timestamp("trial_end", { withTimezone: true }),
   cancelAtPeriodEnd: boolean("cancel_at_period_end").notNull().default(false),
+  // Version stamp of the snapshot saved here: it only ever grows (each write is strictly greater than the one it
+  // replaces), and syncSubscription writes only if the stamp is still the one it read before asking Stripe.
+  // Null on rows saved before this column existed.
+  syncedFrom: timestamp("synced_from", { withTimezone: true }),
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .notNull()
     .defaultNow()
@@ -224,13 +229,37 @@ export const setEntries = pgTable(
     isExtra: boolean("is_extra").notNull().default(false),
     supersedesId: uuid("supersedes_id").references((): AnyPgColumn => setEntries.id, { onDelete: "set null" }),
     voidedAt: timestamp("voided_at", { withTimezone: true }),
+    // Bot only: the Telegram update (and the position inside it) that produced this row. A retried update
+    // cannot insert it again. Null for sets logged from the site.
+    sourceUpdateId: bigint("source_update_id", { mode: "number" }),
+    sourceIdx: smallint("source_idx"),
     createdAt: createdAt(),
   },
   (t) => [
     index("set_entries_session_idx").on(t.sessionId),
+    uniqueIndex("set_entries_source_uq").on(t.sourceUpdateId, t.sourceIdx).where(sql`${t.sourceUpdateId} is not null`),
     index("set_entries_exercise_idx").on(t.exerciseId, t.createdAt),
+    // A set can be corrected only once: two concurrent corrections of the same row cannot both insert a replacement.
+    uniqueIndex("set_entries_supersedes_uq").on(t.supersedesId).where(sql`${t.supersedesId} is not null`),
   ],
 ).enableRLS();
+
+// Durable evidence that a Telegram update already wrote its sets. Inserted in the same transaction as the sets but
+// kept outside the session, so deleting a set (or its emptied session, which cascades to set_entries) cannot make the
+// update look unapplied. `finalized_at` null = the sets are in but the follow-up work (target rebuild) is unfinished;
+// `exercise_ids` is the state a retry needs to resume it. Sets stay immutable: nothing here rewrites them.
+// Server-only (no app_runtime access).
+export const appliedUpdates = pgTable("applied_updates", {
+  updateId: bigint("update_id", { mode: "number" }).primaryKey(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  // Informational, deliberately not a FK: the session may be deleted while the evidence must survive.
+  sessionId: uuid("session_id"),
+  exerciseIds: uuid("exercise_ids").array().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  finalizedAt: timestamp("finalized_at", { withTimezone: true }),
+}).enableRLS();
 
 // Current target per set position; derived from the log and recomputable.
 export const setTargets = pgTable(
@@ -335,6 +364,26 @@ export const aiUsageUser = pgTable(
     costUsd: numeric("cost_usd", { precision: 10, scale: 4, mode: "number" }).notNull().default(0),
   },
   (t) => [primaryKey({ columns: [t.userId, t.date] })],
+).enableRLS();
+
+// A held slice of the daily OpenAI ceilings (see lib/limits.ts). Persisted so a release that failed can be retried
+// later: closedAt is set exactly once, by whichever of release/settle claims it first, so the hold is given back
+// at most once. Server-only (no app_runtime access).
+// userId is deliberately NOT a foreign key: deleting a user must not cascade away an open hold, or the amount it
+// reserved in ai_usage could never be given back. The release only needs date/usd/fallbackUsd (the per-user row
+// is gone with the user), and settled holds (closedAt set) are already accounted for in ai_usage.
+export const aiReservations = pgTable(
+  "ai_reservations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id").notNull(),
+    date: date("date").notNull(),
+    usd: numeric("usd", { precision: 10, scale: 4, mode: "number" }).notNull(),
+    fallbackUsd: numeric("fallback_usd", { precision: 10, scale: 4, mode: "number" }).notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    closedAt: timestamp("closed_at", { withTimezone: true }),
+  },
+  (t) => [index("ai_reservations_open_idx").on(t.createdAt).where(sql`${t.closedAt} is null`)],
 ).enableRLS();
 
 // ---------- Relations (for db.query.*) ----------

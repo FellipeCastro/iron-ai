@@ -124,7 +124,9 @@ describe("POST /api/webhooks/stripe — assinaturas", () => {
     expect([first.status, second.status]).toEqual([200, 200]);
     const after = await rows();
     expect(after).toHaveLength(1);
-    expect({ ...after[0], updatedAt: null }).toEqual({ ...before[0], updatedAt: null });
+    // updatedAt e syncedFrom são carimbos de controle e avançam a cada sync; o resto precisa ficar igual.
+    expect({ ...after[0], updatedAt: null, syncedFrom: null }).toEqual({ ...before[0], updatedAt: null, syncedFrom: null });
+    expect(after[0].syncedFrom!.getTime()).toBeGreaterThanOrEqual(before[0].syncedFrom!.getTime());
   });
 
   it("quando 2 entregas do mesmo evento chegam ao mesmo tempo, então continua 1 linha e nenhuma dá erro", async () => {

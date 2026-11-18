@@ -167,6 +167,8 @@ export const deleted = (it: { name: string; setPosition: number; weight: number;
 
 export const nothingToCorrect = () => "Não achei nenhuma série recente para alterar.";
 
+export const alreadyLogged = () => "Essas séries já tinham sido registradas. Nada foi duplicado.";
+
 // ---------- Session ----------
 
 export const unknownDay = (query: string, days: { letter: string; title: string }[]) =>

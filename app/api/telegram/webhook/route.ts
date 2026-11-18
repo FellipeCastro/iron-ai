@@ -2,8 +2,9 @@ import { timingSafeEqual } from "node:crypto";
 import * as Sentry from "@sentry/nextjs";
 import { idempotencyKeys, tasks } from "@trigger.dev/sdk";
 import type { NextRequest } from "next/server";
+import { db, messages } from "@/db";
 import { localTime } from "@/lib/engine/reminders";
-import { countMessage, dailyMessageLimit, messagesThisMonth, monthlyMessageLimit } from "@/lib/limits";
+import { admitMessage, dailyMessageLimit, monthlyMessageLimit } from "@/lib/limits";
 import { findByChat } from "@/lib/services/users";
 import { sendMessage, type TgUpdate } from "@/lib/telegram/client";
 import * as render from "@/lib/telegram/render";
@@ -52,29 +53,35 @@ export async function POST(req: NextRequest) {
 
   const link = await findByChat(chat.id);
 
-  // Daily cap on text messages of linked users (button taps are free; unlinked chats never reach the LLM).
+  // Caps on text messages of linked users (button taps are free; unlinked chats never reach the LLM).
   if (link && update.message) {
     const today = localTime(new Date(), link.user.timezone).date;
-    const count = await countMessage(link.userId, today);
+    // Telegram redelivers an update until it gets a 2xx, and a redelivery must not burn the user's quota. The update_id
+    // is claimed in `messages` (unique) as "admitting"; admitMessage then counts it and commits the verdict
+    // ("received" or "ignored") in one transaction. Only a committed "received" is enqueued, so a concurrent redelivery
+    // never treats a pending admission as approved, and one retried after a failed enqueue is admitted uncounted.
+    await db
+      .insert(messages)
+      .values({ updateId: update.update_id, userId: link.userId, rawText: update.message.text ?? null, status: "admitting" })
+      .onConflictDoNothing({ target: messages.updateId });
     const dailyLimit = dailyMessageLimit();
-    if (count > dailyLimit) {
-      if (count === dailyLimit + 1) {
+    const monthlyLimit = monthlyMessageLimit();
+    const admission = await admitMessage(update.update_id, link.userId, today, dailyLimit, monthlyLimit);
+    if (!admission.admitted) {
+      // Over a cap (now or on an earlier delivery) or already handled: acknowledge without enqueueing. Messages over
+      // the cap are still counted, so the month total reflects what the user tried to send. Notices go out once, on
+      // the first message past each cap, and only on the delivery that counted it.
+      // Each crossing is detected independently: one message can cross both caps at once, and rejectedBy only names one.
+      if (admission.daily === dailyLimit + 1) {
         // Once per user and day, like the notice itself: tells whether the cap is tuned right.
         Sentry.logger.warn("Daily message limit reached", { user_id: link.userId, limit: dailyLimit });
         await sendMessage(chat.id, render.rateLimited(dailyLimit)).catch(() => undefined);
       }
-      outcome("rate_limited");
-      return new Response("OK");
-    }
-    // Messages over the cap are still counted, so the month total reflects what the user tried to send.
-    const monthly = await messagesThisMonth(link.userId, today);
-    const monthlyLimit = monthlyMessageLimit();
-    if (monthly > monthlyLimit) {
-      if (monthly === monthlyLimit + 1) {
+      if (admission.monthly === monthlyLimit + 1) {
         Sentry.logger.warn("Monthly message limit reached", { user_id: link.userId, limit: monthlyLimit });
         await sendMessage(chat.id, render.monthlyLimited(monthlyLimit)).catch(() => undefined);
       }
-      outcome("rate_limited");
+      outcome(admission.rejectedBy ? "rate_limited" : "ignored");
       return new Response("OK");
     }
   }

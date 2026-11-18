@@ -24,6 +24,7 @@ import {
   markSummarySent,
   nextRoutineDay,
   setSessionDuration,
+  updateAlreadyLogged,
   type ClosedSession,
 } from "@/lib/services/workout";
 import { answerCallbackQuery, editMessageText, sendMessage, sendTyping, type InlineKeyboard, type TgUpdate } from "@/lib/telegram/client";
@@ -39,7 +40,7 @@ const FAST_PATH_MODEL = "fast-path";
 const MAX_DURATION_REPLY_CHARS = 10;
 
 type Out = { text: string; keyboard?: InlineKeyboard; sessionId?: string };
-type Ctx = { chatId: number; user: User; state: ChatState; routine: Routine | null; pool: MatchCandidate[] | null };
+type Ctx = { updateId: number; chatId: number; user: User; state: ChatState; routine: Routine | null; pool: MatchCandidate[] | null };
 
 export type HandleOptions = {
   isLastAttempt: boolean;
@@ -77,6 +78,11 @@ export async function handleUpdate(update: TgUpdate, opts: HandleOptions): Promi
   if (update.edited_message) return { status: "ignored" };
 
   const link = await findByChat(chat.id);
+  const finish = (status: Status, parsedJson?: unknown) =>
+    db
+      .update(messages)
+      .set({ status, parsedJson: parsedJson ?? null })
+      .where(eq(messages.updateId, update.update_id));
   const [row] = await db
     .insert(messages)
     .values({ updateId: update.update_id, userId: link?.userId ?? null, rawText: message?.text ?? callback?.data ?? null })
@@ -86,13 +92,13 @@ export async function handleUpdate(update: TgUpdate, opts: HandleOptions): Promi
     const existing = await db.query.messages.findFirst({ where: eq(messages.updateId, update.update_id) });
     // Already handled by an earlier run (webhook redelivery): writes must not happen twice.
     if (existing && existing.status !== "received") return { status: "duplicate", userId: link?.userId };
+    // The webhook admitted (and counted) this update for another account than the one the chat resolves to now
+    // (chat relinked or unlinked in between): nothing may be written on the wrong account's behalf.
+    if (existing?.userId && existing.userId !== link?.userId) {
+      await finish("ignored");
+      return { status: "ignored", userId: link?.userId };
+    }
   }
-
-  const finish = (status: Status, parsedJson?: unknown) =>
-    db
-      .update(messages)
-      .set({ status, parsedJson: parsedJson ?? null })
-      .where(eq(messages.updateId, update.update_id));
 
   if (callback) {
     if (!link) {
@@ -106,7 +112,7 @@ export async function handleUpdate(update: TgUpdate, opts: HandleOptions): Promi
       await sendMessage(chat.id, render.subscriptionRequired());
       return { status: "ignored", kind: "callback", userId: link.userId };
     }
-    const ctx = await loadCtx(chat.id, link.user, link.chatState);
+    const ctx = await loadCtx(update.update_id, chat.id, link.user, link.chatState);
     const outs = await handleCallback(ctx, callback.data);
     await finish("processed");
     await answerCallbackQuery(callback.id).catch(() => undefined);
@@ -182,7 +188,15 @@ export async function handleUpdate(update: TgUpdate, opts: HandleOptions): Promi
   }
   if (!text) return { status: "ignored", kind: "message", userId: link.userId };
 
-  const ctx = await loadCtx(chat.id, link.user, link.chatState);
+  const ctx = await loadCtx(update.update_id, chat.id, link.user, link.chatState);
+
+  // A durable marker means an earlier run already wrote this update's sets: skip parsing (no model call, no
+  // second log) and let updateAlreadyLogged finish any target rebuild that run did not complete.
+  if (await updateAlreadyLogged(update.update_id, link.userId)) {
+    await finish("processed");
+    await deliver(ctx.user.id, chat.id, [{ text: render.alreadyLogged() }]);
+    return { status: "processed", kind: "message", userId: link.userId };
+  }
 
   // Steps that wait for typed text (training time, corrected duration) consume the message.
   if (ctx.state.pending && !text.startsWith("/")) {
@@ -261,8 +275,8 @@ export async function handleUpdate(update: TgUpdate, opts: HandleOptions): Promi
 
 // ---------- Context ----------
 
-async function loadCtx(chatId: number, user: User, rawState: unknown): Promise<Ctx> {
-  return { chatId, user, state: readChatState(rawState), routine: await loadRoutine(user.id), pool: null };
+async function loadCtx(updateId: number, chatId: number, user: User, rawState: unknown): Promise<Ctx> {
+  return { updateId, chatId, user, state: readChatState(rawState), routine: await loadRoutine(user.id), pool: null };
 }
 
 /** Replaces the given parts of the chat state; what is not mentioned (e.g. the chosen day) is kept. */
@@ -449,17 +463,22 @@ async function confirmText(ctx: Ctx, intent: Intent, ids: Record<string, string>
 async function apply(ctx: Ctx, intent: Intent, ids: Record<string, string>): Promise<Out[]> {
   switch (intent.type) {
     case "log_sets": {
+      // A retry of an update that already wrote its sets (the first run failed before replying) must not log them again.
+      if (await updateAlreadyLogged(ctx.updateId, ctx.user.id)) return [{ text: render.alreadyLogged() }];
       const result = await logSets(
         ctx.user,
         ctx.routine,
         intent.groups.map((g, i) => ({ exerciseId: ids[`g${i}`], weight: g.weight_kg, reps: g.reps, count: g.sets })),
         new Date(),
         chosenLetter(ctx),
+        ctx.updateId,
       );
-      // The chosen day now lives in the session itself.
-      if (ctx.state.dayOverride) await saveState(ctx, { dayOverride: null });
       const outs: Out[] = [];
       if (result.closedBefore) outs.push(summaryOut(result.closedBefore, "inactive"));
+      // A concurrent duplicate of this update already wrote the sets: nothing new to announce or complete.
+      if (result.replay) return [...outs, { text: render.alreadyLogged() }];
+      // The chosen day now lives in the session itself.
+      if (ctx.state.dayOverride) await saveState(ctx, { dayOverride: null });
       outs.push({ text: render.setsLogged(result) });
       if (result.complete) {
         const closed = await closeSession(ctx.user, result.sessionId, "complete", ctx.routine);
