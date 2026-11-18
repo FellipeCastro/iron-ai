@@ -24,6 +24,8 @@ describe("role app_runtime", () => {
     usage_counters: "S",
     ai_usage_user: "S",
     ai_usage: "",
+    ai_reservations: "",
+    applied_updates: "",
     exercises: "SIUD",
     routines: "SIUD",
     routine_days: "SIUD",

@@ -106,6 +106,27 @@
       "when": 1795012725614,
       "tag": "0014_subscriptions_synced_from",
       "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1795016143778,
+      "tag": "0015_message_status_admitting",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1795016191716,
+      "tag": "0016_ai_reservations",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1795016284586,
+      "tag": "0017_applied_updates",
+      "breakpoints": true
     }
   ]
 }

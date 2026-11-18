@@ -1,11 +1,10 @@
 import { timingSafeEqual } from "node:crypto";
 import * as Sentry from "@sentry/nextjs";
 import { idempotencyKeys, tasks } from "@trigger.dev/sdk";
-import { eq } from "drizzle-orm";
 import type { NextRequest } from "next/server";
 import { db, messages } from "@/db";
 import { localTime } from "@/lib/engine/reminders";
-import { countMessage, dailyMessageLimit, messagesThisMonth, monthlyMessageLimit } from "@/lib/limits";
+import { admitMessage, dailyMessageLimit, monthlyMessageLimit } from "@/lib/limits";
 import { findByChat } from "@/lib/services/users";
 import { sendMessage, type TgUpdate } from "@/lib/telegram/client";
 import * as render from "@/lib/telegram/render";
@@ -54,50 +53,33 @@ export async function POST(req: NextRequest) {
 
   const link = await findByChat(chat.id);
 
-  // Daily cap on text messages of linked users (button taps are free; unlinked chats never reach the LLM).
+  // Caps on text messages of linked users (button taps are free; unlinked chats never reach the LLM).
   if (link && update.message) {
     const today = localTime(new Date(), link.user.timezone).date;
-    // Telegram redelivers an update until it gets a 2xx, and a redelivery must not burn the user's quota.
-    // Claiming the update_id in `messages` (unique) first tells a first delivery from a repeat. The row is the
-    // same one handleUpdate inserts; it finds it in status "received" and carries on.
-    const [claimed] = await db
+    // Telegram redelivers an update until it gets a 2xx, and a redelivery must not burn the user's quota. The update_id
+    // is claimed in `messages` (unique) as "admitting"; admitMessage then counts it and commits the verdict
+    // ("received" or "ignored") in one transaction. Only a committed "received" is enqueued, so a concurrent redelivery
+    // never treats a pending admission as approved, and one retried after a failed enqueue is admitted uncounted.
+    await db
       .insert(messages)
-      .values({ updateId: update.update_id, userId: link.userId, rawText: update.message.text ?? null })
-      .onConflictDoNothing({ target: messages.updateId })
-      .returning({ id: messages.id });
-    if (!claimed) {
-      // Repeat delivery. Already handled, or turned away by a cap before: just acknowledge it. Still "received"
-      // means the worker has not finished it yet, so fall through and enqueue (Trigger dedupes by key).
-      const existing = await db.query.messages.findFirst({ where: eq(messages.updateId, update.update_id), columns: { status: true } });
-      if (existing && existing.status !== "received") {
-        outcome("ignored");
-        return new Response("OK");
-      }
-    }
-    const count = claimed ? await countMessage(link.userId, today) : 0;
+      .values({ updateId: update.update_id, userId: link.userId, rawText: update.message.text ?? null, status: "admitting" })
+      .onConflictDoNothing({ target: messages.updateId });
     const dailyLimit = dailyMessageLimit();
-    // A message turned away by a cap is marked so a redelivery of it is not processed later.
-    const reject = () => db.update(messages).set({ status: "ignored" }).where(eq(messages.updateId, update.update_id));
-    if (count > dailyLimit) {
-      await reject();
-      if (count === dailyLimit + 1) {
+    const monthlyLimit = monthlyMessageLimit();
+    const admission = await admitMessage(update.update_id, link.userId, today, dailyLimit, monthlyLimit);
+    if (!admission.admitted) {
+      // Over a cap (now or on an earlier delivery) or already handled: acknowledge without enqueueing. Messages over
+      // the cap are still counted, so the month total reflects what the user tried to send. Notices go out once, on
+      // the first message past each cap, and only on the delivery that counted it.
+      if (admission.rejectedBy === "daily" && admission.daily === dailyLimit + 1) {
         // Once per user and day, like the notice itself: tells whether the cap is tuned right.
         Sentry.logger.warn("Daily message limit reached", { user_id: link.userId, limit: dailyLimit });
         await sendMessage(chat.id, render.rateLimited(dailyLimit)).catch(() => undefined);
-      }
-      outcome("rate_limited");
-      return new Response("OK");
-    }
-    // Messages over the cap are still counted, so the month total reflects what the user tried to send.
-    const monthly = await messagesThisMonth(link.userId, today);
-    const monthlyLimit = monthlyMessageLimit();
-    if (monthly > monthlyLimit) {
-      await reject();
-      if (monthly === monthlyLimit + 1) {
+      } else if (admission.rejectedBy === "monthly" && admission.monthly === monthlyLimit + 1) {
         Sentry.logger.warn("Monthly message limit reached", { user_id: link.userId, limit: monthlyLimit });
         await sendMessage(chat.id, render.monthlyLimited(monthlyLimit)).catch(() => undefined);
       }
-      outcome("rate_limited");
+      outcome(admission.rejectedBy ? "rate_limited" : "ignored");
       return new Response("OK");
     }
   }

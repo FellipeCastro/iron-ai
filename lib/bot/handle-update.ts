@@ -460,10 +460,12 @@ async function apply(ctx: Ctx, intent: Intent, ids: Record<string, string>): Pro
         chosenLetter(ctx),
         ctx.updateId,
       );
-      // The chosen day now lives in the session itself.
-      if (ctx.state.dayOverride) await saveState(ctx, { dayOverride: null });
       const outs: Out[] = [];
       if (result.closedBefore) outs.push(summaryOut(result.closedBefore, "inactive"));
+      // A concurrent duplicate of this update already wrote the sets: nothing new to announce or complete.
+      if (result.replay) return [...outs, { text: render.alreadyLogged() }];
+      // The chosen day now lives in the session itself.
+      if (ctx.state.dayOverride) await saveState(ctx, { dayOverride: null });
       outs.push({ text: render.setsLogged(result) });
       if (result.complete) {
         const closed = await closeSession(ctx.user, result.sessionId, "complete", ctx.routine);

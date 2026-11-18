@@ -1,6 +1,6 @@
 import OpenAI from "openai";
 import { zodTextFormat } from "openai/helpers/zod";
-import { fallbackEstimateUsd, parseEstimateUsd, recordAiUsage, releaseAiBudget, reserveAiBudget, reserveFallback } from "@/lib/limits";
+import { fallbackEstimateUsd, parseEstimateUsd, recordAiUsage, releaseAiBudgetSafe, reserveAiBudget, reserveFallback } from "@/lib/limits";
 import type { TokenUsage } from "./pricing";
 import { buildParserInput, PARSER_INSTRUCTIONS, type ParserContext } from "./prompts";
 import { ParsedMessage, validateIntent } from "./schemas";
@@ -75,7 +75,7 @@ export async function parseMessage(text: string, ctx: ParserContext, userId: str
       result = await requestParse(model, text, ctx);
     }
   } catch (err) {
-    await releaseAiBudget(reservation).catch(() => undefined);
+    await releaseAiBudgetSafe(reservation);
     throw err;
   }
   const fallback = model !== OPENAI_PARSER_MODEL;

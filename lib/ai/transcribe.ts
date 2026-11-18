@@ -1,6 +1,6 @@
 import OpenAI, { toFile } from "openai";
 import { downloadFile, type TgVoice } from "@/lib/telegram/client";
-import { recordAiUsage, releaseAiBudget, reserveAiBudget } from "@/lib/limits";
+import { recordAiUsage, releaseAiBudgetSafe, reserveAiBudget } from "@/lib/limits";
 import { priceOf, type TokenUsage } from "./pricing";
 
 // Voice notes become plain text and then follow the exact same path as a typed message (fast path, parser,
@@ -40,7 +40,7 @@ export async function transcribeVoice(voice: TgVoice, userId: string): Promise<s
     const file = await toFile(bytes, name, { type: "audio/ogg" });
     result = await openai().audio.transcriptions.create({ file, model: OPENAI_TRANSCRIBE_MODEL, language: "pt", prompt: PROMPT });
   } catch (err) {
-    await releaseAiBudget(reservation).catch(() => undefined);
+    await releaseAiBudgetSafe(reservation);
     throw err;
   }
   const usage: TokenUsage =

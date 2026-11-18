@@ -1,5 +1,5 @@
 import { and, asc, desc, eq, inArray, isNull, notExists, notInArray, or, sql, type SQL } from "drizzle-orm";
-import { db, exercises, routineDays, sessions, setEntries, setTargets, type Session, type User } from "@/db/client";
+import { appliedUpdates, db, exercises, routineDays, sessions, setEntries, setTargets, users, type Session, type User } from "@/db/client";
 import { computeTargets, type Load } from "@/lib/engine/progression";
 import { markRecords, type PrKind } from "@/lib/engine/records";
 import { sessionSummary, type ReportSet, type TargetChange } from "@/lib/engine/reports";
@@ -228,12 +228,25 @@ export type SetInput = { exerciseId: string; weight: number | null; reps: number
 
 /**
  * True when the Telegram update already wrote sets. A retried run (the first one failed after writing, before the
- * reply) must not log them again.
+ * reply) must not log them again. The evidence is the `applied_updates` marker, written in the same transaction as the
+ * sets and independent of them, so it survives the deletion of a set or of its emptied session. A marker that was
+ * never finalized means the previous run died before rebuilding the targets: that work is resumed here.
  */
 export async function updateAlreadyLogged(sourceUpdateId: number) {
-  const [row] = await db.select({ id: setEntries.id }).from(setEntries).where(eq(setEntries.sourceUpdateId, sourceUpdateId)).limit(1);
-  return !!row;
+  const [row] = await db.select().from(appliedUpdates).where(eq(appliedUpdates.updateId, sourceUpdateId)).limit(1);
+  if (!row) return false;
+  if (!row.finalizedAt) {
+    const [owner] = await db.select({ increment: users.weightIncrementKg }).from(users).where(eq(users.id, row.userId));
+    if (owner && row.exerciseIds.length) {
+      await recomputeTargets(row.userId, owner.increment, await loadLog(row.userId, { exerciseIds: row.exerciseIds }), row.exerciseIds);
+    }
+    await markUpdateFinalized(sourceUpdateId);
+  }
+  return true;
 }
+
+const markUpdateFinalized = (updateId: number) =>
+  db.update(appliedUpdates).set({ finalizedAt: new Date() }).where(and(eq(appliedUpdates.updateId, updateId), isNull(appliedUpdates.finalizedAt)));
 
 /**
  * Appends sets to the open session (opening one if needed), recomputes targets and detects records.
@@ -296,22 +309,46 @@ export async function logSets(
     }
   }
 
-  await db.batch([
+  // The applied-update marker goes in the same batch (= one transaction) as the sets. Only the run that creates it
+  // owns the update; without a source update there is nothing to claim.
+  const claim =
+    sourceUpdateId === undefined
+      ? db.select({ updateId: appliedUpdates.updateId }).from(appliedUpdates).where(sql`false`)
+      : db
+          .insert(appliedUpdates)
+          .values({ updateId: sourceUpdateId, userId: user.id, sessionId: session.id, exerciseIds })
+          .onConflictDoNothing({ target: appliedUpdates.updateId })
+          .returning({ updateId: appliedUpdates.updateId });
+  const [inserted, , claimed] = await db.batch([
     db
       .insert(setEntries)
       .values(rows)
-      .onConflictDoNothing({ target: [setEntries.sourceUpdateId, setEntries.sourceIdx], where: sql`${setEntries.sourceUpdateId} is not null` }),
-    db.update(sessions).set({ lastSetAt: now }).where(and(eq(sessions.id, session.id), eq(sessions.userId, user.id)))]);
+      .onConflictDoNothing({ target: [setEntries.sourceUpdateId, setEntries.sourceIdx], where: sql`${setEntries.sourceUpdateId} is not null` })
+      .returning({ id: setEntries.id }),
+    db.update(sessions).set({ lastSetAt: now }).where(and(eq(sessions.id, session.id), eq(sessions.userId, user.id))),
+    claim,
+  ]);
 
-  const log = await loadLog(user.id, { exerciseIds });
+  // Only rows that were actually persisted count. When the source key already existed (a replayed or concurrent
+  // duplicate update) nothing was written: report it distinctly so the caller neither announces sets nor closes the session.
+  const persistedIds = new Set(inserted.map((r) => r.id));
+  const written = rows.filter((r) => persistedIds.has(r.id));
+  if (sourceUpdateId !== undefined && claimed.length === 0) {
+    // Another run already owns this update. If its sets were deleted meanwhile the set index could not stop us,
+    // so anything we just inserted is voided (the log stays append-only) and an empty session we opened is dropped.
+    if (written.length) await db.update(setEntries).set({ voidedAt: new Date() }).where(inArray(setEntries.id, written.map((r) => r.id)));
+    if (opened) await dropSessionIfEmpty(user.id, session.id);
+    return { replay: true as const, closedBefore };
+  }
+  if (written.length === 0) return { replay: true as const, closedBefore };
+
+  const [log, persistedSessionSets] = await Promise.all([loadLog(user.id, { exerciseIds }), loadLog(user.id, { sessionId: session.id })]);
   const newTargets = await recomputeTargets(user.id, user.weightIncrementKg, log, exerciseIds);
-  const records = recordsFor(log, new Set(rows.map((r) => r.id)));
+  if (sourceUpdateId !== undefined) await markUpdateFinalized(sourceUpdateId);
+  const records = recordsFor(log, persistedIds);
   const names = new Map(log.map((s) => [s.exerciseId, s.exerciseName]));
 
-  const allSessionSets = [
-    ...sessionSets,
-    ...rows.map((r) => ({ exerciseId: r.exerciseId, setPosition: r.setPosition, isExtra: r.isExtra ?? false })),
-  ];
+  const allSessionSets = persistedSessionSets;
   const complete = isSessionComplete(day, allSessionSets);
   const remaining = remainingSets(day, allSessionSets).map((r) => ({
     name: day!.exercises.find((e) => e.exerciseId === r.exerciseId)!.name,
@@ -320,7 +357,7 @@ export async function logSets(
 
   // Targets for what comes next: the rest of the exercise just logged, or (once its planned sets are done)
   // the first exercise of the day that still has sets missing.
-  const lastExerciseId = rows.at(-1)!.exerciseId;
+  const lastExerciseId = written.at(-1)!.exerciseId;
   const missing = remainingSets(day, allSessionSets);
   const nextEntry = missing.find((r) => r.exerciseId === lastExerciseId) ?? missing[0];
   let upNext: { kind: "same" | "next"; name: string; targets: ({ weight: number; reps: number } | null)[] } | null = null;
@@ -342,11 +379,12 @@ export async function logSets(
   }
 
   return {
+    replay: false as const,
     closedBefore,
     sessionId: session.id,
     opened: opened && day ? { letter: day.letter, title: day.title } : null,
     upNext,
-    items: rows.map((r) => {
+    items: written.map((r) => {
       const t = r.isExtra ? undefined : newTargets.get(r.exerciseId)?.get(r.setPosition);
       return {
         name: names.get(r.exerciseId) ?? "",

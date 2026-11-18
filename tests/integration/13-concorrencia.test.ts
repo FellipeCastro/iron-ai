@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { startCheckoutAction } from "@/app/(app)/actions";
 import { POST } from "@/app/api/telegram/webhook/route";
-import { aiUsage, aiUsageUser, db, exercises, messages, sessions, setEntries, subscriptions, telegramLinks, usageCounters, users } from "@/db";
+import { aiUsage, aiUsageUser, appliedUpdates, db, exercises, messages, sessions, setEntries, setTargets, subscriptions, telegramLinks, usageCounters, users } from "@/db";
 import { handleUpdate } from "@/lib/bot/handle-update";
 import { reserveAiBudget, reserveFallback, UserBudgetExceededError } from "@/lib/limits";
 import { syncSubscription } from "@/lib/services/billing";
@@ -186,6 +186,36 @@ describe("#2 retry do mesmo update do Telegram não duplica séries", () => {
 
     expect(await setsOf(user.id)).toHaveLength(3);
     expect(telegramTexts().at(-1)).toBe(render.alreadyLogged());
+  });
+
+  it("quando as séries do update e a sessão vazia foram apagadas e o update chega de novo, então nada é registrado outra vez", async () => {
+    const user = await setup();
+    const update: Update = telegramTextUpdate(10, "supino 80x8 3 séries");
+    await handle(update);
+    // Apagar a sessão leva as séries junto (cascade): só o marcador de update aplicado sobra como evidência.
+    await db.delete(sessions).where(eq(sessions.userId, user.id));
+    expect(await setsOf(user.id)).toHaveLength(0);
+    await db.update(messages).set({ status: "received" }).where(eq(messages.updateId, update.update_id));
+
+    await handle(update);
+
+    expect(await setsOf(user.id)).toHaveLength(0);
+    expect(telegramTexts().at(-1)).toBe(render.alreadyLogged());
+  });
+
+  it("quando o update gravou as séries mas caiu antes de refazer as metas, então o retry conclui o trabalho sem duplicar", async () => {
+    const user = await setup();
+    const update: Update = telegramTextUpdate(10, "supino 80x8 3 séries");
+    await handle(update);
+    await db.update(appliedUpdates).set({ finalizedAt: null }).where(eq(appliedUpdates.updateId, update.update_id));
+    await db.delete(setTargets).where(eq(setTargets.userId, user.id));
+    await db.update(messages).set({ status: "received" }).where(eq(messages.updateId, update.update_id));
+
+    await handle(update);
+
+    expect(await setsOf(user.id)).toHaveLength(3);
+    expect(await db.select().from(setTargets).where(eq(setTargets.userId, user.id))).not.toHaveLength(0);
+    expect((await db.select().from(appliedUpdates).where(eq(appliedUpdates.updateId, update.update_id)))[0].finalizedAt).not.toBeNull();
   });
 
   it("quando o mesmo update roda 2 vezes ao mesmo tempo, então o banco não aceita as séries em dobro", async () => {
