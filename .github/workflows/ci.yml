@@ -82,8 +82,9 @@ jobs:
   migrate-prod:
     # Aplica as migrações pendentes no banco de produção (Neon) antes de publicar o Trigger.dev.
     # Roda como owner (DDL); o app usa o role restrito app_runtime. Use a URL direta (sem pooler).
-    # A Vercel faz deploy do app pelo push na main em paralelo: escreva migrações compatíveis com o
-    # código anterior (adicionar antes de remover/renomear).
+    # O deploy de produção da Vercel só roda depois deste job (ver deploy-vercel): o auto-deploy da main
+    # pela integração Git está desligado em vercel.json. Ainda assim, o código antigo segue atendendo
+    # durante a migração, então escreva migrações compatíveis com ele (adicionar antes de remover/renomear).
     needs: [check, integration]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
@@ -100,6 +101,30 @@ jobs:
       - run: npm run db:migrate
         env:
           DATABASE_URL_OWNER: ${{ secrets.DATABASE_URL_OWNER }}
+
+  deploy-vercel:
+    # Publica o app em produção só depois que as migrações foram aplicadas. Requer os secrets
+    # VERCEL_TOKEN, VERCEL_ORG_ID e VERCEL_PROJECT_ID. Previews de PR continuam pela integração Git.
+    needs: [check, integration, migrate-prod]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-vercel
+      cancel-in-progress: false
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm i -g vercel@latest
+      - run: vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
+      - run: vercel build --prod --token="$VERCEL_TOKEN"
+      - run: vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN"
 
   deploy-trigger:
     needs: [check, integration, migrate-prod]
