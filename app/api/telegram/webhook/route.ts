@@ -71,11 +71,13 @@ export async function POST(req: NextRequest) {
       // Over a cap (now or on an earlier delivery) or already handled: acknowledge without enqueueing. Messages over
       // the cap are still counted, so the month total reflects what the user tried to send. Notices go out once, on
       // the first message past each cap, and only on the delivery that counted it.
-      if (admission.rejectedBy === "daily" && admission.daily === dailyLimit + 1) {
+      // Each crossing is detected independently: one message can cross both caps at once, and rejectedBy only names one.
+      if (admission.daily === dailyLimit + 1) {
         // Once per user and day, like the notice itself: tells whether the cap is tuned right.
         Sentry.logger.warn("Daily message limit reached", { user_id: link.userId, limit: dailyLimit });
         await sendMessage(chat.id, render.rateLimited(dailyLimit)).catch(() => undefined);
-      } else if (admission.rejectedBy === "monthly" && admission.monthly === monthlyLimit + 1) {
+      }
+      if (admission.monthly === monthlyLimit + 1) {
         Sentry.logger.warn("Monthly message limit reached", { user_id: link.userId, limit: monthlyLimit });
         await sendMessage(chat.id, render.monthlyLimited(monthlyLimit)).catch(() => undefined);
       }

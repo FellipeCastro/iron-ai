@@ -369,13 +369,14 @@ export const aiUsageUser = pgTable(
 // A held slice of the daily OpenAI ceilings (see lib/limits.ts). Persisted so a release that failed can be retried
 // later: closedAt is set exactly once, by whichever of release/settle claims it first, so the hold is given back
 // at most once. Server-only (no app_runtime access).
+// userId is deliberately NOT a foreign key: deleting a user must not cascade away an open hold, or the amount it
+// reserved in ai_usage could never be given back. The release only needs date/usd/fallbackUsd (the per-user row
+// is gone with the user), and settled holds (closedAt set) are already accounted for in ai_usage.
 export const aiReservations = pgTable(
   "ai_reservations",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    userId: uuid("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
+    userId: uuid("user_id").notNull(),
     date: date("date").notNull(),
     usd: numeric("usd", { precision: 10, scale: 4, mode: "number" }).notNull(),
     fallbackUsd: numeric("fallback_usd", { precision: 10, scale: 4, mode: "number" }).notNull().default(0),

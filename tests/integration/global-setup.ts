@@ -10,15 +10,13 @@ export default async function setup() {
   assertTestDatabase(env.DATABASE_URL, env.TEST_DB_HOST);
   const sql = neon(env.DATABASE_URL);
 
-  // Banco com tabelas mas sem histórico de migrations (criado por `db:push`): o migrator tentaria recriar
-  // tudo e quebraria. É a branch de teste, descartável: recria o schema `public` do zero.
-  const [{ tables }] = await sql`select count(*)::int as tables from pg_tables where schemaname = 'public'`;
-  const [{ journal }] = await sql`select to_regclass('drizzle.__drizzle_migrations') is not null as journal`;
-  const applied = journal ? (await sql`select count(*)::int as n from drizzle.__drizzle_migrations`)[0].n : 0;
-  if (tables > 0 && applied === 0) {
-    await sql`drop schema public cascade`;
-    await sql`create schema public`;
-  }
+  // A branch de teste é descartável e compartilhada entre branches do git e o CI: o histórico de migrations dela pode
+  // divergir do `_journal.json` atual (migrations regeneradas, execução interrompida, `db:push`). O migrator do drizzle
+  // só compara o timestamp da última migration aplicada e tenta recriar tabelas que já existem
+  // (`relation "applied_updates" already exists`). Por isso o schema é recriado do zero a cada execução.
+  await sql`drop schema if exists drizzle cascade`;
+  await sql`drop schema if exists public cascade`;
+  await sql`create schema public`;
 
   await migrate(drizzle({ client: sql }), { migrationsFolder: "./drizzle" });
 }

@@ -127,6 +127,13 @@
       "when": 1795016284586,
       "tag": "0017_applied_updates",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1795021497269,
+      "tag": "0018_ai_reservations_keep_on_user_delete",
+      "breakpoints": true
     }
   ]
 }

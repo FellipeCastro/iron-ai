@@ -78,6 +78,11 @@ export async function handleUpdate(update: TgUpdate, opts: HandleOptions): Promi
   if (update.edited_message) return { status: "ignored" };
 
   const link = await findByChat(chat.id);
+  const finish = (status: Status, parsedJson?: unknown) =>
+    db
+      .update(messages)
+      .set({ status, parsedJson: parsedJson ?? null })
+      .where(eq(messages.updateId, update.update_id));
   const [row] = await db
     .insert(messages)
     .values({ updateId: update.update_id, userId: link?.userId ?? null, rawText: message?.text ?? callback?.data ?? null })
@@ -87,13 +92,13 @@ export async function handleUpdate(update: TgUpdate, opts: HandleOptions): Promi
     const existing = await db.query.messages.findFirst({ where: eq(messages.updateId, update.update_id) });
     // Already handled by an earlier run (webhook redelivery): writes must not happen twice.
     if (existing && existing.status !== "received") return { status: "duplicate", userId: link?.userId };
+    // The webhook admitted (and counted) this update for another account than the one the chat resolves to now
+    // (chat relinked or unlinked in between): nothing may be written on the wrong account's behalf.
+    if (existing?.userId && existing.userId !== link?.userId) {
+      await finish("ignored");
+      return { status: "ignored", userId: link?.userId };
+    }
   }
-
-  const finish = (status: Status, parsedJson?: unknown) =>
-    db
-      .update(messages)
-      .set({ status, parsedJson: parsedJson ?? null })
-      .where(eq(messages.updateId, update.update_id));
 
   if (callback) {
     if (!link) {
@@ -184,6 +189,14 @@ export async function handleUpdate(update: TgUpdate, opts: HandleOptions): Promi
   if (!text) return { status: "ignored", kind: "message", userId: link.userId };
 
   const ctx = await loadCtx(update.update_id, chat.id, link.user, link.chatState);
+
+  // A durable marker means an earlier run already wrote this update's sets: skip parsing (no model call, no
+  // second log) and let updateAlreadyLogged finish any target rebuild that run did not complete.
+  if (await updateAlreadyLogged(update.update_id, link.userId)) {
+    await finish("processed");
+    await deliver(ctx.user.id, chat.id, [{ text: render.alreadyLogged() }]);
+    return { status: "processed", kind: "message", userId: link.userId };
+  }
 
   // Steps that wait for typed text (training time, corrected duration) consume the message.
   if (ctx.state.pending && !text.startsWith("/")) {
@@ -451,7 +464,7 @@ async function apply(ctx: Ctx, intent: Intent, ids: Record<string, string>): Pro
   switch (intent.type) {
     case "log_sets": {
       // A retry of an update that already wrote its sets (the first run failed before replying) must not log them again.
-      if (await updateAlreadyLogged(ctx.updateId)) return [{ text: render.alreadyLogged() }];
+      if (await updateAlreadyLogged(ctx.updateId, ctx.user.id)) return [{ text: render.alreadyLogged() }];
       const result = await logSets(
         ctx.user,
         ctx.routine,

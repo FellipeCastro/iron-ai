@@ -33,7 +33,9 @@ export type ParseResult = {
  * hidden reasoning tokens as output.
  */
 export async function requestParse(model: string, text: string, ctx: ParserContext) {
-  const response = await openai().responses.parse({
+  // `create` + manual parse (not `responses.parse`): that helper throws on bad JSON without exposing the
+  // response, which would lose the usage OpenAI already billed.
+  const response = await openai().responses.create({
     model,
     instructions: PARSER_INSTRUCTIONS,
     input: buildParserInput(text, ctx),
@@ -47,7 +49,24 @@ export async function requestParse(model: string, text: string, ctx: ParserConte
     cachedInputTokens: response.usage?.input_tokens_details?.cached_tokens ?? 0,
     outputTokens: response.usage?.output_tokens ?? 0,
   };
-  return { parsed: response.output_parsed, usage };
+  try {
+    // Empty output (e.g. a refusal) yields null, which parseMessage turns into a clarification.
+    const parsed = response.output_text ? ParsedMessage.parse(JSON.parse(response.output_text)) : null;
+    return { parsed, usage };
+  } catch (cause) {
+    throw new ParseOutputError(usage, cause);
+  }
+}
+
+/** The model answered (and was billed) but its output failed JSON/schema validation. Carries the usage to settle. */
+export class ParseOutputError extends Error {
+  constructor(
+    readonly usage: TokenUsage,
+    cause: unknown,
+  ) {
+    super("Model output failed validation", { cause });
+    this.name = "ParseOutputError";
+  }
 }
 
 /** Errors worth retrying on the fallback model (outages, overload), not bad requests or auth. */
@@ -75,7 +94,17 @@ export async function parseMessage(text: string, ctx: ParserContext, userId: str
       result = await requestParse(model, text, ctx);
     }
   } catch (err) {
-    await releaseAiBudgetSafe(reservation);
+    if (err instanceof ParseOutputError) {
+      // The call completed and was billed: settle the real cost instead of releasing the reservation.
+      try {
+        await recordAiUsage(userId, model, err.usage, model !== OPENAI_PARSER_MODEL, reservation);
+      } catch {
+        // Idempotent: a no-op if recordAiUsage already closed the row, otherwise the sweep-safe fallback.
+        await releaseAiBudgetSafe(reservation);
+      }
+    } else {
+      await releaseAiBudgetSafe(reservation);
+    }
     throw err;
   }
   const fallback = model !== OPENAI_PARSER_MODEL;

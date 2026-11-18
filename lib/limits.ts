@@ -39,7 +39,10 @@ export type Admission = {
  */
 export async function admitMessage(updateId: number, userId: string, date: string, dailyLimit: number, monthlyLimit: number): Promise<Admission> {
   const monthStart = `${date.slice(0, 7)}-01`;
-  const [, bump, verdict] = await db.batch([
+  const [, , bump, verdict] = await db.batch([
+    // User lock, taken before any read or write: admissions of one user on different local dates all touch the month
+    // total, so they run one at a time and each sees the increments the earlier ones committed. Held until commit.
+    db.execute(sql`select pg_advisory_xact_lock(hashtextextended(${userId}, 0))`),
     // Row lock: serializes concurrent deliveries of the same update.
     db.update(messages).set({ status: sql`${messages.status}` }).where(and(eq(messages.updateId, updateId), eq(messages.status, "admitting"))),
     db.execute(sql`
@@ -51,11 +54,11 @@ export async function admitMessage(updateId: number, userId: string, date: strin
     db.execute(sql`
       update messages set status = case
         when (select count from usage_counters where user_id = ${userId}::uuid and date = ${date}::date) > ${dailyLimit}
-          or (select coalesce(sum(count), 0) from usage_counters where user_id = ${userId}::uuid and date >= ${monthStart}::date) > ${monthlyLimit}
+          or (select coalesce(sum(count), 0) from usage_counters where user_id = ${userId}::uuid and date >= ${monthStart}::date and date < (${monthStart}::date + interval '1 month')::date) > ${monthlyLimit}
         then 'ignored'::message_status else 'received'::message_status end
       where update_id = ${updateId} and status = 'admitting'
       returning status::text as status,
-        (select coalesce(sum(count), 0)::int from usage_counters where user_id = ${userId}::uuid and date >= ${monthStart}::date) as monthly`),
+        (select coalesce(sum(count), 0)::int from usage_counters where user_id = ${userId}::uuid and date >= ${monthStart}::date and date < (${monthStart}::date + interval '1 month')::date) as monthly`),
   ]);
 
   const counted = bump.rows[0] as { count: number } | undefined;

@@ -232,17 +232,36 @@ export type SetInput = { exerciseId: string; weight: number | null; reps: number
  * sets and independent of them, so it survives the deletion of a set or of its emptied session. A marker that was
  * never finalized means the previous run died before rebuilding the targets: that work is resumed here.
  */
-export async function updateAlreadyLogged(sourceUpdateId: number) {
-  const [row] = await db.select().from(appliedUpdates).where(eq(appliedUpdates.updateId, sourceUpdateId)).limit(1);
+export async function updateAlreadyLogged(sourceUpdateId: number, userId: string) {
+  const [row] = await db
+    .select()
+    .from(appliedUpdates)
+    .where(and(eq(appliedUpdates.updateId, sourceUpdateId), eq(appliedUpdates.userId, userId)))
+    .limit(1);
   if (!row) return false;
   if (!row.finalizedAt) {
     const [owner] = await db.select({ increment: users.weightIncrementKg }).from(users).where(eq(users.id, row.userId));
-    if (owner && row.exerciseIds.length) {
-      await recomputeTargets(row.userId, owner.increment, await loadLog(row.userId, { exerciseIds: row.exerciseIds }), row.exerciseIds);
-    }
+    if (owner && row.exerciseIds.length) await recomputeTargetsStable(row.userId, owner.increment, row.exerciseIds);
     await markUpdateFinalized(sourceUpdateId);
   }
   return true;
+}
+
+/**
+ * Rebuilds targets and verifies the history did not change while doing so. neon-http has no interactive transactions,
+ * so the read-then-write cannot be locked; instead the valid-set ids (a correction voids one id and adds another) are
+ * compared after the write, and the rebuild reruns on a mismatch. A competing writer's own rebuild is always based on
+ * its committed change, so a rerun that sees a stable log leaves targets reflecting the latest history. Throws if it
+ * never settles, so the caller does not finalize and the update stays eligible for another repair.
+ */
+async function recomputeTargetsStable(userId: string, incrementKg: number, exerciseIds: string[]) {
+  const fingerprint = (log: LogRow[]) => log.map((s) => s.id).sort().join(",");
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const log = await loadLog(userId, { exerciseIds });
+    await recomputeTargets(userId, incrementKg, log, exerciseIds);
+    if (fingerprint(await loadLog(userId, { exerciseIds })) === fingerprint(log)) return;
+  }
+  throw new Error("Could not rebuild targets: history kept changing");
 }
 
 const markUpdateFinalized = (updateId: number) =>
@@ -309,38 +328,51 @@ export async function logSets(
     }
   }
 
-  // The applied-update marker goes in the same batch (= one transaction) as the sets. Only the run that creates it
-  // owns the update; without a source update there is nothing to claim.
-  const claim =
-    sourceUpdateId === undefined
-      ? db.select({ updateId: appliedUpdates.updateId }).from(appliedUpdates).where(sql`false`)
-      : db
-          .insert(appliedUpdates)
-          .values({ updateId: sourceUpdateId, userId: user.id, sessionId: session.id, exerciseIds })
-          .onConflictDoNothing({ target: appliedUpdates.updateId })
-          .returning({ updateId: appliedUpdates.updateId });
-  const [inserted, , claimed] = await db.batch([
-    db
-      .insert(setEntries)
-      .values(rows)
-      .onConflictDoNothing({ target: [setEntries.sourceUpdateId, setEntries.sourceIdx], where: sql`${setEntries.sourceUpdateId} is not null` })
-      .returning({ id: setEntries.id }),
-    db.update(sessions).set({ lastSetAt: now }).where(and(eq(sessions.id, session.id), eq(sessions.userId, user.id))),
-    claim,
-  ]);
+  // The sets are published only if this run wins the applied-update marker. With a source update, claim and sets are
+  // ONE statement (the sets are selected from the claim CTE), so a lost claim inserts nothing, and a failure while
+  // inserting the sets rolls the marker back with them, leaving the update claimable by a retry.
+  let inserted: { id: string }[];
+  if (sourceUpdateId === undefined) {
+    [inserted] = await db.batch([
+      db.insert(setEntries).values(rows).returning({ id: setEntries.id }),
+      db.update(sessions).set({ lastSetAt: now }).where(and(eq(sessions.id, session.id), eq(sessions.userId, user.id))),
+    ]);
+  } else {
+    const exerciseIdsSql = sql`array[${sql.join(exerciseIds.map((id) => sql`${id}::uuid`), sql`, `)}]::uuid[]`;
+    const values = sql.join(
+      rows.map(
+        (r) =>
+          sql`(${r.id}::uuid, ${r.sessionId}::uuid, ${r.exerciseId}::uuid, ${r.setPosition}::smallint, ${r.isExtra ?? false}::boolean, ${r.weight}::numeric, ${r.reps}::smallint, ${r.createdAt!.toISOString()}::timestamptz, ${sourceUpdateId}::bigint, ${r.sourceIdx}::smallint)`,
+      ),
+      sql`, `,
+    );
+    const [result] = await db.batch([
+      db.execute(sql`
+        with claim as (
+          insert into applied_updates (update_id, user_id, session_id, exercise_ids)
+          values (${sourceUpdateId}, ${user.id}, ${session.id}, ${exerciseIdsSql})
+          on conflict (update_id) do nothing
+          returning update_id
+        )
+        insert into set_entries (id, session_id, exercise_id, set_position, is_extra, weight, reps, created_at, source_update_id, source_idx)
+        select v.* from claim, (values ${values}) as v(id, session_id, exercise_id, set_position, is_extra, weight, reps, created_at, source_update_id, source_idx)
+        on conflict (source_update_id, source_idx) where source_update_id is not null do nothing
+        returning id
+      `),
+      db.update(sessions).set({ lastSetAt: now }).where(and(eq(sessions.id, session.id), eq(sessions.userId, user.id))),
+    ]);
+    inserted = result.rows as { id: string }[];
+  }
 
-  // Only rows that were actually persisted count. When the source key already existed (a replayed or concurrent
-  // duplicate update) nothing was written: report it distinctly so the caller neither announces sets nor closes the session.
+  // Only rows that were actually persisted count. When the marker was already owned (a replayed or concurrent
+  // duplicate update) nothing was written: report it distinctly so the caller neither announces sets nor closes the
+  // session. A session we opened for nothing is dropped.
   const persistedIds = new Set(inserted.map((r) => r.id));
   const written = rows.filter((r) => persistedIds.has(r.id));
-  if (sourceUpdateId !== undefined && claimed.length === 0) {
-    // Another run already owns this update. If its sets were deleted meanwhile the set index could not stop us,
-    // so anything we just inserted is voided (the log stays append-only) and an empty session we opened is dropped.
-    if (written.length) await db.update(setEntries).set({ voidedAt: new Date() }).where(inArray(setEntries.id, written.map((r) => r.id)));
+  if (written.length === 0) {
     if (opened) await dropSessionIfEmpty(user.id, session.id);
     return { replay: true as const, closedBefore };
   }
-  if (written.length === 0) return { replay: true as const, closedBefore };
 
   const [log, persistedSessionSets] = await Promise.all([loadLog(user.id, { exerciseIds }), loadLog(user.id, { sessionId: session.id })]);
   const newTargets = await recomputeTargets(user.id, user.weightIncrementKg, log, exerciseIds);

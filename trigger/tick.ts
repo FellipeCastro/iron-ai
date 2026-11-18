@@ -1,7 +1,6 @@
 import { idempotencyKeys, schedules } from "@trigger.dev/sdk";
 import { and, eq, gte, inArray, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
 import { db, reminderLog, sessions, subscriptions, telegramLinks, users } from "@/db/client";
-import { releaseStaleReservations } from "@/lib/limits";
 import { isReminderDue, localTime } from "@/lib/engine/reminders";
 import { INACTIVITY_MINUTES } from "@/lib/engine/session";
 import { ACCESS_STATUSES } from "@/lib/services/access";
@@ -29,13 +28,10 @@ export const tick = schedules.task({
     const now = payload.timestamp;
     const closes = await closeIdleSessions(now);
     const reminders = await sendReminders(now);
-    // Gives back AI budget holds whose release failed (or whose process died), see releaseAiBudget.
-    const reservationsReleased = await releaseStaleReservations();
     // Runs every 15 minutes: only ticks that did something are worth a log.
-    if (closes || reservationsReleased || reminders.sent || reminders.failed || reminders.blocked) {
+    if (closes || reminders.sent || reminders.failed || reminders.blocked) {
       log.info("Tick done", {
         sessions_closed: closes,
-        ai_reservations_released: reservationsReleased,
         reminders_sent: reminders.sent,
         reminders_failed: reminders.failed,
         reminders_blocked: reminders.blocked,

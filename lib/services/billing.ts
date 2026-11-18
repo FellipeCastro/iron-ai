@@ -1,7 +1,7 @@
 import "server-only";
 import { clerkClient } from "@clerk/nextjs/server";
 import * as Sentry from "@sentry/nextjs";
-import { and, eq, inArray, isNull, ne } from "drizzle-orm";
+import { and, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import { createHash } from "node:crypto";
 import { db, subscriptions, users, type User } from "@/db";
 import { isUniqueViolation } from "@/lib/db-errors";
@@ -178,14 +178,21 @@ export async function syncSubscription(subscriptionId: string) {
             )
             .returning({ userId: subscriptions.userId })
         : // No row for it yet: insert, or take over the user's row once the subscription saved there is finished, so a
-          // late event of an old subscription cannot overwrite a newer one that is still alive.
+          // late event of an old subscription cannot overwrite a newer one that is still alive. A finished incoming
+          // subscription never takes over: it is a superseded one (read back from Stripe as canceled), and letting it
+          // in would reclaim the row after its replacement was recorded and later finished.
           await db
             .insert(subscriptions)
             .values({ userId: user.id, ...row })
             .onConflictDoUpdate({
               target: subscriptions.userId,
               set: row,
-              setWhere: and(ne(subscriptions.stripeSubscriptionId, sub.id), inArray(subscriptions.status, FINISHED_STATUSES)),
+              setWhere: and(
+                ne(subscriptions.stripeSubscriptionId, sub.id),
+                inArray(subscriptions.status, FINISHED_STATUSES),
+                // The incoming status is known here, so a finished one turns the whole condition into "never replace".
+                FINISHED_STATUSES.includes(sub.status) ? sql`false` : undefined,
+              ),
             })
             .returning({ userId: subscriptions.userId });
     } catch (err) {
