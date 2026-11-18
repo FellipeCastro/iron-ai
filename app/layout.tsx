@@ -6,6 +6,7 @@ import { ptBR } from "@clerk/localizations";
 import { DASHBOARD_URL, SIGN_IN_URL, SIGN_UP_URL } from "@/lib/routes";
 import { clerkAppearance } from "@/lib/clerk-appearance";
 import { siteUrl } from "@/lib/env";
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
 const bricolage = Bricolage_Grotesque({
@@ -88,6 +89,7 @@ gtag('config', '${gaId}');`}
         >
           {children}
         </ClerkProvider>
+        <Analytics />
       </body>
     </html>
   );
