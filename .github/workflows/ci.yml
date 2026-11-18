@@ -79,8 +79,30 @@ jobs:
           } > .env.test
       - run: npm run test:integration
 
-  deploy-trigger:
+  migrate-prod:
+    # Aplica as migrações pendentes no banco de produção (Neon) antes de publicar o Trigger.dev.
+    # Roda como owner (DDL); o app usa o role restrito app_runtime. Use a URL direta (sem pooler).
+    # A Vercel faz deploy do app pelo push na main em paralelo: escreva migrações compatíveis com o
+    # código anterior (adicionar antes de remover/renomear).
     needs: [check, integration]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: migrate-prod
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run db:migrate
+        env:
+          DATABASE_URL_OWNER: ${{ secrets.DATABASE_URL_OWNER }}
+
+  deploy-trigger:
+    needs: [check, integration, migrate-prod]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     concurrency: deploy-trigger
