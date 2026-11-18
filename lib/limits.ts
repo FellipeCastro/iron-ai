@@ -57,27 +57,89 @@ export class UserBudgetExceededError extends Error {
   }
 }
 
-/** Throws when the global or the user's daily ceiling is hit. */
-export async function assertAiBudget(userId: string) {
+// A paid call is first RESERVED: an estimate is added to the day's cost in one atomic statement that only succeeds
+// while the ceiling is not reached. Checking and then paying lets every call in flight pass the same check (a
+// burst across users overshoots the global ceiling by the burst size). recordAiUsage then swaps the estimate for
+// the real cost, and releaseAiBudget gives it back when the call fails. Estimates keep up to 4 decimals (the column scale).
+export const parseEstimateUsd = () => numberEnv("OPENAI_PARSE_ESTIMATE_USD", 0.003);
+export const fallbackEstimateUsd = () => numberEnv("OPENAI_FALLBACK_ESTIMATE_USD", 0.02);
+
+export type AiReservation = {
+  date: string;
+  userId: string;
+  /** Held on the global and the user's daily cost. */
+  usd: number;
+  /** Held on the fallback ceiling only (see reserveFallback). */
+  fallbackUsd: number;
+};
+
+/** Reserves `usd` against the global and the user's daily ceilings. Throws when either is already reached. */
+export async function reserveAiBudget(userId: string, usd: number): Promise<AiReservation> {
   const date = utcDate();
-  const [global, user] = await Promise.all([
-    db.query.aiUsage.findFirst({ where: eq(aiUsage.date, date) }),
-    db.query.aiUsageUser.findFirst({ where: and(eq(aiUsageUser.userId, userId), eq(aiUsageUser.date, date)) }),
+  // Row exists: add the estimate only while under the ceiling. No row yet: this insert creates it.
+  const [global] = await db
+    .insert(aiUsage)
+    .values({ date, costUsd: usd })
+    .onConflictDoUpdate({
+      target: aiUsage.date,
+      set: { costUsd: sql`${aiUsage.costUsd} + ${usd}` },
+      setWhere: sql`${aiUsage.costUsd} < ${dailyBudgetUsd()}`,
+    })
+    .returning({ date: aiUsage.date });
+  if (!global) throw new BudgetExceededError();
+
+  const [user] = await db
+    .insert(aiUsageUser)
+    .values({ userId, date, costUsd: usd })
+    .onConflictDoUpdate({
+      target: [aiUsageUser.userId, aiUsageUser.date],
+      set: { costUsd: sql`${aiUsageUser.costUsd} + ${usd}` },
+      setWhere: sql`${aiUsageUser.costUsd} < ${userDailyBudgetUsd()}`,
+    })
+    .returning({ date: aiUsageUser.date });
+  if (!user) {
+    await db.update(aiUsage).set({ costUsd: sql`${aiUsage.costUsd} - ${usd}` }).where(eq(aiUsage.date, date));
+    throw new UserBudgetExceededError();
+  }
+  return { date, userId, usd, fallbackUsd: 0 };
+}
+
+/** Reserves `usd` against today's fallback ceiling. False when it is already spent (the fallback bills ~7x the primary). */
+export async function reserveFallback(reservation: AiReservation, usd: number) {
+  const [row] = await db
+    .update(aiUsage)
+    .set({ fallbackCostUsd: sql`${aiUsage.fallbackCostUsd} + ${usd}` })
+    .where(and(eq(aiUsage.date, reservation.date), sql`${aiUsage.fallbackCostUsd} < ${fallbackDailyBudgetUsd()}`))
+    .returning({ date: aiUsage.date });
+  if (!row) return false;
+  reservation.fallbackUsd += usd;
+  return true;
+}
+
+/** Gives a reservation back when the call did not happen or failed. Do not call it after recordAiUsage. */
+export async function releaseAiBudget(reservation: AiReservation) {
+  const { date, userId, usd, fallbackUsd } = reservation;
+  await db.batch([
+    db
+      .update(aiUsage)
+      .set({ costUsd: sql`${aiUsage.costUsd} - ${usd}`, fallbackCostUsd: sql`${aiUsage.fallbackCostUsd} - ${fallbackUsd}` })
+      .where(eq(aiUsage.date, date)),
+    db
+      .update(aiUsageUser)
+      .set({ costUsd: sql`${aiUsageUser.costUsd} - ${usd}` })
+      .where(and(eq(aiUsageUser.userId, userId), eq(aiUsageUser.date, date))),
   ]);
-  if (global && global.costUsd >= dailyBudgetUsd()) throw new BudgetExceededError();
-  if (user && user.costUsd >= userDailyBudgetUsd()) throw new UserBudgetExceededError();
 }
 
-/** Whether today's fallback spend is still under its own ceiling. */
-export async function fallbackAllowed() {
-  const row = await db.query.aiUsage.findFirst({ where: eq(aiUsage.date, utcDate()) });
-  return !row || row.fallbackCostUsd < fallbackDailyBudgetUsd();
-}
-
-/** Records one OpenAI call. Returns true the first time the day crosses the alert threshold. */
-export async function recordAiUsage(userId: string, model: string, usage: TokenUsage, fallback: boolean) {
+/**
+ * Records one OpenAI call and settles its reservation (the estimate is replaced by the real cost, on the day it was
+ * reserved). Returns true the first time the day crosses the alert threshold.
+ */
+export async function recordAiUsage(userId: string, model: string, usage: TokenUsage, fallback: boolean, reservation?: AiReservation) {
   const cost = aiCostUsd(model, usage);
-  const date = utcDate();
+  const date = reservation?.date ?? utcDate();
+  const held = reservation?.usd ?? 0;
+  const heldFallback = reservation?.fallbackUsd ?? 0;
   const [row] = await db
     .insert(aiUsage)
     .values({
@@ -96,8 +158,8 @@ export async function recordAiUsage(userId: string, model: string, usage: TokenU
         inputTokens: sql`${aiUsage.inputTokens} + ${usage.inputTokens}`,
         cachedInputTokens: sql`${aiUsage.cachedInputTokens} + ${usage.cachedInputTokens}`,
         outputTokens: sql`${aiUsage.outputTokens} + ${usage.outputTokens}`,
-        costUsd: sql`${aiUsage.costUsd} + ${cost}`,
-        fallbackCostUsd: sql`${aiUsage.fallbackCostUsd} + ${fallback ? cost : 0}`,
+        costUsd: sql`${aiUsage.costUsd} + ${cost - held}`,
+        fallbackCostUsd: sql`${aiUsage.fallbackCostUsd} + ${(fallback ? cost : 0) - heldFallback}`,
       },
     })
     .returning();
@@ -107,7 +169,7 @@ export async function recordAiUsage(userId: string, model: string, usage: TokenU
     .values({ userId, date, requests: 1, costUsd: cost })
     .onConflictDoUpdate({
       target: [aiUsageUser.userId, aiUsageUser.date],
-      set: { requests: sql`${aiUsageUser.requests} + 1`, costUsd: sql`${aiUsageUser.costUsd} + ${cost}` },
+      set: { requests: sql`${aiUsageUser.requests} + 1`, costUsd: sql`${aiUsageUser.costUsd} + ${cost - held}` },
     });
 
   if (row.costUsd < dailyBudgetUsd() * ALERT_SHARE || row.alertedAt) return false;

@@ -1,7 +1,7 @@
 import OpenAI, { toFile } from "openai";
 import { downloadFile, type TgVoice } from "@/lib/telegram/client";
-import { assertAiBudget, recordAiUsage } from "@/lib/limits";
-import type { TokenUsage } from "./pricing";
+import { recordAiUsage, releaseAiBudget, reserveAiBudget } from "@/lib/limits";
+import { priceOf, type TokenUsage } from "./pricing";
 
 // Voice notes become plain text and then follow the exact same path as a typed message (fast path, parser,
 // confirmations). The transcript never reaches the user as a reply; only the parsed intent does.
@@ -27,18 +27,26 @@ const AUDIO_TOKENS_PER_SECOND = 10;
  * UserBudgetExceededError when a daily ceiling is hit, before any paid request is made.
  */
 export async function transcribeVoice(voice: TgVoice, userId: string): Promise<string> {
-  await assertAiBudget(userId);
-  const { bytes, path } = await downloadFile(voice.file_id);
-  // Telegram serves voice notes as "*.oga" (Ogg/Opus), an extension OpenAI rejects ("Unsupported file format oga").
-  // The bytes are valid Ogg, so only the name has to change.
-  const original = path.split("/").pop() || "voice.ogg";
-  const name = original.replace(/\.oga$/i, ".ogg");
-  const file = await toFile(bytes, name, { type: "audio/ogg" });
-  const result = await openai().audio.transcriptions.create({ file, model: OPENAI_TRANSCRIBE_MODEL, language: "pt", prompt: PROMPT });
+  // Reserved before the paid call (see limits.ts). Audio is billed per input token, so the estimate follows the duration.
+  const estimate = Math.max(0.0001, Math.ceil(((voice.duration * AUDIO_TOKENS_PER_SECOND * priceOf(OPENAI_TRANSCRIBE_MODEL).input) / 1_000_000) * 1e4) / 1e4);
+  const reservation = await reserveAiBudget(userId, estimate);
+  let result;
+  try {
+    const { bytes, path } = await downloadFile(voice.file_id);
+    // Telegram serves voice notes as "*.oga" (Ogg/Opus), an extension OpenAI rejects ("Unsupported file format oga").
+    // The bytes are valid Ogg, so only the name has to change.
+    const original = path.split("/").pop() || "voice.ogg";
+    const name = original.replace(/\.oga$/i, ".ogg");
+    const file = await toFile(bytes, name, { type: "audio/ogg" });
+    result = await openai().audio.transcriptions.create({ file, model: OPENAI_TRANSCRIBE_MODEL, language: "pt", prompt: PROMPT });
+  } catch (err) {
+    await releaseAiBudget(reservation).catch(() => undefined);
+    throw err;
+  }
   const usage: TokenUsage =
     result.usage?.type === "tokens"
       ? { inputTokens: result.usage.input_tokens, cachedInputTokens: 0, outputTokens: result.usage.output_tokens }
       : { inputTokens: Math.ceil(voice.duration * AUDIO_TOKENS_PER_SECOND), cachedInputTokens: 0, outputTokens: 0 };
-  await recordAiUsage(userId, OPENAI_TRANSCRIBE_MODEL, usage, false);
+  await recordAiUsage(userId, OPENAI_TRANSCRIBE_MODEL, usage, false, reservation);
   return result.text.trim();
 }

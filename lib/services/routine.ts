@@ -1,5 +1,6 @@
-import { and, desc, eq, inArray, isNull, or, type SQL } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, or, sql, type SQL } from "drizzle-orm";
 import { db, exercises, routineDays, routineExercises, routines, type MuscleGroup } from "@/db/client";
+import { isUniqueViolation } from "@/lib/db-errors";
 import type { PlanDay } from "@/lib/engine/session";
 
 // Routines are versioned: saving writes a new version, so past sessions keep pointing at the days
@@ -146,12 +147,29 @@ export async function renameExerciseForUser(userId: string, exerciseId: string, 
     .where(and(eq(exercises.ownerUserId, userId), eq(exercises.name, label)));
   if (existing) return existing;
 
-  const [row] = await db
-    .update(exercises)
-    .set({ name: label, aliases: [...new Set([...current.aliases, clean.toLowerCase()])] })
-    .where(eq(exercises.id, current.id))
-    .returning({ id: exercises.id, name: exercises.name });
-  return row;
+  const alias = clean.toLowerCase();
+  try {
+    // The alias is appended in SQL (not from the row read above), so a concurrent rename cannot drop it.
+    const [row] = await db
+      .update(exercises)
+      .set({
+        name: label,
+        aliases: sql`case when ${alias} = any(${exercises.aliases}) then ${exercises.aliases} else array_append(${exercises.aliases}, ${alias}::text) end`,
+      })
+      .where(eq(exercises.id, current.id))
+      .returning({ id: exercises.id, name: exercises.name });
+    return row;
+  } catch (err) {
+    // A concurrent create/rename took this name between the check above and the write (unique owner+name):
+    // the outcome is the same as finding it there.
+    if (!isUniqueViolation(err)) throw err;
+    const [taken] = await db
+      .select({ id: exercises.id, name: exercises.name })
+      .from(exercises)
+      .where(and(eq(exercises.ownerUserId, userId), eq(exercises.name, label)));
+    if (taken) return taken;
+    throw err;
+  }
 }
 
 /** Custom exercise owned by the user; reuses an existing one with the same name. */

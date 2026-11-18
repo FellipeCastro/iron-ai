@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { and, eq, gt, isNull } from "drizzle-orm";
 import { db, linkTokens, telegramLinks, users } from "@/db/client";
+import { isUniqueViolation } from "@/lib/db-errors";
 
 /** The app user for a Clerk id, created on the fly if the Clerk webhook has not arrived yet. */
 export async function ensureUser(clerkId: string) {
@@ -47,10 +48,17 @@ export async function consumeLinkToken(token: string, chatId: number, username: 
   if (other && other.userId !== claimed.userId) return { ok: false, reason: "chat_taken" };
 
   // One chat per account: linking again (new phone, new chat) replaces the previous chat.
-  await db
-    .insert(telegramLinks)
-    .values({ userId: claimed.userId, chatId, username, chatState: null })
-    .onConflictDoUpdate({ target: telegramLinks.userId, set: { chatId, username, chatState: null, linkedAt: new Date() } });
+  try {
+    await db
+      .insert(telegramLinks)
+      .values({ userId: claimed.userId, chatId, username, chatState: null })
+      .onConflictDoUpdate({ target: telegramLinks.userId, set: { chatId, username, chatState: null, linkedAt: new Date() } });
+  } catch (err) {
+    // The check above is a read: another user can take this chat between it and the write. The unique
+    // chat_id column is the real guard, so a violation here means the same thing as the check.
+    if (isUniqueViolation(err)) return { ok: false, reason: "chat_taken" };
+    throw err;
+  }
   return { ok: true, userId: claimed.userId };
 }
 

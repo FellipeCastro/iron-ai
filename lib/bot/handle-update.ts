@@ -24,6 +24,7 @@ import {
   markSummarySent,
   nextRoutineDay,
   setSessionDuration,
+  updateAlreadyLogged,
   type ClosedSession,
 } from "@/lib/services/workout";
 import { answerCallbackQuery, editMessageText, sendMessage, sendTyping, type InlineKeyboard, type TgUpdate } from "@/lib/telegram/client";
@@ -39,7 +40,7 @@ const FAST_PATH_MODEL = "fast-path";
 const MAX_DURATION_REPLY_CHARS = 10;
 
 type Out = { text: string; keyboard?: InlineKeyboard; sessionId?: string };
-type Ctx = { chatId: number; user: User; state: ChatState; routine: Routine | null; pool: MatchCandidate[] | null };
+type Ctx = { updateId: number; chatId: number; user: User; state: ChatState; routine: Routine | null; pool: MatchCandidate[] | null };
 
 export type HandleOptions = {
   isLastAttempt: boolean;
@@ -106,7 +107,7 @@ export async function handleUpdate(update: TgUpdate, opts: HandleOptions): Promi
       await sendMessage(chat.id, render.subscriptionRequired());
       return { status: "ignored", kind: "callback", userId: link.userId };
     }
-    const ctx = await loadCtx(chat.id, link.user, link.chatState);
+    const ctx = await loadCtx(update.update_id, chat.id, link.user, link.chatState);
     const outs = await handleCallback(ctx, callback.data);
     await finish("processed");
     await answerCallbackQuery(callback.id).catch(() => undefined);
@@ -182,7 +183,7 @@ export async function handleUpdate(update: TgUpdate, opts: HandleOptions): Promi
   }
   if (!text) return { status: "ignored", kind: "message", userId: link.userId };
 
-  const ctx = await loadCtx(chat.id, link.user, link.chatState);
+  const ctx = await loadCtx(update.update_id, chat.id, link.user, link.chatState);
 
   // Steps that wait for typed text (training time, corrected duration) consume the message.
   if (ctx.state.pending && !text.startsWith("/")) {
@@ -261,8 +262,8 @@ export async function handleUpdate(update: TgUpdate, opts: HandleOptions): Promi
 
 // ---------- Context ----------
 
-async function loadCtx(chatId: number, user: User, rawState: unknown): Promise<Ctx> {
-  return { chatId, user, state: readChatState(rawState), routine: await loadRoutine(user.id), pool: null };
+async function loadCtx(updateId: number, chatId: number, user: User, rawState: unknown): Promise<Ctx> {
+  return { updateId, chatId, user, state: readChatState(rawState), routine: await loadRoutine(user.id), pool: null };
 }
 
 /** Replaces the given parts of the chat state; what is not mentioned (e.g. the chosen day) is kept. */
@@ -449,12 +450,15 @@ async function confirmText(ctx: Ctx, intent: Intent, ids: Record<string, string>
 async function apply(ctx: Ctx, intent: Intent, ids: Record<string, string>): Promise<Out[]> {
   switch (intent.type) {
     case "log_sets": {
+      // A retry of an update that already wrote its sets (the first run failed before replying) must not log them again.
+      if (await updateAlreadyLogged(ctx.updateId)) return [{ text: render.alreadyLogged() }];
       const result = await logSets(
         ctx.user,
         ctx.routine,
         intent.groups.map((g, i) => ({ exerciseId: ids[`g${i}`], weight: g.weight_kg, reps: g.reps, count: g.sets })),
         new Date(),
         chosenLetter(ctx),
+        ctx.updateId,
       );
       // The chosen day now lives in the session itself.
       if (ctx.state.dayOverride) await saveState(ctx, { dayOverride: null });

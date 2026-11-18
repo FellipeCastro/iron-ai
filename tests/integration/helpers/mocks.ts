@@ -70,6 +70,7 @@ type FakeSubscription = Partial<Stripe.Subscription> & { id: string; customer: s
 export const stripeState = {
   customers: new Map<string, { id: string; email?: string }>(),
   subscriptions: new Map<string, FakeSubscription>(),
+  sessions: new Map<string, FakeCheckoutSession>(),
   idempotency: new Map<string, unknown>(),
   seq: 0,
   /** Faz o método falhar: `stripeState.fail.set("subscriptions.retrieve", new Error("boom"))`. */
@@ -90,12 +91,34 @@ function idempotent<T>(options: { idempotencyKey?: string } | undefined, scope: 
   return value;
 }
 
-async function createCheckoutSession(params: { customer?: string }, options?: { idempotencyKey?: string }) {
+type FakeCheckoutSession = { id: string; url: string | null; customer?: string; status: "open" | "complete" | "expired"; metadata: Record<string, string> };
+
+async function createCheckoutSession(
+  params: { customer?: string; metadata?: Record<string, string> },
+  options?: { idempotencyKey?: string },
+) {
   failIfSet("checkout.sessions.create");
   return idempotent(options, "checkout", () => {
     const id = `cs_test_${++stripeState.seq}`;
-    return { id, url: `https://checkout.stripe.test/${id}`, customer: params.customer };
+    const session: FakeCheckoutSession = { id, url: `https://checkout.stripe.test/${id}`, customer: params.customer, status: "open", metadata: params.metadata ?? {} };
+    stripeState.sessions.set(id, session);
+    return session;
   });
+}
+
+/** Como a Stripe: só sessões abertas têm `url`, e só uma sessão aberta pode ser expirada. */
+async function listCheckoutSessions({ customer, status }: { customer?: string; status?: string }) {
+  failIfSet("checkout.sessions.list");
+  return { data: [...stripeState.sessions.values()].filter((s) => (!customer || s.customer === customer) && (!status || s.status === status)) };
+}
+
+async function expireCheckoutSession(id: string) {
+  failIfSet("checkout.sessions.expire");
+  const session = stripeState.sessions.get(id);
+  if (!session || session.status !== "open") throw new Error(`Checkout Session ${id} is not expirable`);
+  session.status = "expired";
+  session.url = null;
+  return session;
 }
 
 async function retrieveCheckoutSession(id: string): Promise<{ id: string; customer: string | null; subscription: string | null }> {
@@ -145,6 +168,8 @@ export const stripeMock = {
   checkout: {
     sessions: {
       create: vi.fn(createCheckoutSession),
+      list: vi.fn(listCheckoutSessions),
+      expire: vi.fn(expireCheckoutSession),
       // Configure por teste: `stripeMock.checkout.sessions.retrieve.mockResolvedValueOnce({ ... })`.
       retrieve: vi.fn(retrieveCheckoutSession),
     },
@@ -290,6 +315,7 @@ export function resetMocks() {
   clerkState.deleteUserError = null;
   stripeState.customers.clear();
   stripeState.subscriptions.clear();
+  stripeState.sessions.clear();
   stripeState.idempotency.clear();
   stripeState.fail.clear();
   stripeState.seq = 0;

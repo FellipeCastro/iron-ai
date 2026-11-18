@@ -1,0 +1,1 @@
+ALTER TABLE "subscriptions" ADD COLUMN "synced_from" timestamp with time zone;

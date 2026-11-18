@@ -1,9 +1,10 @@
 import "server-only";
 import { clerkClient } from "@clerk/nextjs/server";
 import * as Sentry from "@sentry/nextjs";
-import { eq, inArray, or } from "drizzle-orm";
+import { and, eq, inArray, isNull, lte, ne, or } from "drizzle-orm";
 import { createHash } from "node:crypto";
 import { db, subscriptions, users, type User } from "@/db";
+import { isUniqueViolation } from "@/lib/db-errors";
 import { siteUrl } from "@/lib/env";
 import { CHECKOUT_URL, DASHBOARD_URL, SETTINGS_URL } from "@/lib/routes";
 import { ACCESS_STATUSES, userHasAccess } from "@/lib/services/access";
@@ -25,9 +26,16 @@ async function ensureCustomer(user: User) {
     { email, name: [profile.firstName, profile.lastName].filter(Boolean).join(" ") || undefined },
     { idempotencyKey: `customer-${user.id}` },
   );
-  // Two tabs can race here; the unique column plus the idempotency key make both converge on one customer.
-  const [saved] = await db.update(users).set({ stripeCustomerId: customer.id }).where(eq(users.id, user.id)).returning({ id: users.stripeCustomerId });
-  return saved?.id ?? customer.id;
+  // Two tabs can race here, and Stripe's idempotency key only lasts about a day. Only fill an empty column:
+  // the loser (or a later call) keeps the id that is already saved instead of overwriting it.
+  const [saved] = await db
+    .update(users)
+    .set({ stripeCustomerId: customer.id })
+    .where(and(eq(users.id, user.id), isNull(users.stripeCustomerId)))
+    .returning({ id: users.stripeCustomerId });
+  if (saved?.id) return saved.id;
+  const current = await db.query.users.findFirst({ where: eq(users.id, user.id), columns: { stripeCustomerId: true } });
+  return current?.stripeCustomerId ?? customer.id;
 }
 
 /**
@@ -47,6 +55,17 @@ export async function createCheckoutUrl(user: User, plan: Plan) {
     return dashboard;
   }
 
+  // The idempotency key below only covers clicks within the same minute. Past that (a double click across the
+  // minute boundary, or a click on the other plan), a second payable Session would exist and both can be paid,
+  // billing the user twice. Stripe holds the open Sessions, so ask it: reuse the one for this plan and expire the
+  // rest, leaving at most one payable Session per customer. (Two requests that both list before either creates
+  // still land on the same Session when they share a minute.)
+  const openSessions = await stripe().checkout.sessions.list({ customer, status: "open", limit: 10 });
+  const reusable = openSessions.data.find((s) => s.metadata?.plan === plan && s.url);
+  if (reusable?.url) return reusable.url;
+  // Expiry fails when a Session is no longer expirable (it just completed or expired): nothing left to close.
+  await Promise.all(openSessions.data.map((s) => stripe().checkout.sessions.expire(s.id).catch(() => undefined)));
+
   // A double click sends two requests at once, and both would pass the checks above. The idempotency key makes
   // Stripe return the same Session to both. It is bucketed per minute so a later, deliberate retry (after
   // cancelling, or after changing plan) gets a fresh Session instead of a stale one.
@@ -56,6 +75,8 @@ export async function createCheckoutUrl(user: User, plan: Plan) {
       mode: "subscription",
       customer,
       client_reference_id: user.id,
+      // Read back above to tell which plan an open Session is for.
+      metadata: { plan },
       line_items: [{ price: priceId(plan), quantity: 1 }],
       locale: "pt-BR",
       success_url: `${siteUrl()}${CHECKOUT_URL}/sucesso?session_id={CHECKOUT_SESSION_ID}`,
@@ -84,6 +105,9 @@ export async function deleteStripeCustomer(user: User) {
 
 /** Rewrites the local subscription from Stripe's current state. Returns false when no user owns the customer. */
 export async function syncSubscription(subscriptionId: string) {
+  // Taken before asking Stripe: the snapshot is at least this recent. Two syncs of one subscription can finish in
+  // either order, so the write below refuses to replace a snapshot that was requested later than this one.
+  const requestedAt = new Date();
   const sub = await stripe().subscriptions.retrieve(subscriptionId);
   const customerId = typeof sub.customer === "string" ? sub.customer : sub.customer.id;
   const user = await db.query.users.findFirst({ where: eq(users.stripeCustomerId, customerId) });
@@ -100,6 +124,7 @@ export async function syncSubscription(subscriptionId: string) {
     currentPeriodEnd: new Date(item.current_period_end * 1000),
     trialEnd: sub.trial_end ? new Date(sub.trial_end * 1000) : null,
     cancelAtPeriodEnd: sub.cancel_at_period_end,
+    syncedFrom: requestedAt,
   };
   const upsert = () =>
     db
@@ -108,8 +133,13 @@ export async function syncSubscription(subscriptionId: string) {
       .onConflictDoUpdate({
         target: subscriptions.userId,
         set: row,
-        // A late event of an old subscription must not overwrite a newer one that is still alive.
-        setWhere: or(eq(subscriptions.stripeSubscriptionId, sub.id), inArray(subscriptions.status, FINISHED_STATUSES)),
+        // Same subscription: only a snapshot requested no earlier than the saved one may replace it (a stale one
+        // must not undo a cancellation). Another subscription takes the row only once the saved one is finished, so a
+        // late event of an old subscription cannot overwrite a newer one that is still alive.
+        setWhere: or(
+          and(eq(subscriptions.stripeSubscriptionId, sub.id), or(isNull(subscriptions.syncedFrom), lte(subscriptions.syncedFrom, requestedAt))),
+          and(ne(subscriptions.stripeSubscriptionId, sub.id), inArray(subscriptions.status, FINISHED_STATUSES)),
+        ),
       });
   try {
     await upsert();
@@ -137,10 +167,3 @@ export async function cancelCustomerSubscriptions(customerId: string) {
   return live.length;
 }
 
-/** Postgres error 23505; Drizzle wraps the driver error, so look through `cause`. */
-function isUniqueViolation(err: unknown) {
-  for (let e: unknown = err, depth = 0; e && typeof e === "object" && depth < 5; e = (e as { cause?: unknown }).cause, depth++) {
-    if ((e as { code?: unknown }).code === "23505") return true;
-  }
-  return false;
-}

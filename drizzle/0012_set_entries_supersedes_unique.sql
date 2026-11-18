@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "set_entries_supersedes_uq" ON "set_entries" USING btree ("supersedes_id") WHERE "set_entries"."supersedes_id" is not null;

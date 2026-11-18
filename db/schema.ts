@@ -81,6 +81,9 @@ export const subscriptions = pgTable("subscriptions", {
   currentPeriodEnd: timestamp("current_period_end", { withTimezone: true }).notNull(),
   trialEnd: timestamp("trial_end", { withTimezone: true }),
   cancelAtPeriodEnd: boolean("cancel_at_period_end").notNull().default(false),
+  // When the Stripe snapshot saved here was requested (taken before the API call, not when it was written).
+  // A write from an older request cannot overwrite a newer one. Null on rows saved before this column existed.
+  syncedFrom: timestamp("synced_from", { withTimezone: true }),
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .notNull()
     .defaultNow()
@@ -224,11 +227,18 @@ export const setEntries = pgTable(
     isExtra: boolean("is_extra").notNull().default(false),
     supersedesId: uuid("supersedes_id").references((): AnyPgColumn => setEntries.id, { onDelete: "set null" }),
     voidedAt: timestamp("voided_at", { withTimezone: true }),
+    // Bot only: the Telegram update (and the position inside it) that produced this row. A retried update
+    // cannot insert it again. Null for sets logged from the site.
+    sourceUpdateId: bigint("source_update_id", { mode: "number" }),
+    sourceIdx: smallint("source_idx"),
     createdAt: createdAt(),
   },
   (t) => [
     index("set_entries_session_idx").on(t.sessionId),
+    uniqueIndex("set_entries_source_uq").on(t.sourceUpdateId, t.sourceIdx).where(sql`${t.sourceUpdateId} is not null`),
     index("set_entries_exercise_idx").on(t.exerciseId, t.createdAt),
+    // A set can be corrected only once: two concurrent corrections of the same row cannot both insert a replacement.
+    uniqueIndex("set_entries_supersedes_uq").on(t.supersedesId).where(sql`${t.supersedesId} is not null`),
   ],
 ).enableRLS();
 

@@ -129,6 +129,28 @@ export async function nextRoutineDay(userId: string, routine: Routine | null) {
 export type CloseReason = NonNullable<Session["closeReason"]>;
 
 /**
+ * Deletes the session only if it has no valid set at that moment. One batch = one transaction (neon-http has no
+ * interactive ones): the row lock comes first, so a concurrent insert (which takes a key-share lock on the session
+ * via its FK) waits, and the delete then runs as a new statement that sees it. Returns whether it was deleted.
+ */
+async function dropSessionIfEmpty(userId: string, sessionId: string) {
+  const results = await db.batch([
+    db.select({ id: sessions.id }).from(sessions).where(and(eq(sessions.id, sessionId), eq(sessions.userId, userId))).for("update"),
+    db
+      .delete(sessions)
+      .where(
+        and(
+          eq(sessions.id, sessionId),
+          eq(sessions.userId, userId),
+          notExists(db.select({ one: sql`1` }).from(setEntries).where(and(eq(setEntries.sessionId, sessionId), isNull(setEntries.voidedAt)))),
+        ),
+      )
+      .returning({ id: sessions.id }),
+  ]);
+  return results[1].length > 0;
+}
+
+/**
  * Closes a session once (the `ended_at is null` guard makes concurrent closes no-ops) and returns the data
  * for the summary, or null if it was already closed. Sessions left without valid sets are dropped.
  */
@@ -144,10 +166,11 @@ export async function closeSession(user: User, sessionId: string, reason: CloseR
     .returning();
   if (!closed) return null;
 
-  const sessionSets = await loadLog(user.id, { sessionId });
+  let sessionSets = await loadLog(user.id, { sessionId });
   if (sessionSets.length === 0) {
-    await db.delete(sessions).where(and(eq(sessions.id, sessionId), eq(sessions.userId, user.id)));
-    return null;
+    if (await dropSessionIfEmpty(user.id, sessionId)) return null;
+    // A set landed between the read and the delete: the session is not empty after all.
+    sessionSets = await loadLog(user.id, { sessionId });
   }
 
   const exerciseIds = [...new Set(sessionSets.map((s) => s.exerciseId))];
@@ -204,11 +227,28 @@ const ownSessionIds = (userId: string) => db.select({ id: sessions.id }).from(se
 export type SetInput = { exerciseId: string; weight: number | null; reps: number; count: number };
 
 /**
+ * True when the Telegram update already wrote sets. A retried run (the first one failed after writing, before the
+ * reply) must not log them again.
+ */
+export async function updateAlreadyLogged(sourceUpdateId: number) {
+  const [row] = await db.select({ id: setEntries.id }).from(setEntries).where(eq(setEntries.sourceUpdateId, sourceUpdateId)).limit(1);
+  return !!row;
+}
+
+/**
  * Appends sets to the open session (opening one if needed), recomputes targets and detects records.
  * A stale open session (90 min idle) is closed first and returned in `closedBefore`.
+ * `chosenLetter`: day the user asked to train; it wins over the rotation when a new session opens.
+ * `sourceUpdateId`: Telegram update that asked for these sets. With the row index it is unique, so a concurrent duplicate inserts nothing.
  */
-/** `chosenLetter`: day the user asked to train; it wins over the rotation when a new session opens. */
-export async function logSets(user: User, routine: Routine | null, inputs: SetInput[], now = new Date(), chosenLetter?: string | null) {
+export async function logSets(
+  user: User,
+  routine: Routine | null,
+  inputs: SetInput[],
+  now = new Date(),
+  chosenLetter?: string | null,
+  sourceUpdateId?: number,
+) {
   let closedBefore: ClosedSession | null = null;
   let session = await findOpenSession(user.id);
   if (session && isInactive(session.lastSetAt ?? session.startedAt, now)) {
@@ -251,11 +291,17 @@ export async function logSets(user: User, routine: Routine | null, inputs: SetIn
         weight: input.weight ?? target?.weight ?? lastWeight ?? 0,
         reps: input.reps,
         createdAt: new Date(now.getTime() + rows.length),
+        ...(sourceUpdateId === undefined ? {} : { sourceUpdateId, sourceIdx: rows.length }),
       });
     }
   }
 
-  await db.batch([db.insert(setEntries).values(rows), db.update(sessions).set({ lastSetAt: now }).where(and(eq(sessions.id, session.id), eq(sessions.userId, user.id)))]);
+  await db.batch([
+    db
+      .insert(setEntries)
+      .values(rows)
+      .onConflictDoNothing({ target: [setEntries.sourceUpdateId, setEntries.sourceIdx], where: sql`${setEntries.sourceUpdateId} is not null` }),
+    db.update(sessions).set({ lastSetAt: now }).where(and(eq(sessions.id, session.id), eq(sessions.userId, user.id)))]);
 
   const log = await loadLog(user.id, { exerciseIds });
   const newTargets = await recomputeTargets(user.id, user.weightIncrementKg, log, exerciseIds);
@@ -344,18 +390,20 @@ export async function correctSet(user: User, selector: SetSelector, change: { we
 async function applyCorrection(user: User, old: LogRow, change: { weight: number | null; reps: number | null }) {
   const to = { weight: change.weight ?? old.weight, reps: change.reps ?? old.reps };
 
-  await db.batch([
-    db.update(setEntries).set({ voidedAt: new Date() }).where(and(eq(setEntries.id, old.id), inArray(setEntries.sessionId, ownSessionIds(user.id)))),
-    db.insert(setEntries).values({
-      sessionId: old.sessionId,
-      exerciseId: old.exerciseId,
-      setPosition: old.setPosition,
-      isExtra: old.isExtra,
-      ...to,
-      supersedesId: old.id,
-      createdAt: old.createdAt,
-    }),
-  ]);
+  // One statement: the replacement is inserted from the row this very statement voided. If another correction or a
+  // delete got there first, the row is no longer valid, nothing is voided and nothing is inserted (the unique
+  // supersedes_id index is the backstop). `old` was read earlier and may be stale, so it only supplies the id.
+  const written = await db.execute(sql`
+    with voided as (
+      update set_entries set voided_at = now()
+      where id = ${old.id} and voided_at is null and session_id in (select id from sessions where user_id = ${user.id})
+      returning id, session_id, exercise_id, set_position, is_extra, created_at
+    )
+    insert into set_entries (session_id, exercise_id, set_position, is_extra, weight, reps, supersedes_id, created_at)
+    select session_id, exercise_id, set_position, is_extra, ${to.weight}::numeric, ${to.reps}::smallint, id, created_at from voided
+    returning id
+  `);
+  if (written.rows.length === 0) return null;
 
   const log = await loadLog(user.id, { exerciseIds: [old.exerciseId] });
   const targets = await recomputeTargets(user.id, user.weightIncrementKg, log, [old.exerciseId]);
@@ -393,9 +441,7 @@ export async function deleteSetById(user: User, setId: string) {
   const old = await findSetById(user.id, setId);
   if (!old) return null;
   await applyDelete(user, old);
-  const remaining = await loadLog(user.id, { sessionId: old.sessionId });
-  if (remaining.length === 0) await db.delete(sessions).where(and(eq(sessions.id, old.sessionId), eq(sessions.userId, user.id)));
-  return { sessionEmpty: remaining.length === 0 };
+  return { sessionEmpty: await dropSessionIfEmpty(user.id, old.sessionId) };
 }
 
 /** Removes every set of one exercise from a session. A session left without sets is dropped. */

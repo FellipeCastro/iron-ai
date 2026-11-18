@@ -1,6 +1,6 @@
 import OpenAI from "openai";
 import { zodTextFormat } from "openai/helpers/zod";
-import { assertAiBudget, fallbackAllowed, recordAiUsage } from "@/lib/limits";
+import { fallbackEstimateUsd, parseEstimateUsd, recordAiUsage, releaseAiBudget, reserveAiBudget, reserveFallback } from "@/lib/limits";
 import type { TokenUsage } from "./pricing";
 import { buildParserInput, PARSER_INSTRUCTIONS, type ParserContext } from "./prompts";
 import { ParsedMessage, validateIntent } from "./schemas";
@@ -60,20 +60,26 @@ const retryable = (err: unknown) =>
  * a daily ceiling is hit. A refusal or empty output becomes a low-confidence clarification.
  */
 export async function parseMessage(text: string, ctx: ParserContext, userId: string): Promise<ParseResult> {
-  await assertAiBudget(userId);
+  // Reserved before the paid call, so a burst of calls cannot all pass the same check (see limits.ts).
+  const reservation = await reserveAiBudget(userId, parseEstimateUsd());
 
   let model = OPENAI_PARSER_MODEL;
   let result;
   try {
-    result = await requestParse(model, text, ctx);
+    try {
+      result = await requestParse(model, text, ctx);
+    } catch (err) {
+      // The fallback bills ~7x the primary: once its own daily ceiling is spent, fail instead of paying more.
+      if (!retryable(err) || !(await reserveFallback(reservation, fallbackEstimateUsd()))) throw err;
+      model = OPENAI_FALLBACK_MODEL;
+      result = await requestParse(model, text, ctx);
+    }
   } catch (err) {
-    // The fallback bills ~7x the primary: once its own daily ceiling is spent, fail instead of paying more.
-    if (!retryable(err) || !(await fallbackAllowed())) throw err;
-    model = OPENAI_FALLBACK_MODEL;
-    result = await requestParse(model, text, ctx);
+    await releaseAiBudget(reservation).catch(() => undefined);
+    throw err;
   }
   const fallback = model !== OPENAI_PARSER_MODEL;
-  const budgetAlert = await recordAiUsage(userId, model, result.usage, fallback);
+  const budgetAlert = await recordAiUsage(userId, model, result.usage, fallback, reservation);
 
   // The SDK already validated against the Zod schema; this re-checks ranges strict mode cannot express.
   const parsed = result.parsed
