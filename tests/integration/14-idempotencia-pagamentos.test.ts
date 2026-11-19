@@ -65,7 +65,7 @@ describe("webhook do Stripe: o mesmo evento tem efeito 1 vez", () => {
       return user;
     }
     const dispute = () => stripeEvent("charge.dispute.created", { id: "dp_1", object: "dispute", charge: "ch_1", reason: "fraudulent", amount: 1000 });
-    const alerts = () => sentryMock.captureMessage.mock.calls.filter(([message]) => message === "Stripe dispute opened");
+    const alerts = () => sentryMock.captureEvent.mock.calls.filter(([event]) => event.message === "Stripe dispute opened");
 
     it("quando a mesma disputa chega 2 vezes em sequência, então cancela 1 vez e alerta 1 vez", async () => {
       const user = await disputedCustomer();

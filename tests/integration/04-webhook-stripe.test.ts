@@ -237,7 +237,7 @@ describe("POST /api/webhooks/stripe — eventos de risco", () => {
     await activeCustomer();
     const res = await send(stripeEvent("radar.early_fraud_warning.created", { id: "issfr_1", fraud_type: "card_never_received", actionable: true }));
     expect(res.status).toBe(200);
-    expect(sentryMock.captureMessage).toHaveBeenCalledWith("Stripe early fraud warning", expect.objectContaining({ level: "warning" }));
+    expect(sentryMock.captureEvent).toHaveBeenCalledWith(expect.objectContaining({ message: "Stripe early fraud warning", level: "warning" }));
     expect(stripeMock.subscriptions.cancel).not.toHaveBeenCalled();
     expect(await db.select().from(subscriptions).where(eq(subscriptions.stripeSubscriptionId, "sub_1"))).toMatchObject([{ status: "active" }]);
   });
