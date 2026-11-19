@@ -71,6 +71,7 @@ export const stripeState = {
   customers: new Map<string, { id: string; email?: string }>(),
   subscriptions: new Map<string, FakeSubscription>(),
   sessions: new Map<string, FakeCheckoutSession>(),
+  charges: new Map<string, FakeCharge>(),
   idempotency: new Map<string, unknown>(),
   seq: 0,
   /** Faz o método falhar: `stripeState.fail.set("subscriptions.retrieve", new Error("boom"))`. */
@@ -89,6 +90,28 @@ function idempotent<T>(options: { idempotencyKey?: string } | undefined, scope: 
   const value = create();
   if (key) stripeState.idempotency.set(key, value);
   return value;
+}
+
+type FakeCharge = { id: string; customer: string | null; refunded: boolean };
+
+/** Como a Stripe: cobrança não cadastrada no Stripe falso não existe. */
+async function retrieveCharge(id: string) {
+  failIfSet("charges.retrieve");
+  const charge = stripeState.charges.get(id);
+  if (!charge) throw Object.assign(new Error(`No such charge: ${id}`), { code: "resource_missing" });
+  return charge;
+}
+
+/** Como a Stripe: com a mesma idempotencyKey devolve a resposta guardada; sem ela, cancelar de novo é erro. */
+async function cancelSubscription(id: string, _params?: unknown, options?: { idempotencyKey?: string }) {
+  failIfSet("subscriptions.cancel");
+  return idempotent(options, "subscription-cancel", () => {
+    const sub = stripeState.subscriptions.get(id);
+    if (!sub) throw new Error(`No such subscription: ${id}`);
+    if (sub.status === "canceled") throw new Error(`Subscription ${id} is already canceled`);
+    sub.status = "canceled";
+    return { ...sub };
+  });
 }
 
 type FakeCheckoutSession = { id: string; url: string | null; customer?: string; status: "open" | "complete" | "expired"; metadata: Record<string, string> };
@@ -158,12 +181,7 @@ export const stripeMock = {
       if (!sub) throw new Error(`No such subscription: ${id}`);
       return sub;
     }),
-    cancel: vi.fn(async (id: string) => {
-      failIfSet("subscriptions.cancel");
-      const sub = stripeState.subscriptions.get(id);
-      if (sub) sub.status = "canceled";
-      return sub;
-    }),
+    cancel: vi.fn(cancelSubscription),
   },
   checkout: {
     sessions: {
@@ -182,7 +200,7 @@ export const stripeMock = {
       }),
     },
   },
-  charges: { retrieve: vi.fn() },
+  charges: { retrieve: vi.fn(retrieveCharge) },
 };
 
 export const stripeModule = { stripe: () => stripeMock };
@@ -201,6 +219,13 @@ export function putSubscription(
     ...sub,
   } as FakeSubscription;
   stripeState.subscriptions.set(full.id, full);
+  return full;
+}
+
+/** Registra no Stripe falso uma cobrança (lida pela task de eventos de risco). */
+export function putCharge(charge: Partial<FakeCharge> & { id: string }) {
+  const full = { customer: null, refunded: false, ...charge };
+  stripeState.charges.set(full.id, full);
   return full;
 }
 
@@ -322,6 +347,7 @@ export function resetMocks() {
   stripeState.customers.clear();
   stripeState.subscriptions.clear();
   stripeState.sessions.clear();
+  stripeState.charges.clear();
   stripeState.idempotency.clear();
   stripeState.fail.clear();
   stripeState.seq = 0;
@@ -333,5 +359,7 @@ export function resetMocks() {
   // clearAllMocks não descarta `mockImplementationOnce` pendentes: sem isso, um override não consumido vaza para o próximo teste.
   stripeMock.checkout.sessions.create.mockReset().mockImplementation(createCheckoutSession);
   stripeMock.checkout.sessions.retrieve.mockReset().mockImplementation(retrieveCheckoutSession);
+  stripeMock.charges.retrieve.mockReset().mockImplementation(retrieveCharge);
+  stripeMock.subscriptions.cancel.mockReset().mockImplementation(cancelSubscription);
   vi.clearAllMocks();
 }

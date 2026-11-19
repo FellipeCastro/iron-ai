@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { startCheckoutAction } from "@/app/(app)/actions";
@@ -18,6 +19,9 @@ import { telegramTextUpdate, telegramWebhookRequest } from "./helpers/requests";
 
 // Cada teste dispara 2 requisições iguais ao mesmo tempo e prova que só uma tem efeito.
 // A proteção está no banco (unique, UPDATE condicional, lock de linha), não no front.
+
+/** Como o PlanPicker: cada tentativa de checkout leva uma Idempotency-Key UUID v4 (outra aba = outra chave). */
+const checkout = (plan: "monthly" | "annual") => startCheckoutAction({ plan, idempotencyKey: randomUUID() });
 
 afterEach(() => vi.unstubAllEnvs());
 
@@ -50,7 +54,7 @@ describe("#7 ensureCustomer não sobrescreve o cliente Stripe salvo", () => {
     };
     stripeMock.customers.create.mockImplementationOnce(fresh).mockImplementationOnce(fresh);
 
-    await Promise.all([startCheckoutAction({ plan: "monthly" }), startCheckoutAction({ plan: "monthly" })]);
+    await Promise.all([checkout("monthly"), checkout("monthly")]);
 
     const saved = (await db.query.users.findFirst({ where: eq(users.id, user.id) }))!.stripeCustomerId;
     expect(saved).toBeTruthy();
@@ -328,9 +332,9 @@ describe("#13 Checkout fora da janela de 1 minuto da idempotency key", () => {
     signIn(user.clerkId);
     const t = clock();
     try {
-      const first = await startCheckoutAction({ plan: "monthly" });
+      const first = await checkout("monthly");
       t.state.shift = 120_000;
-      const second = await startCheckoutAction({ plan: "monthly" });
+      const second = await checkout("monthly");
 
       expect(first).toMatchObject({ ok: true });
       expect(second).toEqual(first);
@@ -346,9 +350,9 @@ describe("#13 Checkout fora da janela de 1 minuto da idempotency key", () => {
     signIn(user.clerkId);
     const t = clock();
     try {
-      await startCheckoutAction({ plan: "monthly" });
+      await checkout("monthly");
       t.state.shift = 120_000;
-      const annual = await startCheckoutAction({ plan: "annual" });
+      const annual = await checkout("annual");
 
       expect(annual).toMatchObject({ ok: true });
       expect(stripeMock.checkout.sessions.create).toHaveBeenCalledTimes(2);
@@ -366,11 +370,11 @@ describe("#13 Checkout fora da janela de 1 minuto da idempotency key", () => {
     signIn(user.clerkId);
     const t = clock();
     try {
-      await startCheckoutAction({ plan: "monthly" });
+      await checkout("monthly");
       for (const s of stripeState.sessions.values()) s.status = "expired";
       t.state.shift = 120_000;
 
-      const again = await startCheckoutAction({ plan: "monthly" });
+      const again = await checkout("monthly");
 
       expect(again).toMatchObject({ ok: true });
       expect(stripeMock.checkout.sessions.create).toHaveBeenCalledTimes(2);

@@ -11,14 +11,14 @@ O Iron **organiza, não aconselha**. A LLM só **interpreta** a mensagem do usu�
 | Caminho | Papel |
 |---|---|
 | `app/(app)`, `(auth)`, `(legal)`, `assinar` | Páginas: dashboard, rotina, histórico, exercícios, configurações, login, assinatura, termos |
-| `app/api/telegram/webhook`, `app/api/webhooks/{clerk,stripe}` | Webhooks: validam assinatura/secret e enfileiram ou sincronizam |
+| `app/api/telegram/webhook`, `app/api/webhooks/{clerk,stripe}` | Webhooks: validam assinatura/secret, registram o id do evento (idempotência) e enfileiram |
 | `proxy.ts` | Clerk (no Next 16 substitui `middleware.ts`) |
 | `lib/engine/` | Motor puro: progressão, recordes, sessão, rodízio, estagnação, lembretes, relatórios |
 | `lib/ai/` | `schemas.ts` (Zod), `parse-message.ts`, `fast-parse.ts` (atalho sem LLM), `prompts.ts`, `pricing.ts` |
 | `lib/services/` | Acesso ao banco e regras de negócio (`workout`, `billing`, `routine`, `users`, `access`, `reports`) |
 | `lib/telegram/` | `render.ts` (templates pt-BR), `keyboards.ts`, `client.ts`, `state.ts` |
 | `lib/bot/handle-update.ts` | Orquestra um update do Telegram |
-| `trigger/` | Tasks Trigger.dev: `handle-message`, `tick` (a cada 15 min), `close-session`, `purge` (diário), `clerk-users` |
+| `trigger/` | Tasks Trigger.dev: `handle-message`, `tick` (a cada 15 min), `close-session`, `purge` (diário), `clerk-users`, `stripe-events` |
 | `db/schema.ts`, `db/seed/`, `drizzle/` | Schema, catálogo de exercícios e migrações |
 | `components/{app,charts,landing,brand,legal}` | UI. Gráficos são SVG próprios; drag and drop da rotina usa dnd-kit |
 | `tests/{engine,ai}` | Vitest, espelhando `lib/` |
@@ -34,6 +34,7 @@ O Iron **organiza, não aconselha**. A LLM só **interpreta** a mensagem do usu�
 - Sessões paradas há 90 min são fechadas pela task `tick`. Lembretes só vão para quem tem assinatura ativa e nenhuma sessão aberta.
 - Cada chamada à OpenAI é registrada em `ai_usage` e `ai_usage_user`; respeite os tetos de gasto e limites de mensagens (`lib/limits.ts`).
 - Sentry sem PII: não registre texto de mensagens, e-mails nem nomes.
+- Pagamentos são idempotentes: webhook do Stripe grava o `event.id` em `stripe_events` antes de agir; chamadas ao Stripe que mudam estado levam `idempotencyKey` derivada de ids internos ou do evento (nunca e-mail/CPF); o checkout aceita Idempotency-Key do cliente (`lib/idempotency.ts`).
 - Mudou `db/schema.ts`: rode `npm run db:generate` e comite a migração (o CI roda `db:check`).
 - Variáveis de ambiente são lidas via `lib/env.ts` / `db/env.ts`. Documente novas no README.
 

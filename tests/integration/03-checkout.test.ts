@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { startCheckoutAction } from "@/app/(app)/actions";
@@ -6,6 +7,9 @@ import { db, subscriptions, users } from "@/db";
 import { createSubscribedUser, createUser } from "./helpers/factories";
 import { putSubscription, sentryMock, signIn, stripeMock, stripeState } from "./helpers/mocks";
 import { request } from "./helpers/requests";
+
+/** Como o PlanPicker: cada tentativa de checkout leva uma Idempotency-Key UUID v4 (outra aba = outra chave). */
+const checkout = (plan: "monthly" | "annual") => startCheckoutAction({ plan, idempotencyKey: randomUUID() });
 
 const subs = () => db.select().from(subscriptions);
 const customerOf = async (id: string) => (await db.query.users.findFirst({ where: eq(users.id, id) }))!.stripeCustomerId;
@@ -23,7 +27,7 @@ describe("startCheckoutAction", () => {
     const user = await createUser();
     signIn(user.clerkId);
 
-    const result = await startCheckoutAction({ plan });
+    const result = await checkout(plan);
 
     expect(result).toMatchObject({ ok: true, data: { url: expect.stringContaining("checkout.stripe.test") } });
     const saved = await customerOf(user.id);
@@ -51,7 +55,7 @@ describe("startCheckoutAction", () => {
     signIn(user.clerkId);
     stripeState.fail.set("checkout.sessions.create", new Error("stripe down"));
 
-    const result = await startCheckoutAction({ plan: "monthly" });
+    const result = await checkout("monthly");
 
     expect(result).toEqual({ ok: false, error: "Não foi possível abrir o pagamento. Tente de novo." });
     expect(await subs()).toHaveLength(0);
@@ -61,7 +65,7 @@ describe("startCheckoutAction", () => {
   it("quando o usuário já tem acesso, então devolve a URL do dashboard e NÃO cria outro Checkout", async () => {
     const { user } = await createSubscribedUser("active");
     signIn(user.clerkId);
-    const result = await startCheckoutAction({ plan: "monthly" });
+    const result = await checkout("monthly");
     expect(result).toEqual({ ok: true, data: { url: "http://localhost:3000/dashboard" } });
     expect(stripeMock.checkout.sessions.create).not.toHaveBeenCalled();
   });
@@ -71,7 +75,7 @@ describe("startCheckoutAction", () => {
     putSubscription({ id: "sub_paid", customer: "cus_paid", status: "active" });
     signIn(user.clerkId);
 
-    const result = await startCheckoutAction({ plan: "monthly" });
+    const result = await checkout("monthly");
 
     expect(result).toEqual({ ok: true, data: { url: "http://localhost:3000/dashboard" } });
     expect(stripeMock.checkout.sessions.create).not.toHaveBeenCalled();
@@ -88,7 +92,7 @@ describe("startCheckoutAction", () => {
       return { id: "cs_test_x", url: "https://checkout.stripe.test/cs_test_x", customer: params.customer, status: "open" as const, metadata: {} };
     });
 
-    await startCheckoutAction({ plan: "monthly" });
+    await checkout("monthly");
 
     expect(stripeMock.customers.create).toHaveBeenCalledTimes(1);
     expect(savedWhenCheckoutCreated).toBe([...stripeState.customers.keys()][0]);
@@ -98,7 +102,7 @@ describe("startCheckoutAction", () => {
     const user = await createUser();
     signIn(user.clerkId);
 
-    await Promise.all([startCheckoutAction({ plan: "monthly" }), startCheckoutAction({ plan: "monthly" })]);
+    await Promise.all([checkout("monthly"), checkout("monthly")]);
 
     expect(stripeState.customers.size).toBe(1);
     expect(await customerOf(user.id)).toBe([...stripeState.customers.keys()][0]);
@@ -109,7 +113,7 @@ describe("startCheckoutAction", () => {
     const user = await createUser();
     signIn(user.clerkId);
 
-    const results = await Promise.all([startCheckoutAction({ plan: "monthly" }), startCheckoutAction({ plan: "monthly" })]);
+    const results = await Promise.all([checkout("monthly"), checkout("monthly")]);
 
     expect(results.every((r) => r.ok)).toBe(true);
     const urls = results.map((r) => (r.ok ? r.data.url : null));
