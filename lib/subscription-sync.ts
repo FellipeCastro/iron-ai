@@ -91,8 +91,23 @@ export async function syncSubscription(subscriptionId: string) {
       return true;
     }
     // Nothing written. If this subscription has a row we did not see (or its stamp moved), another sync won: retry.
-    // Otherwise the user's row belongs to another live subscription, which an old one must not replace.
-    if (!saved && !(await findSavedRow(sub.id))) return true;
+    if (saved) continue;
+    if (await findSavedRow(sub.id)) continue;
+    // A finished subscription never takes over a row, so there is nothing more to do for it.
+    if (FINISHED_STATUSES.includes(sub.status)) return true;
+    // The user's row belongs to another subscription. Its saved status may be stale (a missed or late webhook), so
+    // check Stripe: if it has ended, bring the row up to date and retry saving this one. If it is still alive, an
+    // old subscription must not replace it.
+    const blocking = await db.query.subscriptions.findFirst({
+      where: eq(subscriptions.userId, user.id),
+      columns: { stripeSubscriptionId: true, status: true },
+    });
+    if (!blocking) continue; // the row disappeared meanwhile: insert again
+    if (!FINISHED_STATUSES.includes(blocking.status)) {
+      const current = await stripe().subscriptions.retrieve(blocking.stripeSubscriptionId);
+      if (!FINISHED_STATUSES.includes(current.status)) return true;
+      await syncSubscription(blocking.stripeSubscriptionId);
+    }
   }
   throw new Error(`Could not sync subscription ${subscriptionId}: it kept changing under concurrent syncs`);
 }

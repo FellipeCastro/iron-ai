@@ -141,6 +141,20 @@
       "when": 1795092698387,
       "tag": "0019_stripe_events_idempotent_requests",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1795097687081,
+      "tag": "0020_idempotent_requests_claim_token",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1795097705126,
+      "tag": "0021_stripe_events_alerted_at",
+      "breakpoints": true
     }
   ]
 }

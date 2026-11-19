@@ -37,21 +37,26 @@ type Request = { userId: string; scope: string; key: string; fingerprint: string
  * ones throws IdempotencyKeyReusedError instead of replaying an answer to another question.
  */
 export async function runOnce<T>(req: Request, operation: () => Promise<T>): Promise<T> {
-  if (!(await claim(req))) {
+  let token = await claim(req);
+  if (!token) {
     const saved = await waitForResult<T>(req);
     if (saved.done) return saved.value;
     // Released after a failure, or taken over from a dead request: this request runs it.
+    token = saved.token;
   }
+  // Only the current owner may release or complete the claim: a request that was taken over but is still alive must
+  // not delete or overwrite the replacement's claim.
+  const owned = and(sameKey(req), eq(idempotentRequests.claimToken, token));
 
   let value: T;
   try {
     value = await operation();
   } catch (err) {
-    await db.delete(idempotentRequests).where(and(sameKey(req), isNull(idempotentRequests.response))).catch(() => undefined);
+    await db.delete(idempotentRequests).where(and(owned, isNull(idempotentRequests.response))).catch(() => undefined);
     throw err;
   }
   // JSON null would read as "still in progress", so it is stored wrapped.
-  await db.update(idempotentRequests).set({ response: { value } }).where(sameKey(req));
+  await db.update(idempotentRequests).set({ response: { value } }).where(owned);
   return value;
 }
 
@@ -63,12 +68,12 @@ async function claim(req: Request) {
     .insert(idempotentRequests)
     .values({ userId: req.userId, scope: req.scope, key: req.key, fingerprint: req.fingerprint })
     .onConflictDoNothing()
-    .returning({ key: idempotentRequests.key });
-  return Boolean(row);
+    .returning({ claimToken: idempotentRequests.claimToken });
+  return row?.claimToken ?? null;
 }
 
-/** Waits for the request holding the key. `done: false` means this request now holds the claim and must run. */
-async function waitForResult<T>(req: Request): Promise<{ done: true; value: T } | { done: false }> {
+/** Waits for the request holding the key. `done: false` means this request now holds the claim (`token`) and must run. */
+async function waitForResult<T>(req: Request): Promise<{ done: true; value: T } | { done: false; token: string }> {
   const deadline = Date.now() + WAIT_MS;
   for (;;) {
     const row = await db.query.idempotentRequests.findFirst({
@@ -76,7 +81,8 @@ async function waitForResult<T>(req: Request): Promise<{ done: true; value: T } 
       columns: { fingerprint: true, response: true },
     });
     if (!row) {
-      if (await claim(req)) return { done: false };
+      const token = await claim(req);
+      if (token) return { done: false, token };
       continue;
     }
     if (row.fingerprint !== req.fingerprint) throw new IdempotencyKeyReusedError();
@@ -84,10 +90,10 @@ async function waitForResult<T>(req: Request): Promise<{ done: true; value: T } 
 
     const [takenOver] = await db
       .update(idempotentRequests)
-      .set({ createdAt: sql`now()` })
+      .set({ createdAt: sql`now()`, claimToken: sql`gen_random_uuid()` })
       .where(and(sameKey(req), isNull(idempotentRequests.response), sql`${idempotentRequests.createdAt} < now() - ${STALE_CLAIM}`))
-      .returning({ key: idempotentRequests.key });
-    if (takenOver) return { done: false };
+      .returning({ claimToken: idempotentRequests.claimToken });
+    if (takenOver) return { done: false, token: takenOver.claimToken };
 
     if (Date.now() > deadline) throw new IdempotencyInProgressError();
     await new Promise((resolve) => setTimeout(resolve, POLL_MS));

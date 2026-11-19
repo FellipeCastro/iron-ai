@@ -59,7 +59,7 @@ async function closeCheckoutSession(sessionId: string): Promise<"expired" | "com
  * Hosted Checkout for a new subscription, charged right away (no trial). Users who already subscribed get the
  * dashboard instead: a second Checkout would bill them twice.
  */
-export async function createCheckoutUrl(user: User, plan: Plan) {
+export async function createCheckoutUrl(user: User, plan: Plan, attemptKey?: string) {
   const dashboard = `${siteUrl()}${DASHBOARD_URL}`;
   if (await userHasAccess(user.id)) return dashboard;
   const customer = await ensureCustomer(user);
@@ -90,9 +90,16 @@ export async function createCheckoutUrl(user: User, plan: Plan) {
   // attempt replaced: a plan change (A, then B, then A again within the minute) closes a different set each time,
   // so the key advances and cannot replay a Session that was already expired. Concurrent requests for the same
   // attempt close the same Sessions and still share one key.
+  //
+  // When the caller holds an app-level idempotency claim (`attemptKey`), that key IS the Stripe key. A takeover of a
+  // stale claim re-runs this function while the original create may still be in flight or commit later; a key derived
+  // from the clock or from the Sessions listed above could differ between the two runs and open a second payable
+  // Session. The claim's key is the same for both, so Stripe hands the takeover the original Session.
   const replaced = openSessions.data.map((s) => s.id).sort().join(",");
   const attempt = replaced ? `-${createHash("sha256").update(replaced).digest("hex").slice(0, 12)}` : "";
-  const idempotencyKey = `checkout-${user.id}-${plan}-${Math.floor(Date.now() / 60_000)}${attempt}`;
+  const idempotencyKey = attemptKey
+    ? `checkout-${user.id}-${plan}-${attemptKey}`
+    : `checkout-${user.id}-${plan}-${Math.floor(Date.now() / 60_000)}${attempt}`;
   const session = await stripe().checkout.sessions.create(
     {
       mode: "subscription",
@@ -112,6 +119,23 @@ export async function createCheckoutUrl(user: User, plan: Plan) {
   );
   if (!session.url) throw new Error("Stripe returned a Checkout Session without a URL");
   return session.url;
+}
+
+/**
+ * A saved idempotent answer may hold a Checkout URL that has since expired. Returns the URL to send the user to, or
+ * null when the saved Session is expired and the user is not subscribed (the caller must start a new attempt; the saved
+ * record is left untouched). A paid Session, or a user who already has access, goes to the dashboard instead.
+ */
+export async function usableCheckoutUrl(user: User, savedUrl: string): Promise<string | null> {
+  const sessionId = /\/(cs_(?:test|live)_[A-Za-z0-9]+)/.exec(new URL(savedUrl).pathname)?.[1];
+  if (!sessionId) return savedUrl; // not a Checkout Session URL (e.g. the dashboard)
+  const session = await stripe().checkout.sessions.retrieve(sessionId);
+  if (session.status === "open") return savedUrl;
+  if (session.status === "complete" && session.subscription) {
+    await syncSubscription(typeof session.subscription === "string" ? session.subscription : session.subscription.id);
+    return `${siteUrl()}${DASHBOARD_URL}`;
+  }
+  return (await userHasAccess(user.id)) ? `${siteUrl()}${DASHBOARD_URL}` : null;
 }
 
 /** Customer Portal: cancel, switch plan, update the card, invoices. */

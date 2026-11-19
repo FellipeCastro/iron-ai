@@ -37,7 +37,11 @@ export function PlanPicker({ initial }: { initial: Plan }) {
     startTransition(async () => {
       const result = await startCheckoutAction({ plan: selected, idempotencyKey: key });
       if (result.ok) window.location.assign(result.data.url);
-      else showToast(result.error);
+      else {
+        // The saved Session expired: the next click starts a new attempt with a fresh key.
+        if (result.code === "checkout_expired") attempt.current = null;
+        showToast(result.error);
+      }
     });
   }
 

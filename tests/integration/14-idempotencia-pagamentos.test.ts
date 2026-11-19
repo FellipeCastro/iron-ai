@@ -1,8 +1,10 @@
 import { randomUUID } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { and, eq } from "drizzle-orm";
+import { describe, expect, it, vi } from "vitest";
 import { startCheckoutAction } from "@/app/(app)/actions";
 import { POST } from "@/app/api/webhooks/stripe/route";
 import { db, idempotentRequests, stripeEvents, subscriptions } from "@/db";
+import { runOnce } from "@/lib/idempotency";
 import { userHasAccess } from "@/lib/services/access";
 import { processStripeEvent, type StripeEventPayload } from "@/trigger/stripe-events";
 import { createSubscription, createUser } from "./helpers/factories";
@@ -133,14 +135,35 @@ describe("webhook do Stripe: o mesmo evento tem efeito 1 vez", () => {
     expect(await userHasAccess(user.id)).toBe(true);
   });
 
-  it("quando enfileirar falha, então 500, o evento é liberado e a reentrega do Stripe é processada", async () => {
+  it("quando o reembolso parcial chega depois do total (ordem invertida), então só o evento do reembolso total cancela", async () => {
+    const user = await createUser({ stripeCustomerId: "cus_1" });
+    await createSubscription(user.id, { stripeSubscriptionId: "sub_1", status: "active" });
+    putSubscription({ id: "sub_1", customer: "cus_1", status: "active" });
+    putCharge({ id: "ch_1", customer: "cus_1", refunded: true });
+
+    const full = stripeEvent("charge.refunded", { id: "ch_1", object: "charge", customer: "cus_1", refunded: true });
+    const partial = stripeEvent("charge.refunded", { id: "ch_1", object: "charge", customer: "cus_1", refunded: false });
+    await withStripeTasks(async () => {
+      await deliver(full);
+      await deliver(partial);
+    });
+    expect(stripeMock.subscriptions.cancel).toHaveBeenCalledTimes(1);
+
+    // Nova assinatura do mesmo cliente: o evento parcial atrasado não pode cancelá-la.
+    putSubscription({ id: "sub_2", customer: "cus_1", status: "active" });
+    await withStripeTasks(() => deliver(stripeEvent("charge.refunded", { id: "ch_1", object: "charge", customer: "cus_1", refunded: false })));
+    expect(stripeMock.subscriptions.cancel).toHaveBeenCalledTimes(1);
+    expect(stripeState.subscriptions.get("sub_2")!.status).toBe("active");
+  });
+
+  it("quando enfileirar falha, então 500, o registro do evento é mantido e a reentrega do Stripe é processada", async () => {
     const user = await customerWithSubscriptionInStripe();
     const event = subscriptionCreated();
     triggerMock.trigger.mockRejectedValueOnce(new Error("trigger down"));
 
     const failed = await deliver(event);
     expect(failed.status).toBe(500);
-    expect(await events()).toHaveLength(0);
+    expect(await events()).toMatchObject([{ eventId: event.id, processedAt: null }]);
 
     const retried = await withStripeTasks(() => deliver(event));
     expect(retried.status).toBe(200);
@@ -238,5 +261,49 @@ describe("startCheckoutAction com Idempotency-Key", () => {
 
     expect(result).toMatchObject({ ok: true, data: { url: expect.stringContaining("checkout.stripe.test") } });
     expect(stripeMock.checkout.sessions.create).toHaveBeenCalledTimes(1);
+  });
+
+  it("quando o antecessor ainda vivo falha depois da tomada, então a limpeza dele não apaga a reivindicação do substituto", async () => {
+    const user = await signedInUser();
+    const key = randomUUID();
+    const req = { userId: user.id, scope: "checkout", key, fingerprint: "monthly" };
+    const row = async () => (await keyRows()).find((r) => r.key === key);
+    const gate = () => {
+      let release!: () => void;
+      const opened = new Promise<void>((resolve) => (release = resolve));
+      return { opened, release };
+    };
+    const predecessorGate = gate();
+    const replacementGate = gate();
+
+    // O antecessor reivindica a chave e fica preso na operação (vivo, mas lento).
+    const predecessor = runOnce(req, async () => {
+      await predecessorGate.opened;
+      throw new Error("stripe down");
+    });
+    const predecessorResult = predecessor.then(
+      () => "ok",
+      () => "failed",
+    );
+    await vi.waitFor(async () => expect(await row()).toBeDefined());
+    const predecessorToken = (await row())!.claimToken;
+    await db.update(idempotentRequests).set({ createdAt: new Date(Date.now() - 60_000) }).where(and(eq(idempotentRequests.userId, user.id), eq(idempotentRequests.key, key)));
+
+    // O substituto assume a reivindicação envelhecida e também fica preso na operação.
+    const replacement = runOnce(req, async () => {
+      await replacementGate.opened;
+      return "replacement";
+    });
+    await vi.waitFor(async () => expect((await row())!.claimToken).not.toBe(predecessorToken));
+    const replacementToken = (await row())!.claimToken;
+
+    // O antecessor falha agora: a limpeza dele não pode tocar na reivindicação do substituto.
+    predecessorGate.release();
+    expect(await predecessorResult).toBe("failed");
+    expect(await row()).toMatchObject({ claimToken: replacementToken, response: null });
+
+    replacementGate.release();
+    expect(await replacement).toBe("replacement");
+    expect(await row()).toMatchObject({ claimToken: replacementToken, response: { value: "replacement" } });
   });
 });

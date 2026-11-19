@@ -100,6 +100,9 @@ export const stripeEvents = pgTable("stripe_events", {
   type: text("type").notNull(),
   receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
   processedAt: timestamp("processed_at", { withTimezone: true }),
+  // Set once, before the owner alert for this event is sent. The worker retries an event until `processedAt` is saved,
+  // so this durable mark (not the retry) decides whether the alert still has to go out.
+  alertedAt: timestamp("alerted_at", { withTimezone: true }),
 }).enableRLS();
 
 // Client-supplied idempotency keys (UUID v4) for operations that open a payment (lib/idempotency.ts). The key is
@@ -118,6 +121,9 @@ export const idempotentRequests = pgTable(
     // What the request asked for, so the same key with different parameters is refused instead of replayed.
     fingerprint: text("fingerprint").notNull(),
     response: jsonb("response"),
+    // Names the request that currently owns the claim. A takeover replaces it, so a request that lost its claim
+    // (stale, but still alive) cannot delete or overwrite the replacement's claim.
+    claimToken: uuid("claim_token").notNull().defaultRandom(),
     createdAt: createdAt(),
   },
   (t) => [primaryKey({ columns: [t.userId, t.scope, t.key] }), index("idempotent_requests_created_idx").on(t.createdAt)],

@@ -11,8 +11,9 @@ import type { processStripeEvent, StripeEventWork } from "@/trigger/stripe-event
 
 // Public route: no session on Stripe deliveries, the signature (STRIPE_WEBHOOK_SECRET) is the only check.
 // The handler verifies, claims the event id and enqueues; the work runs in Trigger.dev (trigger/stripe-events.ts),
-// so Stripe gets a fast 200. Each event has effect once: the event id is the primary key of `stripe_events`, a
-// redelivery (or a second delivery arriving at the same time) loses that race and is acknowledged with no effect.
+// so Stripe gets a fast 200. Each event has effect once: the event id is the primary key of `stripe_events` and the
+// task marks it `processedAt` when done. A redelivery of a processed event is acknowledged with no effect; one whose
+// claim is unfinished (e.g. the enqueue never happened) is enqueued again, deduplicated by the run's idempotency key.
 export async function POST(req: NextRequest) {
   const signature = req.headers.get("stripe-signature");
   if (!signature) return new Response("Missing signature", { status: 400 });
@@ -37,8 +38,15 @@ export async function POST(req: NextRequest) {
     .onConflictDoNothing({ target: stripeEvents.eventId })
     .returning({ eventId: stripeEvents.eventId });
   if (!claimed) {
-    Sentry.logger.info("Stripe event already received", { event_id: event.id, event_type: event.type });
-    return new Response("OK", { status: 200 });
+    // A claim only proves the event was received, not that it was enqueued: the process can die between the insert and
+    // the enqueue, or the enqueue can fail with an unknown outcome. Only a finished event is skipped; an unfinished one is enqueued again.
+    // That is safe: the run's idempotency key reuses an in-flight run, and the task skips an already processed event.
+    const existing = await db.query.stripeEvents.findFirst({ where: eq(stripeEvents.eventId, event.id), columns: { processedAt: true } });
+    if (existing?.processedAt) {
+      Sentry.logger.info("Stripe event already processed", { event_id: event.id, event_type: event.type });
+      return new Response("OK", { status: 200 });
+    }
+    Sentry.logger.info("Stripe event received but unfinished, enqueueing again", { event_id: event.id, event_type: event.type });
   }
 
   try {
@@ -56,12 +64,10 @@ export async function POST(req: NextRequest) {
       ),
     );
   } catch (err) {
-    // Not enqueued: release the claim so Stripe's retry (triggered by the 500) is processed instead of skipped.
+    // The outcome is unknown (the run may exist if only the response was lost), so the claim is never deleted: that
+    // could drop a `processedAt` the worker is about to set. Stripe retries on the 500, finds the claim unfinished and
+    // enqueues again under the same idempotency key.
     Sentry.captureException(err, { tags: { stripe_event: event.type } });
-    await db
-      .delete(stripeEvents)
-      .where(eq(stripeEvents.eventId, event.id))
-      .catch((releaseErr) => Sentry.captureException(releaseErr, { tags: { stripe_event: event.type, step: "release_claim" } }));
     return new Response("Enqueue failed", { status: 500 });
   }
 
@@ -95,7 +101,7 @@ function workOf(event: Stripe.Event): StripeEventWork | null {
       return { kind: "dispute", chargeId, disputeId: dispute.id, reason: dispute.reason, amount: dispute.amount };
     }
     case "charge.refunded":
-      return { kind: "refund", chargeId: event.data.object.id };
+      return { kind: "refund", chargeId: event.data.object.id, fullAtEvent: event.data.object.refunded };
     case "radar.early_fraud_warning.created": {
       const warning = event.data.object;
       return { kind: "fraud_warning", warningId: warning.id, fraudType: warning.fraud_type, actionable: warning.actionable };

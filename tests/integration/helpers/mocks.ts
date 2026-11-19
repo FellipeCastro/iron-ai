@@ -231,8 +231,17 @@ export function putCharge(charge: Partial<FakeCharge> & { id: string }) {
 
 // ---------- Trigger.dev ----------
 
+export type AcceptedJob = { id: string; payload: unknown; options?: unknown };
+
+/** Fila de jobs efetivamente aceitos pelo mock (chamadas rejeitadas nunca entram aqui). */
+export const acceptedJobs: AcceptedJob[] = [];
+
 export const triggerMock = {
-  trigger: vi.fn(async (_id: string, _payload: unknown, _options?: unknown) => ({ id: `run_${++stripeState.seq}` })),
+  trigger: vi.fn(async (id: string, payload: unknown, options?: unknown) => {
+    const run = { id: `run_${++stripeState.seq}` };
+    acceptedJobs.push({ id, payload, options });
+    return run;
+  }),
 };
 
 type TaskDef = { id: string; run?: (payload: never, ...rest: never[]) => unknown };

@@ -10,7 +10,7 @@ import { db, users } from "@/db";
 import { currentAppUser } from "@/lib/data/load";
 import { MAX_DURATION_MIN } from "@/lib/engine/duration";
 import { DAY_LETTERS, MAX_PLANNED_SETS, renameExerciseForUser, saveRoutine } from "@/lib/services/routine";
-import { createCheckoutUrl, createPortalUrl, deleteStripeCustomer } from "@/lib/services/billing";
+import { createCheckoutUrl, createPortalUrl, deleteStripeCustomer, usableCheckoutUrl } from "@/lib/services/billing";
 import { IdempotencyInProgressError, IdempotencyKeyReusedError, runOnce } from "@/lib/idempotency";
 import { userHasAccess } from "@/lib/services/access";
 import { createLinkToken, unlinkTelegram } from "@/lib/services/users";
@@ -20,7 +20,7 @@ import { addSetToSession, deleteExerciseFromSession, deleteSessionById, deleteSe
 // by direct POST) and validates its input with Zod. Changes that alter what the bot does (routine, reminders,
 // Telegram link, account) are logged to Sentry as audit events, with the internal user id only.
 
-export type ActionResult<T = undefined> = { ok: true; data: T } | { ok: false; error: string };
+export type ActionResult<T = undefined> = { ok: true; data: T } | { ok: false; error: string; code?: "checkout_expired" };
 
 const fail = (error: string): ActionResult<never> => ({ ok: false, error });
 
@@ -260,8 +260,12 @@ export async function startCheckoutAction(input: z.input<typeof CheckoutInput>):
     if (!parsed.success) return fail(parsed.error.issues.some((i) => i.path[0] === "idempotencyKey") ? "Tentativa de pagamento inválida. Recarregue a página." : "Plano inválido.");
     const { plan, idempotencyKey } = parsed.data;
     try {
-      const open = () => createCheckoutUrl(user, plan);
-      const url = idempotencyKey ? await runOnce({ userId: user.id, scope: "checkout", key: idempotencyKey, fingerprint: plan }, open) : await open();
+      const open = () => createCheckoutUrl(user, plan, idempotencyKey);
+      const saved = idempotencyKey ? await runOnce({ userId: user.id, scope: "checkout", key: idempotencyKey, fingerprint: plan }, open) : await open();
+      // A replayed answer may be a Session that expired meanwhile: never hand that back as a success. The saved
+      // record stays as is; the picker retries with a fresh key.
+      const url = idempotencyKey ? await usableCheckoutUrl(user, saved) : saved;
+      if (!url) return { ok: false, error: "O pagamento expirou. Tente de novo.", code: "checkout_expired" };
       Sentry.logger.info("Checkout started", { user_id: user.id, plan });
       return { ok: true, data: { url } };
     } catch (err) {

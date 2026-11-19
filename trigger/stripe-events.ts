@@ -1,6 +1,7 @@
+import { createHash } from "node:crypto";
 import * as Sentry from "@sentry/node";
 import { concurrencyLimit, task } from "@trigger.dev/sdk";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { db, stripeEvents } from "@/db/client";
 import { stripe } from "@/lib/stripe-client";
 import { cancelCustomerSubscriptions, syncSubscription } from "@/lib/subscription-sync";
@@ -14,7 +15,7 @@ import { log } from "./log";
 export type StripeEventWork =
   | { kind: "subscription"; subscriptionId: string }
   | { kind: "dispute"; chargeId: string; disputeId: string; reason: string; amount: number }
-  | { kind: "refund"; chargeId: string }
+  | { kind: "refund"; chargeId: string; fullAtEvent: boolean }
   | { kind: "fraud_warning"; warningId: string; fraudType: string; actionable: boolean };
 
 export type StripeEventPayload = { eventId: string; type: string; work: StripeEventWork };
@@ -54,21 +55,23 @@ async function apply(eventId: string, type: string, work: StripeEventWork) {
     case "dispute": {
       const charge = await stripe().charges.retrieve(work.chargeId);
       const cancelled = await cancelAfterRisk(charge, eventId);
-      alert("Stripe dispute opened", eventId, type, { dispute_id: work.disputeId, reason: work.reason, amount: work.amount, cancelled });
+      await alert("Stripe dispute opened", eventId, type, { dispute_id: work.disputeId, reason: work.reason, amount: work.amount, cancelled });
       return;
     }
     case "refund": {
-      // The event body is a snapshot from when it was sent; ask Stripe whether the charge is fully refunded now.
+      // Only the event that completed the refund carries refunded=true in its body; earlier partial-refund events
+      // do not. Without this, a stale or reordered event for the same charge would cancel a replacement subscription.
+      if (!work.fullAtEvent) return;
+      // The body is a snapshot from when it was sent; also confirm with Stripe that the charge is fully refunded now.
       const charge = await stripe().charges.retrieve(work.chargeId);
-      // Partial refunds are goodwill; only a full refund ends the subscription.
       if (!charge.refunded) return;
       const cancelled = await cancelAfterRisk(charge, eventId);
-      alert("Stripe charge fully refunded", eventId, type, { charge_id: charge.id, cancelled });
+      await alert("Stripe charge fully refunded", eventId, type, { charge_id: charge.id, cancelled });
       return;
     }
     case "fraud_warning":
       // Not actionable by code: refunding before it becomes a dispute is a business call, so just alert.
-      alert("Stripe early fraud warning", eventId, type, { warning_id: work.warningId, fraud_type: work.fraudType, actionable: work.actionable });
+      await alert("Stripe early fraud warning", eventId, type, { warning_id: work.warningId, fraud_type: work.fraudType, actionable: work.actionable });
       return;
   }
 }
@@ -78,7 +81,29 @@ async function cancelAfterRisk(charge: { customer: string | { id: string } | nul
   return customer ? cancelCustomerSubscriptions(customer, eventId) : 0;
 }
 
-/** Ids only, no personal data. A warning-level message is what makes Sentry notify the owner. */
-function alert(message: string, eventId: string, type: string, extra: Record<string, unknown>) {
-  Sentry.captureMessage(message, { level: "warning", tags: { stripe_event: type }, extra: { event_id: eventId, ...extra } });
+/**
+ * Ids only, no personal data. A warning-level message is what makes Sentry notify the owner.
+ * The run is retried until `processedAt` is saved, so the alert is claimed first (`alertedAt`, one winner per event)
+ * and sent under an event id derived from the Stripe event id, which Sentry also deduplicates. If sending throws the
+ * claim is released, so a retry still delivers it.
+ */
+async function alert(message: string, eventId: string, type: string, extra: Record<string, unknown>) {
+  const claimed = await db
+    .update(stripeEvents)
+    .set({ alertedAt: new Date() })
+    .where(and(eq(stripeEvents.eventId, eventId), isNull(stripeEvents.alertedAt)))
+    .returning({ id: stripeEvents.eventId });
+  if (claimed.length === 0) return;
+  try {
+    Sentry.captureEvent({
+      event_id: createHash("sha256").update(`stripe-alert:${eventId}`).digest("hex").slice(0, 32),
+      message,
+      level: "warning",
+      tags: { stripe_event: type },
+      extra: { event_id: eventId, ...extra },
+    });
+  } catch (error) {
+    await db.update(stripeEvents).set({ alertedAt: null }).where(eq(stripeEvents.eventId, eventId));
+    throw error;
+  }
 }
