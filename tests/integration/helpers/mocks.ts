@@ -144,8 +144,11 @@ async function expireCheckoutSession(id: string) {
   return session;
 }
 
-async function retrieveCheckoutSession(id: string): Promise<{ id: string; customer: string | null; subscription: string | null }> {
+async function retrieveCheckoutSession(id: string): Promise<{ id: string; customer: string | null; subscription: string | null; status?: string }> {
   failIfSet("checkout.sessions.retrieve");
+  // Sessões criadas pelo próprio Stripe falso existem; qualquer outra precisa ser configurada no teste.
+  const known = stripeState.sessions.get(id);
+  if (known) return { id, customer: known.customer ?? null, subscription: null, status: known.status };
   throw new Error(`Sessão ${id} não configurada no Stripe falso`);
 }
 
@@ -265,6 +268,7 @@ export const triggerSdkModule = {
 export const sentryMock = {
   captureException: vi.fn(),
   captureMessage: vi.fn(),
+  captureEvent: vi.fn(),
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
   init: vi.fn(),
   flush: vi.fn(async () => true),

@@ -83,27 +83,24 @@ async function cancelAfterRisk(charge: { customer: string | { id: string } | nul
 
 /**
  * Ids only, no personal data. A warning-level message is what makes Sentry notify the owner.
- * The run is retried until `processedAt` is saved, so the alert is claimed first (`alertedAt`, one winner per event)
- * and sent under an event id derived from the Stripe event id, which Sentry also deduplicates. If sending throws the
- * claim is released, so a retry still delivers it.
+ * The run is retried until `processedAt` is saved, so `alertedAt` is set only after Sentry acknowledged the event
+ * (flush). Every attempt sends under the same event id derived from the Stripe event id, which Sentry deduplicates: a
+ * retry after the acknowledgment but before `alertedAt` is saved does not notify the owner twice.
  */
 async function alert(message: string, eventId: string, type: string, extra: Record<string, unknown>) {
-  const claimed = await db
+  const delivered = await db.query.stripeEvents.findFirst({ where: eq(stripeEvents.eventId, eventId), columns: { alertedAt: true } });
+  if (delivered?.alertedAt) return;
+  Sentry.captureEvent({
+    event_id: createHash("sha256").update(`stripe-alert:${eventId}`).digest("hex").slice(0, 32),
+    message,
+    level: "warning",
+    tags: { stripe_event: type },
+    extra: { event_id: eventId, ...extra },
+  });
+  // A false flush means the event may not have left the process: throw so the run retries instead of marking it sent.
+  if (!(await Sentry.flush(5000))) throw new Error(`Sentry did not acknowledge the alert for Stripe event ${eventId}`);
+  await db
     .update(stripeEvents)
     .set({ alertedAt: new Date() })
-    .where(and(eq(stripeEvents.eventId, eventId), isNull(stripeEvents.alertedAt)))
-    .returning({ id: stripeEvents.eventId });
-  if (claimed.length === 0) return;
-  try {
-    Sentry.captureEvent({
-      event_id: createHash("sha256").update(`stripe-alert:${eventId}`).digest("hex").slice(0, 32),
-      message,
-      level: "warning",
-      tags: { stripe_event: type },
-      extra: { event_id: eventId, ...extra },
-    });
-  } catch (error) {
-    await db.update(stripeEvents).set({ alertedAt: null }).where(eq(stripeEvents.eventId, eventId));
-    throw error;
-  }
+    .where(and(eq(stripeEvents.eventId, eventId), isNull(stripeEvents.alertedAt)));
 }

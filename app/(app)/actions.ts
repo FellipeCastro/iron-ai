@@ -258,7 +258,9 @@ export async function startCheckoutAction(input: z.input<typeof CheckoutInput>):
     const user = await currentAppUser();
     const parsed = CheckoutInput.safeParse(input);
     if (!parsed.success) return fail(parsed.error.issues.some((i) => i.path[0] === "idempotencyKey") ? "Tentativa de pagamento inválida. Recarregue a página." : "Plano inválido.");
-    const { plan, idempotencyKey } = parsed.data;
+    const { plan } = parsed.data;
+    // z.uuid accepts upper case, but Stripe compares keys byte for byte: one spelling for the claim and for Stripe.
+    const idempotencyKey = parsed.data.idempotencyKey?.toLowerCase();
     try {
       const open = () => createCheckoutUrl(user, plan, idempotencyKey);
       const saved = idempotencyKey ? await runOnce({ userId: user.id, scope: "checkout", key: idempotencyKey, fingerprint: plan }, open) : await open();

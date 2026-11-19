@@ -36,5 +36,18 @@ export async function withStripeTasks<T>(fn: () => Promise<T>): Promise<T> {
   return result;
 }
 
-/** As runs `stripe-event` enfileiradas até agora (payloads). */
-export const stripeTaskCalls = () => triggerMock.trigger.mock.calls.filter(([id]) => id === "stripe-event");
+/**
+ * As runs `stripe-event` enfileiradas até agora. Igual ao Trigger.dev, um trigger repetido com a mesma idempotencyKey
+ * reaproveita a run existente e não conta como outra.
+ */
+export const stripeTaskCalls = () => {
+  const seen = new Set<string>();
+  return triggerMock.trigger.mock.calls.filter(([id, , options]) => {
+    if (id !== "stripe-event") return false;
+    const key = (options as { idempotencyKey?: string } | undefined)?.idempotencyKey;
+    if (!key) return true;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+};

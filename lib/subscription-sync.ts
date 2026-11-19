@@ -1,5 +1,5 @@
 import { logger } from "@sentry/core";
-import { and, eq, inArray, isNull, ne, sql } from "drizzle-orm";
+import { and, eq, isNull, ne, notInArray, sql } from "drizzle-orm";
 import { db, subscriptions, users } from "@/db/client";
 import { isUniqueViolation } from "@/lib/db-errors";
 import { ACCESS_STATUSES } from "@/lib/services/access";
@@ -73,7 +73,7 @@ export async function syncSubscription(subscriptionId: string) {
               set: row,
               setWhere: and(
                 ne(subscriptions.stripeSubscriptionId, sub.id),
-                inArray(subscriptions.status, FINISHED_STATUSES),
+                notInArray(subscriptions.status, ACCESS_STATUSES),
                 // The incoming status is known here, so a finished one turns the whole condition into "never replace".
                 FINISHED_STATUSES.includes(sub.status) ? sql`false` : undefined,
               ),
@@ -103,9 +103,11 @@ export async function syncSubscription(subscriptionId: string) {
       columns: { stripeSubscriptionId: true, status: true },
     });
     if (!blocking) continue; // the row disappeared meanwhile: insert again
-    if (!FINISHED_STATUSES.includes(blocking.status)) {
+    // Same rule as checkout: only a row that still grants access blocks. A row that does not (finished, unpaid,
+    // incomplete) is replaceable, so the insert is retried.
+    if (ACCESS_STATUSES.includes(blocking.status)) {
       const current = await stripe().subscriptions.retrieve(blocking.stripeSubscriptionId);
-      if (!FINISHED_STATUSES.includes(current.status)) return true;
+      if (ACCESS_STATUSES.includes(current.status)) return true;
       await syncSubscription(blocking.stripeSubscriptionId);
     }
   }
