@@ -1,11 +1,12 @@
 import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { POST } from "@/app/api/webhooks/stripe/route";
-import { db, subscriptions } from "@/db";
+import { db, stripeEvents, subscriptions } from "@/db";
 import { userHasAccess } from "@/lib/services/access";
 import { createSubscription, createUser } from "./helpers/factories";
-import { putSubscription, sentryMock, stripeMock, stripeState } from "./helpers/mocks";
+import { putCharge, putSubscription, sentryMock, stripeMock, stripeState } from "./helpers/mocks";
 import { request, stripeEvent, stripeWebhookRequest } from "./helpers/requests";
+import { withStripeTasks } from "./helpers/tasks";
 
 const rows = () => db.select().from(subscriptions);
 const unix = (ms: number) => Math.floor(ms / 1000);
@@ -14,7 +15,8 @@ const DAY = 86_400_000;
 /** Usuário com cliente Stripe `cus_1`. */
 const customer = (stripeCustomerId = "cus_1") => createUser({ stripeCustomerId });
 const subEvent = (type: string, id: string, extra: Record<string, unknown> = {}) => stripeEvent(type, { id, object: "subscription", ...extra });
-const send = (event: ReturnType<typeof stripeEvent>) => POST(stripeWebhookRequest(event));
+/** Entrega o evento ao webhook e roda a task que ele enfileirou (o worker do Trigger.dev). */
+const send = (event: ReturnType<typeof stripeEvent>) => withStripeTasks(() => POST(stripeWebhookRequest(event)));
 
 describe("POST /api/webhooks/stripe — assinatura do webhook", () => {
   it("quando falta o header stripe-signature, então 400", async () => {
@@ -177,13 +179,16 @@ describe("POST /api/webhooks/stripe — assinaturas", () => {
     expect(await userHasAccess(user.id)).toBe(true);
   });
 
-  it("quando o Stripe falha ao ler a assinatura, então 500 (para o Stripe reenviar)", async () => {
+  it("quando o Stripe falha ao ler a assinatura, então a task falha (o Trigger.dev tenta de novo) e o evento fica sem processed_at", async () => {
     await customer();
     putSubscription({ id: "sub_1", customer: "cus_1", status: "active" });
     stripeState.fail.set("subscriptions.retrieve", new Error("stripe down"));
-    const res = await send(subEvent("customer.subscription.created", "sub_1"));
-    expect(res.status).toBe(500);
-    expect(sentryMock.captureException).toHaveBeenCalled();
+    let status = 0;
+    await expect(withStripeTasks(async () => (status = (await POST(stripeWebhookRequest(subEvent("customer.subscription.created", "sub_1")))).status))).rejects.toThrow("stripe down");
+    // O webhook já respondeu 200: quem tenta de novo agora é o Trigger.dev.
+    expect(status).toBe(200);
+    expect(await db.select().from(stripeEvents)).toMatchObject([{ processedAt: null }]);
+    expect(await rows()).toHaveLength(0);
   });
 });
 
@@ -199,7 +204,7 @@ describe("POST /api/webhooks/stripe — eventos de risco", () => {
   it("quando chega charge.dispute.created, então cancela todas as assinaturas vivas do cliente e o acesso acaba na hora", async () => {
     const user = await activeCustomer();
     putSubscription({ id: "sub_2", customer: "cus_1", status: "trialing" });
-    stripeMock.charges.retrieve.mockResolvedValueOnce({ id: "ch_1", customer: "cus_1" });
+    putCharge({ id: "ch_1", customer: "cus_1" });
 
     const res = await send(stripeEvent("charge.dispute.created", { id: "dp_1", charge: "ch_1", reason: "fraudulent", amount: 1000 }));
 
@@ -211,6 +216,7 @@ describe("POST /api/webhooks/stripe — eventos de risco", () => {
 
   it("quando chega charge.refunded TOTAL, então cancela as assinaturas", async () => {
     const user = await activeCustomer();
+    putCharge({ id: "ch_1", customer: "cus_1", refunded: true });
     const res = await send(stripeEvent("charge.refunded", { id: "ch_1", customer: "cus_1", refunded: true }));
     expect(res.status).toBe(200);
     expect((await rows())[0].status).toBe("canceled");
@@ -219,6 +225,7 @@ describe("POST /api/webhooks/stripe — eventos de risco", () => {
 
   it("quando chega charge.refunded PARCIAL, então nada é cancelado", async () => {
     const user = await activeCustomer();
+    putCharge({ id: "ch_1", customer: "cus_1", refunded: false });
     const res = await send(stripeEvent("charge.refunded", { id: "ch_1", customer: "cus_1", refunded: false }));
     expect(res.status).toBe(200);
     expect(stripeMock.subscriptions.cancel).not.toHaveBeenCalled();
@@ -230,7 +237,7 @@ describe("POST /api/webhooks/stripe — eventos de risco", () => {
     await activeCustomer();
     const res = await send(stripeEvent("radar.early_fraud_warning.created", { id: "issfr_1", fraud_type: "card_never_received", actionable: true }));
     expect(res.status).toBe(200);
-    expect(sentryMock.captureMessage).toHaveBeenCalledWith("Stripe early fraud warning", expect.objectContaining({ level: "warning" }));
+    expect(sentryMock.captureEvent).toHaveBeenCalledWith(expect.objectContaining({ message: "Stripe early fraud warning", level: "warning" }));
     expect(stripeMock.subscriptions.cancel).not.toHaveBeenCalled();
     expect(await db.select().from(subscriptions).where(eq(subscriptions.stripeSubscriptionId, "sub_1"))).toMatchObject([{ status: "active" }]);
   });
@@ -242,5 +249,7 @@ describe("POST /api/webhooks/stripe — eventos de risco", () => {
     expect(stripeMock.subscriptions.retrieve).not.toHaveBeenCalled();
     expect(stripeMock.subscriptions.cancel).not.toHaveBeenCalled();
     expect((await rows())[0].status).toBe("active");
+    // Tipo que o app não trata: nada é reivindicado nem enfileirado.
+    expect(await db.select().from(stripeEvents)).toHaveLength(0);
   });
 });

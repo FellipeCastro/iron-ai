@@ -1,0 +1,1 @@
+ALTER TABLE "idempotent_requests" ADD COLUMN "claim_token" uuid DEFAULT gen_random_uuid() NOT NULL;

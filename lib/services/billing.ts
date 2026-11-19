@@ -1,20 +1,17 @@
 import "server-only";
 import { clerkClient } from "@clerk/nextjs/server";
-import * as Sentry from "@sentry/nextjs";
-import { and, eq, inArray, isNull, ne, sql } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { createHash } from "node:crypto";
-import { db, subscriptions, users, type User } from "@/db";
-import { isUniqueViolation } from "@/lib/db-errors";
+import { db, users, type User } from "@/db";
 import { siteUrl } from "@/lib/env";
 import { CHECKOUT_URL, DASHBOARD_URL, SETTINGS_URL } from "@/lib/routes";
 import { ACCESS_STATUSES, userHasAccess } from "@/lib/services/access";
 import { priceId, stripe, type Plan } from "@/lib/stripe";
 import { deleteStripeCustomerById } from "@/lib/stripe-customer";
+import { syncSubscription } from "@/lib/subscription-sync";
 
-// Stripe is the source of truth: webhooks only say "this subscription changed", and syncSubscription
-// reads its current state back, so late or out-of-order deliveries cannot leave stale data behind.
-
-const FINISHED_STATUSES = ["canceled", "incomplete_expired"];
+// The sync itself lives in lib/subscription-sync.ts so the Trigger.dev worker can run it too.
+export { cancelCustomerSubscriptions, syncSubscription } from "@/lib/subscription-sync";
 
 /** The user's Stripe customer, created on first use. The id is saved before Checkout so webhooks can find the user. */
 async function ensureCustomer(user: User) {
@@ -62,7 +59,7 @@ async function closeCheckoutSession(sessionId: string): Promise<"expired" | "com
  * Hosted Checkout for a new subscription, charged right away (no trial). Users who already subscribed get the
  * dashboard instead: a second Checkout would bill them twice.
  */
-export async function createCheckoutUrl(user: User, plan: Plan) {
+export async function createCheckoutUrl(user: User, plan: Plan, attemptKey?: string) {
   const dashboard = `${siteUrl()}${DASHBOARD_URL}`;
   if (await userHasAccess(user.id)) return dashboard;
   const customer = await ensureCustomer(user);
@@ -93,9 +90,16 @@ export async function createCheckoutUrl(user: User, plan: Plan) {
   // attempt replaced: a plan change (A, then B, then A again within the minute) closes a different set each time,
   // so the key advances and cannot replay a Session that was already expired. Concurrent requests for the same
   // attempt close the same Sessions and still share one key.
+  //
+  // When the caller holds an app-level idempotency claim (`attemptKey`), that key IS the Stripe key. A takeover of a
+  // stale claim re-runs this function while the original create may still be in flight or commit later; a key derived
+  // from the clock or from the Sessions listed above could differ between the two runs and open a second payable
+  // Session. The claim's key is the same for both, so Stripe hands the takeover the original Session.
   const replaced = openSessions.data.map((s) => s.id).sort().join(",");
   const attempt = replaced ? `-${createHash("sha256").update(replaced).digest("hex").slice(0, 12)}` : "";
-  const idempotencyKey = `checkout-${user.id}-${plan}-${Math.floor(Date.now() / 60_000)}${attempt}`;
+  const idempotencyKey = attemptKey
+    ? `checkout-${user.id}-${plan}-${attemptKey}`
+    : `checkout-${user.id}-${plan}-${Math.floor(Date.now() / 60_000)}${attempt}`;
   const session = await stripe().checkout.sessions.create(
     {
       mode: "subscription",
@@ -117,6 +121,23 @@ export async function createCheckoutUrl(user: User, plan: Plan) {
   return session.url;
 }
 
+/**
+ * A saved idempotent answer may hold a Checkout URL that has since expired. Returns the URL to send the user to, or
+ * null when the saved Session is expired and the user is not subscribed (the caller must start a new attempt; the saved
+ * record is left untouched). A paid Session, or a user who already has access, goes to the dashboard instead.
+ */
+export async function usableCheckoutUrl(user: User, savedUrl: string): Promise<string | null> {
+  const sessionId = /\/(cs_(?:test|live)_[A-Za-z0-9]+)/.exec(new URL(savedUrl).pathname)?.[1];
+  if (!sessionId) return savedUrl; // not a Checkout Session URL (e.g. the dashboard)
+  const session = await stripe().checkout.sessions.retrieve(sessionId);
+  if (session.status === "open") return savedUrl;
+  if (session.status === "complete" && session.subscription) {
+    await syncSubscription(typeof session.subscription === "string" ? session.subscription : session.subscription.id);
+    return `${siteUrl()}${DASHBOARD_URL}`;
+  }
+  return (await userHasAccess(user.id)) ? `${siteUrl()}${DASHBOARD_URL}` : null;
+}
+
 /** Customer Portal: cancel, switch plan, update the card, invoices. */
 export async function createPortalUrl(user: User) {
   const customer = await ensureCustomer(user);
@@ -128,110 +149,3 @@ export async function createPortalUrl(user: User) {
 export async function deleteStripeCustomer(user: User) {
   if (user.stripeCustomerId) await deleteStripeCustomerById(user.stripeCustomerId);
 }
-
-const MAX_SYNC_ATTEMPTS = 5;
-
-/**
- * Rewrites the local subscription from Stripe's current state. Returns false when no user owns the customer.
- *
- * Two syncs of one subscription can overlap, and a clock cannot say which Stripe read was newer (ties, skew between
- * servers). So the saved `syncedFrom` is a version stamp that only ever grows, and the write is a compare-and-swap:
- * a sync reads the saved stamp BEFORE asking Stripe and writes only if the stamp is still the same. If another sync
- * saved in between, ours may be older, so it asks Stripe again instead of writing. A winning write therefore always
- * read Stripe after the write it replaces.
- */
-export async function syncSubscription(subscriptionId: string) {
-  for (let attempt = 0; attempt < MAX_SYNC_ATTEMPTS; attempt++) {
-    const saved = await findSavedRow(subscriptionId);
-    const sub = await stripe().subscriptions.retrieve(subscriptionId);
-    const customerId = typeof sub.customer === "string" ? sub.customer : sub.customer.id;
-    const user = await db.query.users.findFirst({ where: eq(users.stripeCustomerId, customerId) });
-    if (!user) {
-      Sentry.logger.warn("Stripe subscription for an unknown customer", { subscription_id: sub.id, customer_id: customerId });
-      return false;
-    }
-
-    const item = sub.items.data[0];
-    const row = {
-      stripeSubscriptionId: sub.id,
-      status: sub.status,
-      priceId: item.price.id,
-      currentPeriodEnd: new Date(item.current_period_end * 1000),
-      trialEnd: sub.trial_end ? new Date(sub.trial_end * 1000) : null,
-      cancelAtPeriodEnd: sub.cancel_at_period_end,
-      // Strictly greater than the stamp we read, so the next compare-and-swap never sees a value it saw before.
-      syncedFrom: new Date(Math.max(Date.now(), (saved?.syncedFrom?.getTime() ?? 0) + 1)),
-    };
-
-    let written: { userId: string }[];
-    try {
-      written = saved
-        ? // This subscription already has a row: replace it only if nobody saved since we looked.
-          await db
-            .update(subscriptions)
-            .set(row)
-            .where(
-              and(
-                eq(subscriptions.stripeSubscriptionId, sub.id),
-                saved.syncedFrom ? eq(subscriptions.syncedFrom, saved.syncedFrom) : isNull(subscriptions.syncedFrom),
-              ),
-            )
-            .returning({ userId: subscriptions.userId })
-        : // No row for it yet: insert, or take over the user's row once the subscription saved there is finished, so a
-          // late event of an old subscription cannot overwrite a newer one that is still alive. A finished incoming
-          // subscription never takes over: it is a superseded one (read back from Stripe as canceled), and letting it
-          // in would reclaim the row after its replacement was recorded and later finished.
-          await db
-            .insert(subscriptions)
-            .values({ userId: user.id, ...row })
-            .onConflictDoUpdate({
-              target: subscriptions.userId,
-              set: row,
-              setWhere: and(
-                ne(subscriptions.stripeSubscriptionId, sub.id),
-                inArray(subscriptions.status, FINISHED_STATUSES),
-                // The incoming status is known here, so a finished one turns the whole condition into "never replace".
-                FINISHED_STATUSES.includes(sub.status) ? sql`false` : undefined,
-              ),
-            })
-            .returning({ userId: subscriptions.userId });
-    } catch (err) {
-      // The success redirect and the webhook sync the same new subscription at the same moment. The loser trips the
-      // unique stripe_subscription_id; the row exists now, so go around again and take the update path.
-      if (!isUniqueViolation(err)) throw err;
-      continue;
-    }
-
-    if (written.length > 0) {
-      Sentry.logger.info("Subscription synced", { user_id: user.id, status: sub.status, cancel_at_period_end: sub.cancel_at_period_end });
-      return true;
-    }
-    // Nothing written. If this subscription has a row we did not see (or its stamp moved), another sync won: retry.
-    // Otherwise the user's row belongs to another live subscription, which an old one must not replace.
-    if (!saved && !(await findSavedRow(sub.id))) return true;
-  }
-  throw new Error(`Could not sync subscription ${subscriptionId}: it kept changing under concurrent syncs`);
-}
-
-/** The row saved for a subscription, if any. Its `syncedFrom` is the stamp (null on rows saved before it existed). */
-function findSavedRow(subscriptionId: string) {
-  return db.query.subscriptions.findFirst({
-    where: eq(subscriptions.stripeSubscriptionId, subscriptionId),
-    columns: { syncedFrom: true },
-  });
-}
-
-/**
- * Stops billing a customer after a dispute or a full refund: cancels every live subscription right away and
- * syncs the result so access ends now. Returns how many subscriptions were cancelled.
- */
-export async function cancelCustomerSubscriptions(customerId: string) {
-  const open = await stripe().subscriptions.list({ customer: customerId, limit: 10 });
-  const live = open.data.filter((s) => ACCESS_STATUSES.includes(s.status));
-  for (const sub of live) {
-    await stripe().subscriptions.cancel(sub.id);
-    await syncSubscription(sub.id);
-  }
-  return live.length;
-}
-

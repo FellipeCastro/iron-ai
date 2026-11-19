@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { startCheckoutAction } from "@/app/(app)/actions";
 import { ANNUAL_PRICE, MONTHLY_PRICE } from "@/lib/pricing";
 import { useToast } from "./toast";
@@ -27,12 +27,21 @@ export function PlanPicker({ initial }: { initial: Plan }) {
   const [selected, setSelected] = useState<Plan>(initial);
   const [toast, showToast] = useToast();
   const [pending, startTransition] = useTransition();
+  // Idempotency-Key of the current checkout attempt: one UUID v4 per plan choice, resent on every retry (double
+  // click, retry after an error), so the server opens Checkout once and answers every repeat the same way.
+  const attempt = useRef<{ plan: Plan; key: string } | null>(null);
 
   function continueToCheckout() {
+    if (attempt.current?.plan !== selected) attempt.current = { plan: selected, key: crypto.randomUUID() };
+    const { key } = attempt.current;
     startTransition(async () => {
-      const result = await startCheckoutAction({ plan: selected });
+      const result = await startCheckoutAction({ plan: selected, idempotencyKey: key });
       if (result.ok) window.location.assign(result.data.url);
-      else showToast(result.error);
+      else {
+        // The saved Session expired: the next click starts a new attempt with a fresh key.
+        if (result.code === "checkout_expired") attempt.current = null;
+        showToast(result.error);
+      }
     });
   }
 

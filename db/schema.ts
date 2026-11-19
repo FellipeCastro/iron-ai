@@ -92,6 +92,43 @@ export const subscriptions = pgTable("subscriptions", {
     .$onUpdate(() => new Date()),
 }).enableRLS();
 
+// Stripe webhook events already accepted. The webhook claims the event id here BEFORE doing anything; a redelivery
+// (or a concurrent second delivery) loses the primary key race and is acknowledged without any effect.
+// `processedAt` is set by the worker once the event's work is done. Purged after 90 days (Stripe retries for 3).
+export const stripeEvents = pgTable("stripe_events", {
+  eventId: text("event_id").primaryKey(),
+  type: text("type").notNull(),
+  receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
+  processedAt: timestamp("processed_at", { withTimezone: true }),
+  // Set once Sentry has acknowledged the owner alert for this event (null = not delivered yet). The worker retries an
+  // event until `processedAt` is saved, so this durable mark (not the retry) decides whether the alert still has to go out.
+  alertedAt: timestamp("alerted_at", { withTimezone: true }),
+}).enableRLS();
+
+// Client-supplied idempotency keys (UUID v4) for operations that open a payment (lib/idempotency.ts). The key is
+// claimed BEFORE the operation runs (`response` null = in progress), so a concurrent repeat waits for the first one
+// instead of running it again; a repeat after it finished gets the saved response. A failed operation releases its
+// claim so it can be retried with the same key. Scoped per user, so one user's key never matches another's.
+// Purged after a day.
+export const idempotentRequests = pgTable(
+  "idempotent_requests",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    scope: text("scope").notNull(),
+    key: uuid("key").notNull(),
+    // What the request asked for, so the same key with different parameters is refused instead of replayed.
+    fingerprint: text("fingerprint").notNull(),
+    response: jsonb("response"),
+    // Names the request that currently owns the claim. A takeover replaces it, so a request that lost its claim
+    // (stale, but still alive) cannot delete or overwrite the replacement's claim.
+    claimToken: uuid("claim_token").notNull().defaultRandom(),
+    createdAt: createdAt(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.scope, t.key] }), index("idempotent_requests_created_idx").on(t.createdAt)],
+).enableRLS();
+
 export const telegramLinks = pgTable("telegram_links", {
   userId: uuid("user_id")
     .primaryKey()

@@ -29,6 +29,9 @@ describe("role app_runtime", () => {
     // conexão separada (owner/server role) — não afrouxe este grant para fazer o app funcionar.
     ai_reservations: "",
     applied_updates: "",
+    // Idempotência de pagamentos: escritas só do servidor (webhook do Stripe, startCheckoutAction).
+    stripe_events: "",
+    idempotent_requests: "",
     exercises: "SIUD",
     routines: "SIUD",
     routine_days: "SIUD",
