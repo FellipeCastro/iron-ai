@@ -17,6 +17,18 @@ export async function findByChat(chatId: number) {
   return link ?? null;
 }
 
+/** Replaces the conversation state kept on the user's Telegram link (see lib/telegram/state.ts for its shape). */
+export const saveChatState = (userId: string, chatState: unknown) => db.update(telegramLinks).set({ chatState }).where(eq(telegramLinks.userId, userId));
+
+/** Weekdays the user trains on (ISO numbers, 1 = Monday), as typed in the bot's onboarding. */
+export const setTrainingDays = (userId: string, trainingDays: number[]) => db.update(users).set({ trainingDays }).where(eq(users.id, userId));
+
+/** Training time ("HH:MM"; null = no reminder). Returns the user's weekdays, which the onboarding summary shows. */
+export async function setReminderTime(userId: string, reminderTime: string | null) {
+  const [saved] = await db.update(users).set({ reminderTime }).where(eq(users.id, userId)).returning({ trainingDays: users.trainingDays });
+  return saved;
+}
+
 // ---------- Deep-link tokens ----------
 
 export const LINK_TOKEN_TTL_MIN = 15;

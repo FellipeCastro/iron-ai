@@ -35,6 +35,22 @@ function score(query: string, candidate: MatchCandidate) {
   return best;
 }
 
+/**
+ * Tags each catalog exercise with the `priority` matchExercise uses: what is being trained right now first (the
+ * exercise in progress = 4, the others already logged in this workout = 3), then today's exercises (2), the rest of
+ * the routine (1) and the catalog (0). The highest applicable level wins. `session` is in log order, so its last
+ * entry is the exercise in progress.
+ */
+export function rankPool<C extends { id: string }>(catalog: C[], ids: { routine: string[]; today: string[]; session: string[] }) {
+  const priority = new Map<string, number>();
+  for (const id of ids.routine) priority.set(id, 1);
+  for (const id of ids.today) priority.set(id, 2);
+  for (const id of ids.session) priority.set(id, 3);
+  const inProgress = ids.session.at(-1);
+  if (inProgress) priority.set(inProgress, 4);
+  return catalog.map((c) => ({ ...c, priority: priority.get(c.id) ?? 0 }));
+}
+
 export type MatchResult<C> = { match: C; candidates: C[] } | { match: null; candidates: C[] };
 
 /**
