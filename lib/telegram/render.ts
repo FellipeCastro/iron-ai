@@ -169,6 +169,8 @@ export const nothingToCorrect = () => "Não achei nenhuma série recente para al
 
 export const alreadyLogged = () => "Essas séries já tinham sido registradas. Nada foi duplicado.";
 
+export const alreadyApplied = () => "Essa mensagem já tinha sido processada. Nada foi repetido.";
+
 // ---------- Session ----------
 
 export const unknownDay = (query: string, days: { letter: string; title: string }[]) =>

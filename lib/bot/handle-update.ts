@@ -1,7 +1,7 @@
 import { loadCtx, parserContext, pool, saveState } from "@/lib/bot/context";
 import { handleCallback } from "@/lib/bot/callbacks";
 import { handleCommand } from "@/lib/bot/commands";
-import { deliver } from "@/lib/bot/deliver";
+import { deliver, type Out } from "@/lib/bot/deliver";
 import { execute } from "@/lib/bot/intents";
 import { handleAwaitedText } from "@/lib/bot/onboarding";
 import { fastParse, fastPathMode, sameIntent } from "@/lib/ai/fast-parse";
@@ -60,12 +60,24 @@ export async function handleUpdate(update: TgUpdate, opts: HandleOptions): Promi
   if (update.edited_message) return { status: "ignored" };
 
   const link = await findByChat(chat.id);
-  const finish = (status: Status, parsedJson?: unknown) => finishMessage(update.update_id, status, parsedJson);
+  const finish = (status: Status, parsedJson?: unknown, replies?: Out[]) => finishMessage(update.update_id, status, parsedJson, replies);
+  // The replies are saved with the final status, so a run that fails while sending them is retried from delivery.
+  const finishAndDeliver = async (userId: string, outs: Out[], status: Status = "processed", parsedJson?: unknown) => {
+    await finish(status, parsedJson, outs);
+    await deliver(update.update_id, userId, chat.id, outs);
+  };
   const claimed = await claimMessage({ updateId: update.update_id, userId: link?.userId ?? null, rawText: message?.text ?? callback?.data ?? null });
   if (!claimed) {
     const existing = await findMessage(update.update_id);
-    // Already handled by an earlier run (webhook redelivery): writes must not happen twice.
-    if (existing && existing.status !== "received") return { status: "duplicate", userId: link?.userId };
+    // Already handled by an earlier run (task retry or webhook redelivery): writes must not happen twice. Only the
+    // replies that run saved but did not get to send are delivered, starting at the first unsent one.
+    if (existing && existing.status !== "received") {
+      const replies = (existing.replies as Out[] | null) ?? [];
+      if (existing.repliesSent < replies.length) {
+        await deliver(update.update_id, existing.userId, chat.id, replies, existing.repliesSent, callback?.message?.message_id);
+      }
+      return { status: "duplicate", userId: link?.userId };
+    }
     // The webhook admitted (and counted) this update for another account than the one the chat resolves to now
     // (chat relinked or unlinked in between): nothing may be written on the wrong account's behalf.
     if (existing?.userId && existing.userId !== link?.userId) {
@@ -88,9 +100,9 @@ export async function handleUpdate(update: TgUpdate, opts: HandleOptions): Promi
     }
     const ctx = await loadCtx(update.update_id, chat.id, link.user, link.chatState);
     const outs = await handleCallback(ctx, callback.data);
-    await finish("processed");
+    await finish("processed", undefined, outs);
     await answerCallbackQuery(callback.id).catch(() => undefined);
-    await deliver(ctx.user.id, chat.id, outs, callback.message?.message_id);
+    await deliver(update.update_id, ctx.user.id, chat.id, outs, 0, callback.message?.message_id);
     return { status: "processed", kind: "callback", userId: link.userId };
   }
 
@@ -156,8 +168,7 @@ export async function handleUpdate(update: TgUpdate, opts: HandleOptions): Promi
   // A durable marker means an earlier run already wrote this update's sets: skip parsing (no model call, no
   // second log) and let updateAlreadyLogged finish any target rebuild that run did not complete.
   if (await updateAlreadyLogged(update.update_id, link.userId)) {
-    await finish("processed");
-    await deliver(ctx.user.id, chat.id, [{ text: render.alreadyLogged() }]);
+    await finishAndDeliver(ctx.user.id, [{ text: render.alreadyLogged() }]);
     return { status: "processed", kind: "message", userId: link.userId };
   }
 
@@ -165,8 +176,7 @@ export async function handleUpdate(update: TgUpdate, opts: HandleOptions): Promi
   if (ctx.state.pending && !text.startsWith("/")) {
     const awaited = await handleAwaitedText(ctx, ctx.state.pending, text);
     if (awaited) {
-      await finish("processed");
-      await deliver(ctx.user.id, chat.id, awaited);
+      await finishAndDeliver(ctx.user.id, awaited);
       return { status: "processed", kind: "message", userId: link.userId };
     }
   }
@@ -176,8 +186,7 @@ export async function handleUpdate(update: TgUpdate, opts: HandleOptions): Promi
 
   const command = await handleCommand(ctx, text);
   if (command) {
-    await finish("processed");
-    await deliver(ctx.user.id, chat.id, command);
+    await finishAndDeliver(ctx.user.id, command);
     return { status: "processed", kind: "command", userId: link.userId, command: text.match(/^\/(\w+)/)?.[1]?.toLowerCase() };
   }
 
@@ -208,8 +217,7 @@ export async function handleUpdate(update: TgUpdate, opts: HandleOptions): Promi
 
   const outs = await execute(ctx, parsed.parsed.intent, {}, parsed.parsed.confidence, false);
   const status = parsed.parsed.intent.type === "clarify" ? "clarify" : "processed";
-  await finish(status, { ...parsed.parsed, model: parsed.model });
-  await deliver(ctx.user.id, chat.id, outs);
+  await finishAndDeliver(ctx.user.id, outs, status, { ...parsed.parsed, model: parsed.model });
   return {
     status,
     kind: "message",

@@ -1,5 +1,5 @@
 import { and, eq, isNull } from "drizzle-orm";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { aiUsage, aiUsageUser, db, exercises, messages, sessions, setEntries, telegramLinks, users } from "@/db";
 import { MAX_VOICE_SECONDS } from "@/lib/ai/transcribe";
 import { handleUpdate } from "@/lib/bot/handle-update";
@@ -19,8 +19,23 @@ beforeEach(() => vi.stubEnv("FAST_PATH", "off"));
 
 type Update = ReturnType<typeof telegramTextUpdate> | ReturnType<typeof telegramCallbackUpdate>;
 const opts = { isLastAttempt: true, log: vi.fn(), report: vi.fn() };
-const handle = (update: Update) => handleUpdate(update as never, opts);
-const handleRaw = (update: unknown) => handleUpdate(update as never, opts);
+
+// Um teste que estoura o timeout não cancela o handleUpdate em andamento. Sem esperar por ele, o trabalho atrasado
+// chegaria ao Telegram simulado/banco depois do resetMocks()/truncateAll() do próximo teste. O afterEach roda antes
+// do beforeEach seguinte, então drena tudo aqui.
+const inFlight = new Set<Promise<unknown>>();
+const track = <T>(promise: Promise<T>): Promise<T> => {
+  inFlight.add(promise);
+  promise.finally(() => inFlight.delete(promise)).catch(() => {});
+  return promise;
+};
+afterEach(async () => {
+  await Promise.allSettled([...inFlight]);
+  inFlight.clear();
+});
+
+const handle = (update: Update) => track(handleUpdate(update as never, opts));
+const handleRaw = (update: unknown) => track(handleUpdate(update as never, opts));
 
 const CHAT = 10;
 const text = (t: string) => telegramTextUpdate(CHAT, t);
@@ -54,7 +69,9 @@ const setPending = (userId: string, pending: Record<string, unknown>) =>
     .where(eq(telegramLinks.userId, userId));
 
 const validSets = async (userId: string) =>
-  (await db.select({ set: setEntries }).from(setEntries).innerJoin(sessions, eq(sessions.id, setEntries.sessionId)).where(and(eq(sessions.userId, userId), isNull(setEntries.voidedAt)))).map((r) => r.set);
+  (await db.select({ set: setEntries }).from(setEntries).innerJoin(sessions, eq(sessions.id, setEntries.sessionId)).where(and(eq(sessions.userId, userId), isNull(setEntries.voidedAt))))
+    .map((r) => r.set)
+    .sort((a, b) => a.setPosition - b.setPosition);
 const userRow = async (id: string) => (await db.select().from(users).where(eq(users.id, id)))[0];
 
 /** Rotina do usuário: dias na ordem dada (A, B…), cada um com [exercício, séries planejadas]. */
@@ -787,7 +804,7 @@ describe("bot — mensagens que não viram intent de escrita", () => {
 
 describe("bot — falha ao chamar o modelo (parser e transcrição)", () => {
   const attempt = (isLastAttempt: boolean) => ({ isLastAttempt, log: vi.fn(), report: vi.fn() });
-  const run = (update: unknown, o: ReturnType<typeof attempt>) => handleUpdate(update as never, o);
+  const run = (update: unknown, o: ReturnType<typeof attempt>) => track(handleUpdate(update as never, o));
   const today = () => new Date().toISOString().slice(0, 10);
   const voiceUpdate = () => {
     const base = telegramTextUpdate(CHAT, "x");

@@ -6,7 +6,7 @@ import { createLinkToken } from "@/lib/services/users";
 import { closeSession } from "@/lib/services/workout";
 import * as render from "@/lib/telegram/render";
 import { createExercise, createSession, createSet, createSubscribedUser, linkTelegram } from "./helpers/factories";
-import { openaiParse, openaiState, telegramCalls, telegramTexts } from "./helpers/mocks";
+import { openaiParse, openaiState, telegramCalls, telegramState, telegramTexts } from "./helpers/mocks";
 import { telegramCallbackUpdate, telegramTextUpdate } from "./helpers/requests";
 
 // O atalho sem modelo (FAST_PATH) fica desligado: todo texto passa pelo OpenAI simulado, e o que o
@@ -92,6 +92,36 @@ describe("handleUpdate — registro de séries", () => {
     expect(await setsOf(user.id)).toHaveLength(3);
     expect(openaiParse).toHaveBeenCalledTimes(1);
     expect(await db.select().from(messages)).toHaveLength(1);
+  });
+
+  it("quando o envio da resposta falha, então a nova tentativa entrega a resposta salva sem refazer o parse nem gravar de novo", async () => {
+    const user = await linkedUser(10);
+    await createExercise({ name: "Supino reto", aliases: ["supino"] });
+    openaiState.parsed = logIntent("supino", 80, 8, 3);
+    const update = telegramTextUpdate(10, "supino 80x8 3 séries");
+    telegramState.fail.set("sendMessage", { code: 502, description: "Bad Gateway" });
+
+    await expect(handle(update)).rejects.toThrow();
+    const [failed] = await db.select().from(messages).where(eq(messages.updateId, update.update_id));
+    expect(failed).toMatchObject({ status: "processed", repliesSent: 0 });
+    const replies = failed.replies as { text: string }[];
+    expect(replies.length).toBeGreaterThan(0);
+
+    telegramState.fail.clear();
+    telegramCalls.length = 0;
+    const retried = await handle(update);
+
+    expect(retried.status).toBe("duplicate");
+    expect(telegramTexts()).toEqual(replies.map((r) => r.text));
+    expect(openaiParse).toHaveBeenCalledTimes(1);
+    expect(await setsOf(user.id)).toHaveLength(3);
+    const [done] = await db.select().from(messages).where(eq(messages.updateId, update.update_id));
+    expect(done.repliesSent).toBe(replies.length);
+
+    // Uma redelivery depois de tudo entregue não reenvia nada.
+    telegramCalls.length = 0;
+    await handle(update);
+    expect(telegramTexts()).toEqual([]);
   });
 
   it("quando 2 updates diferentes do mesmo usuário rodam ao mesmo tempo sem sessão aberta, então existe no máximo 1 sessão aberta", async () => {

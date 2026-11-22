@@ -332,6 +332,10 @@ export const messages = pgTable(
     rawText: text("raw_text"),
     parsedJson: jsonb("parsed_json"),
     status: messageStatus("status").notNull().default("received"),
+    // The replies decided for this update, saved with its final status, and how many reached the chat. A retry of a
+    // run that failed mid-delivery resumes from `repliesSent` instead of parsing and executing the update again.
+    replies: jsonb("replies"),
+    repliesSent: integer("replies_sent").notNull().default(0),
     createdAt: createdAt(),
   },
   (t) => [index("messages_created_idx").on(t.createdAt)],

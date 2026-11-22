@@ -58,16 +58,17 @@ export function findDayByQuery<D extends Pick<PlanDay, "letter"> & { title: stri
 export type SessionSet = { exerciseId: string; setPosition: number; isExtra: boolean };
 
 /**
- * Position and "extra" flag for the next set of an exercise in the open session. A set is extra when the
- * exercise is not in the session's day or the planned sets are already done. Without a day (no routine)
- * nothing is extra, so progression still works.
+ * Position and "extra" flag for the next set of an exercise in the session (`sessionSets` = its valid sets).
+ * The set goes after the highest position used, so gaps left by deleted sets stay and no position repeats.
+ * A set is extra when the exercise is not in the session's day or its planned (non-extra) sets are already
+ * done. Without a day (no routine) nothing is extra, so progression still works.
  */
 export function assignSet(day: PlanDay | null, sessionSets: SessionSet[], exerciseId: string) {
   const done = sessionSets.filter((s) => s.exerciseId === exerciseId);
-  const setPosition = done.length + 1;
+  const setPosition = done.reduce((max, s) => Math.max(max, s.setPosition), 0) + 1;
   if (!day) return { setPosition, isExtra: false };
   const planned = day.exercises.find((e) => e.exerciseId === exerciseId);
-  return { setPosition, isExtra: !planned || setPosition > planned.plannedSets };
+  return { setPosition, isExtra: !planned || done.filter((s) => !s.isExtra).length >= planned.plannedSets };
 }
 
 export type PlannedSetRow = { exerciseId: string; setPosition: number; isExtra: boolean; weight: number; reps: number };

@@ -26,7 +26,13 @@ export function NameField({
   }, [value]);
   const open = typing && value.trim() !== "";
   return (
-    <div className="relative">
+    <div
+      className="relative"
+      // Close only when focus leaves the whole field, so tabbing into a suggestion keeps the list open.
+      onBlur={(ev) => {
+        if (!ev.currentTarget.contains(ev.relatedTarget as Node | null)) setTyping(false);
+      }}
+    >
       <textarea
         ref={ref}
         rows={1}
@@ -36,7 +42,6 @@ export function NameField({
           setTyping(true);
           onChange(ev.target.value.replace(/\s+/g, " "));
         }}
-        onBlur={() => setTyping(false)}
         onKeyDown={(ev) => {
           if (ev.key === "Enter") ev.preventDefault();
           if (ev.key === "Escape") setTyping(false);
@@ -49,11 +54,12 @@ export function NameField({
             <li key={r.id}>
               <button
                 type="button"
-                // mousedown fires before the textarea blurs, so the pick isn't lost.
-                onMouseDown={(ev) => {
-                  ev.preventDefault();
+                // Keep focus in the textarea on mouse press; the pick itself happens on click.
+                onMouseDown={(ev) => ev.preventDefault()}
+                onClick={() => {
                   setTyping(false);
                   onPick(r);
+                  ref.current?.focus();
                 }}
                 className="flex w-full items-center justify-between gap-4 px-4 py-2.5 text-left hover:bg-[#f9f9fb]"
               >

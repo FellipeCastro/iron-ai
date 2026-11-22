@@ -15,11 +15,15 @@ export async function claimMessage(row: { updateId: number; userId: string | nul
 
 export const findMessage = (updateId: number) => db.query.messages.findFirst({ where: eq(messages.updateId, updateId) });
 
-export const finishMessage = (updateId: number, status: MessageStatus, parsedJson?: unknown) =>
+/** Sets the final status and, in the same write, the replies still to deliver (so a retry can send them). */
+export const finishMessage = (updateId: number, status: MessageStatus, parsedJson?: unknown, replies?: unknown[]) =>
   db
     .update(messages)
-    .set({ status, parsedJson: parsedJson ?? null })
+    .set({ status, parsedJson: parsedJson ?? null, replies: replies ?? null, repliesSent: 0 })
     .where(eq(messages.updateId, updateId));
+
+/** Records that the first `count` replies reached the chat. */
+export const setRepliesSent = (updateId: number, count: number) => db.update(messages).set({ repliesSent: count }).where(eq(messages.updateId, updateId));
 
 export const setMessageUser = (updateId: number, userId: string) => db.update(messages).set({ userId }).where(eq(messages.updateId, updateId));
 

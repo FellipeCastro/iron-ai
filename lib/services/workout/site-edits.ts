@@ -1,6 +1,5 @@
 import { and, eq, inArray, isNull, notExists, or, sql } from "drizzle-orm";
 import { db, exercises, sessions, setEntries, type User } from "@/db/client";
-import { assignSet } from "@/lib/engine/session";
 import { loadDay } from "../routine";
 import { applyCorrection, applyDelete } from "./corrections";
 import { loadLog, recomputeTargets } from "./log";
@@ -74,19 +73,35 @@ export async function addSetToSession(user: User, sessionId: string, input: { ex
   const exercise = await db.query.exercises.findFirst({ where: and(eq(exercises.id, input.exerciseId), or(isNull(exercises.ownerUserId), eq(exercises.ownerUserId, user.id))) });
   if (!exercise) return null;
 
-  const [day, sessionSets] = await Promise.all([session.dayId ? loadDay(session.dayId) : null, loadLog(user.id, { sessionId })]);
-  const placed = assignSet(day, sessionSets, input.exerciseId);
-  const last = sessionSets.reduce((max, s) => Math.max(max, s.createdAt.getTime()), session.startedAt.getTime());
+  const day = session.dayId ? await loadDay(session.dayId) : null;
+  const planned = day?.exercises.find((e) => e.exerciseId === input.exerciseId);
+  const exerciseId = sql`${input.exerciseId}::uuid`;
+  // Same rules as assignSet, but read inside the insert so they see every set committed before it.
+  const isExtra = !day
+    ? sql`false`
+    : !planned
+      ? sql`true`
+      : sql`count(*) filter (where e.exercise_id = ${exerciseId} and not e.is_extra) >= ${planned.plannedSets}`;
 
-  await db.insert(setEntries).values({
-    sessionId,
-    exerciseId: input.exerciseId,
-    setPosition: placed.setPosition,
-    isExtra: placed.isExtra,
-    weight: input.weight,
-    reps: input.reps,
-    createdAt: new Date(last + 1),
-  });
+  // One batch = one transaction. The session row lock serializes concurrent additions: the insert runs as a new
+  // statement after it, so it sees the sets of any addition that committed first and takes the next position.
+  const [, inserted] = await db.batch([
+    db.select({ id: sessions.id }).from(sessions).where(and(eq(sessions.id, sessionId), eq(sessions.userId, user.id))).for("update"),
+    db.execute(sql`
+      insert into set_entries (session_id, exercise_id, set_position, is_extra, weight, reps, created_at)
+      select s.id, ${exerciseId},
+        coalesce(max(e.set_position) filter (where e.exercise_id = ${exerciseId}), 0) + 1,
+        ${isExtra},
+        ${input.weight}::numeric, ${input.reps}::smallint,
+        greatest(s.started_at, max(e.created_at)) + interval '1 millisecond'
+      from sessions s
+      left join set_entries e on e.session_id = s.id and e.voided_at is null
+      where s.id = ${sessionId}::uuid and s.user_id = ${user.id}::uuid
+      group by s.id, s.started_at
+      returning id
+    `),
+  ]);
+  if (inserted.rows.length === 0) return null;
 
   const log = await loadLog(user.id, { exerciseIds: [input.exerciseId] });
   await recomputeTargets(user.id, user.weightIncrementKg, log, [input.exerciseId]);

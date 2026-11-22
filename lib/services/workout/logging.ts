@@ -3,7 +3,7 @@ import { appliedUpdates, db, sessions, setEntries, users, type User } from "@/db
 import { recordsFor } from "@/lib/engine/records";
 import { isInactive, isSessionComplete, nextExerciseFor, pickDayForSession, planSetRows, remainingNames, upNextFor, type UpNext } from "@/lib/engine/session";
 import { loadDay, type Routine } from "../routine";
-import { loadLog, loadTargets, recomputeTargets, type LogRow } from "./log";
+import { loadLog, loadTargets, recomputeTargets } from "./log";
 import { closeSession, dropSessionIfEmpty, findOpenSession, lastTrainedLetter, type ClosedSession } from "./sessions";
 
 // Logging sets from the bot: idempotent per Telegram update, with targets, records and what comes next.
@@ -25,27 +25,11 @@ export async function updateAlreadyLogged(sourceUpdateId: number, userId: string
   if (!row) return false;
   if (!row.finalizedAt) {
     const [owner] = await db.select({ increment: users.weightIncrementKg }).from(users).where(eq(users.id, row.userId));
-    if (owner && row.exerciseIds.length) await recomputeTargetsStable(row.userId, owner.increment, row.exerciseIds);
+    // recomputeTargets throws if the history never settles, so the update is not finalized and stays repairable.
+    if (owner && row.exerciseIds.length) await recomputeTargets(row.userId, owner.increment, await loadLog(row.userId, { exerciseIds: row.exerciseIds }), row.exerciseIds);
     await markUpdateFinalized(sourceUpdateId);
   }
   return true;
-}
-
-/**
- * Rebuilds targets and verifies the history did not change while doing so. neon-http has no interactive transactions,
- * so the read-then-write cannot be locked; instead the valid-set ids (a correction voids one id and adds another) are
- * compared after the write, and the rebuild reruns on a mismatch. A competing writer's own rebuild is always based on
- * its committed change, so a rerun that sees a stable log leaves targets reflecting the latest history. Throws if it
- * never settles, so the caller does not finalize and the update stays eligible for another repair.
- */
-async function recomputeTargetsStable(userId: string, incrementKg: number, exerciseIds: string[]) {
-  const fingerprint = (log: LogRow[]) => log.map((s) => s.id).sort().join(",");
-  for (let attempt = 0; attempt < 5; attempt++) {
-    const log = await loadLog(userId, { exerciseIds });
-    await recomputeTargets(userId, incrementKg, log, exerciseIds);
-    if (fingerprint(await loadLog(userId, { exerciseIds })) === fingerprint(log)) return;
-  }
-  throw new Error("Could not rebuild targets: history kept changing");
 }
 
 const markUpdateFinalized = (updateId: number) =>

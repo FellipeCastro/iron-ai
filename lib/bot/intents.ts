@@ -152,7 +152,10 @@ async function apply(ctx: Ctx, intent: Intent, ids: Record<string, string>): Pro
       return [{ text: result ? render.corrected(result.item) : render.nothingToCorrect() }];
     }
     case "delete_set": {
-      const result = await deleteSet(ctx.user, { exerciseId: ids.x ?? null, setNumber: intent.set_number });
+      // Same replay guard as log_sets: a retried "apaga a última" must not void the set before the one already removed.
+      if (await updateAlreadyLogged(ctx.updateId, ctx.user.id)) return [{ text: render.alreadyApplied() }];
+      const result = await deleteSet(ctx.user, { exerciseId: ids.x ?? null, setNumber: intent.set_number }, ctx.updateId);
+      if (result?.replay) return [{ text: render.alreadyApplied() }];
       return [{ text: result ? render.deleted(result) : render.nothingToCorrect() }];
     }
     case "finish_workout":

@@ -34,8 +34,9 @@ export async function handleAwaitedText(ctx: Ctx, pending: Pending, text: string
     const minutes = parseDurationInput(text);
     // A long message is not a mistyped duration: let it through as a normal message (e.g. a set being logged).
     if (!minutes) return text.length > MAX_DURATION_REPLY_CHARS ? null : [{ text: render.askDurationEdit(true) }];
-    await saveState(ctx, { pending: null });
+    // Write first, then clear the step: the write is an absolute set, so a retry after a failed saveState is safe.
     const updated = await setSessionDuration(ctx.user.id, pending.sessionId, minutes);
+    await saveState(ctx, { pending: null });
     return [{ text: updated ? render.durationUpdated(minutes) : render.expiredAction() }];
   }
   return null;
@@ -84,7 +85,8 @@ async function askTime(ctx: Ctx): Promise<Out[]> {
 
 /** Last onboarding step: stores the time (null = no reminder) and closes the flow. */
 async function finishOnboarding(ctx: Ctx, time: string | null): Promise<Out[]> {
-  await saveState(ctx, { pending: null });
+  // Write first, then clear the step: the write is an absolute set, so a retry after a failed saveState is safe.
   const saved = await setReminderTime(ctx.user.id, time);
+  await saveState(ctx, { pending: null });
   return [{ text: render.onboardingDone(saved?.trainingDays ?? [], time) }];
 }

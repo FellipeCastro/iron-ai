@@ -40,6 +40,11 @@ describe("assignSet", () => {
     expect(assignSet(days[0], sets, "supino")).toEqual({ setPosition: 3, isExtra: true });
   });
 
+  it("lands after the highest position when an earlier set was deleted, and still fills the plan", () => {
+    const sets = [{ exerciseId: "supino", setPosition: 2, isExtra: false }];
+    expect(assignSet(days[0], sets, "supino")).toEqual({ setPosition: 3, isExtra: false });
+  });
+
   it("exercises outside the day are extra", () => expect(assignSet(days[0], [], "remada")).toEqual({ setPosition: 1, isExtra: true }));
   it("without a routine nothing is extra", () => expect(assignSet(null, [], "remada")).toEqual({ setPosition: 1, isExtra: false }));
 });

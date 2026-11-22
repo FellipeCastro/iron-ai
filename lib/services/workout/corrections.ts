@@ -1,5 +1,5 @@
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
-import { db, sessions, setEntries, type User } from "@/db/client";
+import { appliedUpdates, db, sessions, setEntries, type User } from "@/db/client";
 import { loadLog, recomputeTargets, type LogRow } from "./log";
 import { findOpenSession, ownSessionIds } from "./sessions";
 
@@ -55,14 +55,44 @@ export async function applyCorrection(user: User, old: LogRow, change: { weight:
   };
 }
 
-export async function deleteSet(user: User, selector: SetSelector) {
+/**
+ * `sourceUpdateId`: Telegram update that asked for the removal. Its applied-update marker is claimed in the same
+ * statement that voids the set, so a retried update (the first run failed before replying) is caught by
+ * updateAlreadyLogged instead of voiding the set before it. Returns `{ replay: true }` when the marker was already owned.
+ */
+export async function deleteSet(user: User, selector: SetSelector, sourceUpdateId?: number) {
   const old = await findSet(user.id, selector);
-  return old ? applyDelete(user, old) : null;
+  if (!old) return null;
+  if (sourceUpdateId === undefined) return applyDelete(user, old);
+
+  const written = await db.execute(sql`
+    with claim as (
+      insert into applied_updates (update_id, user_id, session_id, exercise_ids)
+      values (${sourceUpdateId}, ${user.id}, ${old.sessionId}::uuid, array[${old.exerciseId}::uuid]::uuid[])
+      on conflict (update_id) do nothing
+      returning update_id
+    ), voided as (
+      update set_entries set voided_at = now()
+      where id = ${old.id} and voided_at is null and exists (select 1 from claim)
+        and session_id in (select id from sessions where user_id = ${user.id})
+      returning id
+    )
+    select (select count(*) from claim)::int as claimed, (select count(*) from voided)::int as voided
+  `);
+  const { claimed, voided } = written.rows[0] as { claimed: number; voided: number };
+  if (!claimed) return { replay: true as const };
+
+  const log = await loadLog(user.id, { exerciseIds: [old.exerciseId] });
+  await recomputeTargets(user.id, user.weightIncrementKg, log, [old.exerciseId]);
+  await db.update(appliedUpdates).set({ finalizedAt: new Date() }).where(eq(appliedUpdates.updateId, sourceUpdateId));
+  return voided ? deletedItem(old) : null;
 }
 
 export async function applyDelete(user: User, old: LogRow) {
   await db.update(setEntries).set({ voidedAt: new Date() }).where(and(eq(setEntries.id, old.id), inArray(setEntries.sessionId, ownSessionIds(user.id))));
   const log = await loadLog(user.id, { exerciseIds: [old.exerciseId] });
   await recomputeTargets(user.id, user.weightIncrementKg, log, [old.exerciseId]);
-  return { name: old.exerciseName, setPosition: old.setPosition, weight: old.weight, reps: old.reps };
+  return deletedItem(old);
 }
+
+const deletedItem = (old: LogRow) => ({ replay: false as const, name: old.exerciseName, setPosition: old.setPosition, weight: old.weight, reps: old.reps });
