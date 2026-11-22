@@ -120,6 +120,24 @@ describe("#10 apagar a última série x adicionar série ao mesmo tempo", () => 
   });
 });
 
+describe("#10b adicionar duas séries ao mesmo tempo", () => {
+  it("quando duas adições chegam juntas, então cada série recebe uma posição diferente, depois das existentes", async () => {
+    const { user } = await createSubscribedUser("active");
+    const exercise = await createExercise();
+    const session = await createSession(user.id);
+    await createSet(session.id, exercise.id);
+
+    const results = await Promise.all([
+      addSetToSession(user, session.id, { exerciseId: exercise.id, weight: 90, reps: 5 }),
+      addSetToSession(user, session.id, { exerciseId: exercise.id, weight: 95, reps: 5 }),
+    ]);
+
+    expect(results).toEqual([true, true]);
+    const valid = (await db.select().from(setEntries).where(eq(setEntries.sessionId, session.id))).filter((s) => !s.voidedAt);
+    expect(valid.map((s) => s.setPosition).sort()).toEqual([1, 2, 3]);
+  });
+});
+
 describe("#11 renomear exercício ao mesmo tempo", () => {
   it("quando 2 exercícios do usuário são renomeados para o mesmo nome juntos, então não dá erro e existe 1 só com esse nome", async () => {
     const user = await createUser();

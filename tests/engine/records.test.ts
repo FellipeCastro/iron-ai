@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { matchExercise } from "@/lib/engine/match";
-import { bestSet, markRecords } from "@/lib/engine/records";
+import { bestSet, markRecords, recordsFor } from "@/lib/engine/records";
 import { exerciseReport, muscleGroupReport, periodReport, recordsByExercise, sessionSummary, type ReportSet } from "@/lib/engine/reports";
 import { isStagnant } from "@/lib/engine/stagnation";
 import { estimateCalories } from "@/lib/format";
@@ -28,6 +28,38 @@ describe("markRecords", () => {
 
   it("a session that does not beat the best has no record", () => {
     expect(markRecords([s("a", 52.5, 8), s("b", 50, 11), s("c", 52.5, 8)])).toEqual(["weight", null, null]);
+  });
+});
+
+describe("recordsFor", () => {
+  const s = (id: string, exerciseId: string, sessionId: string, weight: number, reps: number) => ({ id, exerciseId, sessionId, weight, reps });
+
+  it("only returns the requested ids, and the first session is a baseline", () => {
+    const log = [s("1", "supino", "a", 50, 10), s("2", "supino", "b", 52.5, 8), s("3", "supino", "b", 50, 12)];
+    expect(recordsFor(log, new Set(["1", "2", "3"]))).toEqual(
+      new Map([
+        ["1", null],
+        ["2", "weight"],
+        ["3", null],
+      ]),
+    );
+    expect([...recordsFor(log, new Set(["2"]))]).toEqual([["2", "weight"]]);
+  });
+
+  it("marks records per exercise, never across exercises", () => {
+    const log = [s("1", "supino", "a", 50, 10), s("2", "rosca", "b", 10, 10), s("3", "supino", "b", 50, 11), s("4", "rosca", "c", 10, 12)];
+    expect(recordsFor(log, new Set(["2", "3", "4"]))).toEqual(
+      new Map([
+        ["3", "reps"],
+        ["2", null],
+        ["4", "reps"],
+      ]),
+    );
+  });
+
+  it("unknown ids and an empty log give an empty map", () => {
+    expect(recordsFor([s("1", "supino", "a", 50, 10)], new Set(["x"])).size).toBe(0);
+    expect(recordsFor([], new Set(["1"])).size).toBe(0);
   });
 });
 

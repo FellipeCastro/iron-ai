@@ -17,3 +17,18 @@ Todos os bugs abaixo foram **confirmados por execução** contra o banco de test
 
 - Os demais testes de exclusão (`deleteAccountAction`, `clerk-user-deleted`) usam exercícios do catálogo global para não ficarem mascarados pelo bug #4. O caso do exercício personalizado tem teste próprio.
 - Rodar: `npm run test:integration` (só integração) ou `npm run test:all` (unitários + integração).
+
+## Comportamentos suspeitos (refatoração em camadas — NÃO corrigir durante a refatoração)
+
+Registrados pelos testes de caracterização `tests/integration/15-bot-fluxos.test.ts`, que passam hoje: eles fixam o comportamento atual para a refatoração não mudá-lo sem querer. Corrigir é uma decisão à parte, depois da refatoração.
+
+| # | Situação | Comportamento atual | Confirmado por |
+|---|----------|---------------------|----------------|
+| S1 | Passo "dias da semana" do onboarding | Qualquer texto sem `/` é consumido pelo passo, inclusive uma série ("supino 10x20"): responde "não entendi os dias" e o passo continua. Já o passo de duração deixa passar textos com mais de 10 caracteres. As duas regras são diferentes. | teste: "quando os dias não são entendidos…" |
+| S2 | Botão "Cancelar" num passo de duração | Responde "Essa ação não está mais disponível" e apaga o passo (o botão nem existe no teclado de duração; só chega por callback antigo). | teste: "…toca em 'Cancelar' num passo de duração…" |
+| S3 | `handleUpdate`: `if (!text) return { status: "ignored" }` (após transcrição) | Sai sem chamar `finish()`, deixando a linha de `messages` em `received`. Provavelmente inalcançável. | só leitura do código |
+| S4 | Sinal de queda de volume | `muscleGroupReportText` usa `-` (hífen); `periodReportText` usa `−` (sinal de menos). | só leitura do código |
+| S5 | `messagesThisMonth` | Soma de `date >= 1º do mês` sem limite superior; `admitMessage` tem o limite. | só leitura do código |
+| S6 | Teste `14-idempotencia-pagamentos` › "antecessor ainda vivo falha depois da tomada…" | Falhou 1 vez na suíte completa (`expected X not to be X`) e passou ao rodar o arquivo sozinho: intermitente. | baseline da refatoração |
+| S7 | Teste `15-bot-fluxos` (2 testes, entre eles o de `render.clarify("ambiguous")`, linha ~763) | Na execução conjunta com `08-bot`, `06-treino-web` e `13-concorrencia` (lenta: 843 s), apareceu antes da resposta esperada a mensagem "Estou com instabilidade agora…" de outro teste: vazamento entre testes por tempo. Passou ao rodar o arquivo sozinho (62/62) e na reexecução conjunta (151/151). Intermitente. **Repetiu no fechamento do bloco Ações/UI** (suíte completa lenta, 1250 s): 2 timeouts de 30 s em sequência e o teste seguinte recebeu a resposta atrasada do anterior; o arquivo sozinho passou 62/62. Causa provável: a resposta do bot de um teste que estourou o tempo continua rodando e cai no mock do teste seguinte (o `beforeEach` não espera trabalho pendente). | passo 12 (código do passo não toca nesse caminho) |
+| S8 | Teste unitário `route-auth` › "(app)/dashboard/page.tsx › rejeita requisição sem sessão…" | Estourou o timeout de 5 s (5013 ms) no import a frio da página; passou na reexecução imediata (3,4 s a suíte toda). Intermitente por tempo. | passo 14 (código do passo não toca nesse caminho) |

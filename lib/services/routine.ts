@@ -2,6 +2,7 @@ import { and, desc, eq, inArray, isNull, or, sql, type SQL } from "drizzle-orm";
 import { db, exercises, routineDays, routineExercises, routines, type MuscleGroup } from "@/db/client";
 import { isUniqueViolation } from "@/lib/db-errors";
 import type { PlanDay } from "@/lib/engine/session";
+import { DAY_LETTERS, MAX_PLANNED_SETS } from "@/lib/routine-rules";
 
 // Routines are versioned: saving writes a new version, so past sessions keep pointing at the days
 // they were trained with. The latest version is the current routine.
@@ -11,8 +12,7 @@ export type RoutineDayFull = Omit<PlanDay, "exercises"> & {
   exercises: (PlanDay["exercises"][number] & { name: string; muscleGroup: MuscleGroup; aliases: string[]; order: number })[];
 };
 
-export const DAY_LETTERS = ["A", "B", "C", "D", "E"] as const;
-export const MAX_PLANNED_SETS = 6;
+export { DAY_LETTERS, MAX_PLANNED_SETS } from "@/lib/routine-rules";
 
 async function loadDays(where: SQL) {
   const rows = await db

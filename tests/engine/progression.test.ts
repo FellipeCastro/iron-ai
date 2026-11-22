@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { advance, computeTargets, hitTarget, nextTarget, roundKg } from "@/lib/engine/progression";
+import { advance, computeTargets, hitTarget, nextTarget, roundKg, targetChanges } from "@/lib/engine/progression";
 
 const set = (setPosition: number, weight: number, reps: number, isExtra = false) => ({ setPosition, weight, reps, isExtra });
 
@@ -78,5 +78,42 @@ describe("computeTargets", () => {
   it("points at the set that produced the target", () => {
     const log = [set(1, 20, 10), set(1, 20, 10)];
     expect(computeTargets(log, 2.5).get(1)!.source).toBe(log[1]);
+  });
+});
+
+describe("targetChanges", () => {
+  const s = (exerciseId: string, sessionId: string, setPosition: number, weight: number, reps: number, isExtra = false) => ({
+    exerciseId,
+    sessionId,
+    ...set(setPosition, weight, reps, isExtra),
+  });
+
+  it("first session of an exercise: every position is new (before = null)", () => {
+    expect(targetChanges([s("supino", "a", 1, 50, 10), s("supino", "a", 2, 50, 8)], "a", ["supino"], 2.5)).toEqual([
+      { exerciseId: "supino", setPosition: 1, before: null, after: { weight: 50, reps: 10 } },
+      { exerciseId: "supino", setPosition: 2, before: null, after: { weight: 50, reps: 8 } },
+    ]);
+  });
+
+  it("lists only positions whose target moved", () => {
+    const log = [s("supino", "a", 1, 50, 10), s("supino", "a", 2, 50, 10), s("supino", "b", 1, 50, 10), s("supino", "b", 2, 50, 8)];
+    expect(targetChanges(log, "b", ["supino"], 2.5)).toEqual([
+      { exerciseId: "supino", setPosition: 1, before: { weight: 50, reps: 10 }, after: { weight: 50, reps: 11 } },
+    ]);
+  });
+
+  it("extra sets never change targets", () => {
+    const log = [s("supino", "a", 1, 50, 10), s("supino", "b", 1, 80, 12, true)];
+    expect(targetChanges(log, "b", ["supino"], 2.5)).toEqual([]);
+  });
+
+  it("compares against the whole log without the session, including later sessions", () => {
+    const log = [s("supino", "a", 1, 50, 10), s("supino", "b", 1, 50, 10), s("supino", "c", 1, 50, 11)];
+    expect(targetChanges(log, "b", ["supino"], 2.5)).toEqual([]);
+  });
+
+  it("follows the order of exerciseIds and skips exercises not listed", () => {
+    const log = [s("supino", "a", 1, 50, 10), s("rosca", "a", 1, 10, 12), s("remada", "a", 1, 40, 10)];
+    expect(targetChanges(log, "a", ["rosca", "supino"], 2.5).map((c) => c.exerciseId)).toEqual(["rosca", "supino"]);
   });
 });
