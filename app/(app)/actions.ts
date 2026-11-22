@@ -2,18 +2,16 @@
 
 import { clerkClient } from "@clerk/nextjs/server";
 import * as Sentry from "@sentry/nextjs";
-import { eq } from "drizzle-orm";
 import { refresh } from "next/cache";
 import { headers } from "next/headers";
 import { z } from "zod";
-import { db, users } from "@/db";
 import { currentAppUser } from "@/lib/data/load";
 import { MAX_DURATION_MIN } from "@/lib/engine/duration";
 import { DAY_LETTERS, MAX_PLANNED_SETS, renameExerciseForUser, saveRoutine } from "@/lib/services/routine";
 import { createCheckoutUrl, createPortalUrl, deleteStripeCustomer, usableCheckoutUrl } from "@/lib/services/billing";
 import { IdempotencyInProgressError, IdempotencyKeyReusedError, runOnce } from "@/lib/idempotency";
 import { userHasAccess } from "@/lib/services/access";
-import { createLinkToken, unlinkTelegram } from "@/lib/services/users";
+import { createLinkToken, deleteUserRow, unlinkTelegram, updateSettings } from "@/lib/services/users";
 import { addSetToSession, deleteExerciseFromSession, deleteSessionById, deleteSetById, editSetById, setSessionDuration } from "@/lib/services/workout";
 
 // Server Actions for the (app) pages. Each one resolves the signed-in user itself (they are reachable
@@ -201,11 +199,7 @@ export async function saveSettingsAction(input: z.input<typeof SettingsInput>): 
     const parsed = SettingsInput.safeParse(input);
     if (!parsed.success) return fail("Preferências inválidas.");
     const { timezone, reminderTime, trainingDays, weightIncrementKg } = parsed.data;
-    // Targets already in set_targets keep their loads; the new increment applies from the next load-up.
-    await db
-      .update(users)
-      .set({ timezone, reminderTime: reminderTime || null, trainingDays: [...new Set(trainingDays)].sort(), weightIncrementKg })
-      .where(eq(users.id, user.id));
+    await updateSettings(user.id, { timezone, reminderTime: reminderTime || null, trainingDays: [...new Set(trainingDays)].sort(), weightIncrementKg });
     // Answers "why didn't my reminder arrive?": the reminder setup in effect and when it changed.
     Sentry.logger.info("Settings saved", {
       user_id: user.id,
@@ -303,7 +297,7 @@ export async function deleteAccountAction(): Promise<ActionResult> {
       Sentry.captureException(err, { tags: { action: "delete_account_billing" } });
       return fail("Não conseguimos cancelar sua assinatura. Tente de novo.");
     }
-    await db.delete(users).where(eq(users.id, user.id));
+    await deleteUserRow(user.id);
     try {
       const clerk = await clerkClient();
       await clerk.users.deleteUser(user.clerkId);

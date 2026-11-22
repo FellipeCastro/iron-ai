@@ -4,10 +4,10 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import { addSetAction, deleteExerciseFromSessionAction, deleteSessionAction } from "@/app/(app)/actions";
 import type { ExerciseRef } from "@/lib/data/types";
-import { MUSCLE_LABEL } from "@/lib/format";
 import { HISTORY_URL } from "@/lib/routes";
 import { searchByName } from "@/lib/search";
-import { PlusIcon, SearchIcon, TrashIcon } from "./icons";
+import { ExerciseSearch } from "./exercise-search";
+import { PlusIcon, TrashIcon } from "./icons";
 import { useToast } from "./toast";
 import { inputBase } from "./ui";
 
@@ -126,37 +126,7 @@ export function AddExercise({ sessionId, catalog }: { sessionId: string; catalog
     );
   }
 
-  return (
-    <div className="relative z-30">
-      <label className="relative block">
-        <span className="sr-only">Adicionar exercício</span>
-        <SearchIcon className="pointer-events-none absolute top-1/2 left-4 size-4 -translate-y-1/2 text-[#8a8a94]" />
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Adicionar exercício (ex.: supino, remada, agachamento)"
-          className={`${inputBase} w-full pl-11`}
-        />
-      </label>
-      {query.trim() && (
-        <ul className="absolute inset-x-0 top-full z-30 mt-2 overflow-hidden rounded-[20px] border border-[#ececec] bg-white shadow-[0_10px_30px_rgba(0,0,0,0.08)]">
-          {results.map((r) => (
-            <li key={r.id}>
-              <button
-                type="button"
-                onClick={() => setPicked(r)}
-                className="flex w-full items-center justify-between gap-4 px-5 py-3 text-left hover:bg-[#f9f9fb]"
-              >
-                <span className="text-[15px] font-medium">{r.name}</span>
-                <span className="text-[13px] text-[#5b5b66]">{MUSCLE_LABEL[r.muscleGroup]}</span>
-              </button>
-            </li>
-          ))}
-          {results.length === 0 && <li className="px-5 py-4 text-[14px] text-[#5b5b66]">Nenhum exercício encontrado.</li>}
-        </ul>
-      )}
-    </div>
-  );
+  return <ExerciseSearch query={query} onQueryChange={setQuery} results={results} onPick={setPicked} />;
 }
 
 /** Trash button that removes an exercise, with all its sets, from the session (asks first). */

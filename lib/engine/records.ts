@@ -36,6 +36,21 @@ export function markRecords<T extends Load & { sessionId: string }>(
   return result;
 }
 
+/**
+ * Record kind of each set whose id is in `ids`, computed per exercise over the whole chronological `log`
+ * (first session of each exercise is a baseline). Sets outside `ids` are not in the result.
+ */
+export function recordsFor<T extends Load & { id: string; sessionId: string; exerciseId: string }>(log: T[], ids: Set<string>) {
+  const result = new Map<string, PrKind | null>();
+  const byExercise = new Map<string, T[]>();
+  for (const s of log) byExercise.set(s.exerciseId, [...(byExercise.get(s.exerciseId) ?? []), s]);
+  for (const list of byExercise.values()) {
+    const kinds = markRecords(list, { includeFirst: false });
+    list.forEach((s, i) => ids.has(s.id) && result.set(s.id, kinds[i]));
+  }
+  return result;
+}
+
 /** Heaviest set, ties broken by reps. */
 export function bestSet<T extends Load>(sets: T[]): T | null {
   return sets.reduce<T | null>((a, b) => (!a || beats(b, a) ? b : a), null);

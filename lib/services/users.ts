@@ -29,6 +29,15 @@ export async function setReminderTime(userId: string, reminderTime: string | nul
   return saved;
 }
 
+/** Settings saved from the site. Targets already in set_targets keep their loads; the new increment applies from the next load-up. */
+export const updateSettings = (
+  userId: string,
+  settings: { timezone: string; reminderTime: string | null; trainingDays: number[]; weightIncrementKg: number },
+) => db.update(users).set(settings).where(eq(users.id, userId));
+
+/** Hard delete of the user row: every user table cascades from `users`. */
+export const deleteUserRow = (userId: string) => db.delete(users).where(eq(users.id, userId));
+
 // ---------- Deep-link tokens ----------
 
 export const LINK_TOKEN_TTL_MIN = 15;

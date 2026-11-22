@@ -1,19 +1,20 @@
 "use client";
 
 import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
-import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
-import { useLayoutEffect, useMemo, useRef, useState, useTransition } from "react";
+import { SortableContext, arrayMove, sortableKeyboardCoordinates, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { useMemo, useState, useTransition } from "react";
 import { saveRoutineAction } from "@/app/(app)/actions";
 import type { DayLetter, ExerciseRef, Routine, RoutineDay } from "@/lib/data/types";
 import { MUSCLE_LABEL, formatKg } from "@/lib/format";
-import { searchByName } from "@/lib/search";
-import { GripIcon, MinusIcon, PlusIcon, SearchIcon, TrashIcon } from "./icons";
+import { applyRenamed, clampSets, isDirty, nextFreeLetter, removeDayAndReletter, routineSavePayload, searchExcluding } from "@/lib/routine-editor";
+import { DAY_LETTERS, MAX_PLANNED_SETS } from "@/lib/routine-rules";
+import { ExerciseSearch } from "./exercise-search";
+import { IconButton } from "./icon-button";
+import { GripIcon, MinusIcon, PlusIcon, TrashIcon } from "./icons";
+import { NameField } from "./name-field";
+import { SortableRow } from "./sortable-row";
 import { useToast } from "./toast";
-import { Badge, Card, buttonPrimary, buttonSecondary, inputBase } from "./ui";
-
-const LETTERS: DayLetter[] = ["A", "B", "C", "D", "E"];
-const MAX_SETS = 6;
+import { Badge, Card, buttonPrimary, buttonSecondary } from "./ui";
 
 export function RoutineEditor({ initial, catalog }: { initial: Routine; catalog: ExerciseRef[] }) {
   // A new user starts with an empty "A" to fill in.
@@ -25,12 +26,9 @@ export function RoutineEditor({ initial, catalog }: { initial: Routine; catalog:
   const [saving, startTransition] = useTransition();
 
   const day = days.find((d) => d.letter === selected) ?? days[0];
-  const dirty = JSON.stringify(days) !== JSON.stringify(saved);
+  const dirty = isDirty(days, saved);
 
-  const results = useMemo(() => {
-    const inDay = new Set(day.exercises.map((e) => e.id));
-    return searchByName(catalog.filter((e) => !inDay.has(e.id)), query);
-  }, [query, catalog, day]);
+  const results = useMemo(() => searchExcluding(catalog, new Set(day.exercises.map((e) => e.id)), query), [query, catalog, day]);
 
   function updateDay(fn: (d: RoutineDay) => RoutineDay) {
     setDays((all) => all.map((d) => (d.letter === day.letter ? fn(d) : d)));
@@ -62,8 +60,7 @@ export function RoutineEditor({ initial, catalog }: { initial: Routine; catalog:
 
   /** Catalog exercises matching what is being typed, excluding the ones already in this day. */
   function suggestionsFor(id: string, name: string) {
-    const others = new Set(day.exercises.filter((x) => x.id !== id).map((x) => x.id));
-    return searchByName(catalog.filter((c) => !others.has(c.id)), name);
+    return searchExcluding(catalog, new Set(day.exercises.filter((x) => x.id !== id).map((x) => x.id)), name);
   }
 
   /** Swap a row for a saved exercise, keeping its number of sets. */
@@ -77,7 +74,7 @@ export function RoutineEditor({ initial, catalog }: { initial: Routine; catalog:
   function setSets(index: number, sets: number) {
     updateDay((d) => ({
       ...d,
-      exercises: d.exercises.map((e, i) => (i === index ? { ...e, plannedSets: Math.min(MAX_SETS, Math.max(1, sets)) } : e)),
+      exercises: d.exercises.map((e, i) => (i === index ? { ...e, plannedSets: clampSets(sets) } : e)),
     }));
   }
 
@@ -90,39 +87,23 @@ export function RoutineEditor({ initial, catalog }: { initial: Routine; catalog:
   }
 
   function addDay() {
-    const letter = LETTERS.find((l) => !days.some((d) => d.letter === l));
+    const letter = nextFreeLetter(days);
     if (!letter) return;
     setDays([...days, { letter, title: "Novo treino", exercises: [] }]);
     setSelected(letter);
   }
 
   function removeDay() {
-    // Letters stay sequential (A, B, C…) so the rotation order is always obvious.
-    const rest = days.filter((d) => d.letter !== day.letter).map((d, i) => ({ ...d, letter: LETTERS[i] }));
+    const rest = removeDayAndReletter(days, day.letter);
     setDays(rest);
     setSelected(rest[0].letter);
   }
 
   function save() {
     startTransition(async () => {
-      const savedNames = new Map(saved.flatMap((d) => d.exercises.map((e) => [e.id, e.name] as const)));
-      const result = await saveRoutineAction(
-        days.map((d) => ({
-          title: d.title,
-          exercises: d.exercises.map((e) => ({
-            id: e.id,
-            plannedSets: e.plannedSets,
-            ...(e.name.trim() && e.name.trim() !== savedNames.get(e.id) ? { name: e.name } : {}),
-          })),
-        })),
-      );
+      const result = await saveRoutineAction(routineSavePayload(days, saved));
       if (!result.ok) return showToast(result.error);
-      // Renamed exercises may now be a different record (a personal copy of a catalog one).
-      const renamed = result.data;
-      const next = days.map((d) => ({
-        ...d,
-        exercises: d.exercises.map((e) => (renamed[e.id] ? { ...e, ...renamed[e.id], targets: [] } : e)),
-      }));
+      const next = applyRenamed(days, result.data);
       setDays(next);
       setSaved(next);
       showToast("Treinos salvos");
@@ -160,7 +141,7 @@ export function RoutineEditor({ initial, catalog }: { initial: Routine; catalog:
                 </button>
               </div>
             ))}
-            {days.length < LETTERS.length && (
+            {days.length < DAY_LETTERS.length && (
               <button
                 type="button"
                 onClick={addDay}
@@ -196,35 +177,7 @@ export function RoutineEditor({ initial, catalog }: { initial: Routine; catalog:
         </div>
 
         {/* Add exercise */}
-        <div className="relative z-30 mt-6">
-          <label className="relative block">
-            <span className="sr-only">Adicionar exercício</span>
-            <SearchIcon className="pointer-events-none absolute top-1/2 left-4 size-4 -translate-y-1/2 text-[#8a8a94]" />
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Adicionar exercício (ex.: supino, remada, agachamento)"
-              className={`${inputBase} w-full pl-11`}
-            />
-          </label>
-          {query.trim() && (
-            <ul className="absolute inset-x-0 top-full z-30 mt-2 overflow-hidden rounded-[20px] border border-[#ececec] bg-white shadow-[0_10px_30px_rgba(0,0,0,0.08)]">
-              {results.map((r) => (
-                <li key={r.id}>
-                  <button
-                    type="button"
-                    onClick={() => addExercise(r)}
-                    className="flex w-full items-center justify-between gap-4 px-5 py-3 text-left hover:bg-[#f9f9fb]"
-                  >
-                    <span className="text-[15px] font-medium">{r.name}</span>
-                    <span className="text-[13px] text-[#5b5b66]">{MUSCLE_LABEL[r.muscleGroup]}</span>
-                  </button>
-                </li>
-              ))}
-              {results.length === 0 && <li className="px-5 py-4 text-[14px] text-[#5b5b66]">Nenhum exercício encontrado.</li>}
-            </ul>
-          )}
-        </div>
+        <ExerciseSearch className="mt-6" query={query} onQueryChange={setQuery} results={results} onPick={addExercise} />
 
         {day.exercises.length === 0 ? (
           <p className="mt-4 rounded-[20px] border border-dashed border-[#e5e7eb] px-6 py-10 text-center text-[15px] text-[#5b5b66]">
@@ -280,7 +233,7 @@ export function RoutineEditor({ initial, catalog }: { initial: Routine; catalog:
                             <button
                               type="button"
                               onClick={() => setSets(i, e.plannedSets + 1)}
-                              disabled={e.plannedSets >= MAX_SETS}
+                              disabled={e.plannedSets >= MAX_PLANNED_SETS}
                               aria-label="Mais uma série"
                               className="flex size-8 items-center justify-center rounded-full hover:bg-white disabled:opacity-30"
                             >
@@ -343,97 +296,5 @@ export function RoutineEditor({ initial, catalog }: { initial: Routine; catalog:
       )}
       {toast}
     </>
-  );
-}
-
-/** Exercise name that wraps onto as many lines as it needs, so it is never cut off. */
-function NameField({
-  value,
-  onChange,
-  suggestions,
-  onPick,
-}: {
-  value: string;
-  onChange: (name: string) => void;
-  suggestions: ExerciseRef[];
-  onPick: (ref: ExerciseRef) => void;
-}) {
-  const ref = useRef<HTMLTextAreaElement>(null);
-  const [typing, setTyping] = useState(false);
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    el.style.height = "auto";
-    el.style.height = `${el.scrollHeight}px`;
-  }, [value]);
-  const open = typing && value.trim() !== "";
-  return (
-    <div className="relative">
-      <textarea
-        ref={ref}
-        rows={1}
-        value={value}
-        maxLength={80}
-        onChange={(ev) => {
-          setTyping(true);
-          onChange(ev.target.value.replace(/\s+/g, " "));
-        }}
-        onBlur={() => setTyping(false)}
-        onKeyDown={(ev) => {
-          if (ev.key === "Enter") ev.preventDefault();
-          if (ev.key === "Escape") setTyping(false);
-        }}
-        className="-mx-2 block w-[calc(100%+1rem)] resize-none overflow-hidden rounded-[10px] border border-transparent bg-transparent px-2 py-0.5 text-[16px] leading-[22px] font-semibold outline-none hover:border-[#e5e7eb] focus:border-[#111]"
-      />
-      {open && suggestions.length > 0 && (
-        <ul className="absolute inset-x-0 top-full z-30 mt-1 overflow-hidden rounded-[16px] border border-[#ececec] bg-white shadow-[0_10px_30px_rgba(0,0,0,0.08)]">
-          {suggestions.map((r) => (
-            <li key={r.id}>
-              <button
-                type="button"
-                // mousedown fires before the textarea blurs, so the pick isn't lost.
-                onMouseDown={(ev) => {
-                  ev.preventDefault();
-                  setTyping(false);
-                  onPick(r);
-                }}
-                className="flex w-full items-center justify-between gap-4 px-4 py-2.5 text-left hover:bg-[#f9f9fb]"
-              >
-                <span className="text-[14px] font-medium">{r.name}</span>
-                <span className="text-[12px] font-normal text-[#5b5b66]">{MUSCLE_LABEL[r.muscleGroup]}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
-
-function SortableRow({ id, children }: { id: string; children: (handle: Record<string, unknown>) => React.ReactNode }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
-  return (
-    <li
-      ref={setNodeRef}
-      style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={`rounded-[20px] border border-[#ececec] bg-white p-4 sm:p-5 ${isDragging ? "relative z-10 shadow-[0_10px_30px_rgba(0,0,0,0.15)]" : ""}`}
-    >
-      {children({ ...attributes, ...listeners })}
-    </li>
-  );
-}
-
-function IconButton({ label, disabled, onClick, children }: { label: string; disabled?: boolean; onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      title={label}
-      disabled={disabled}
-      onClick={onClick}
-      className="flex size-9 items-center justify-center rounded-full hover:bg-[#f3f4f6] disabled:opacity-30"
-    >
-      {children}
-    </button>
   );
 }

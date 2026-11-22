@@ -1,6 +1,8 @@
 // Double progression per set position: hit the target → +1 rep; at 12 reps the load goes up and reps
 // reset to 6. Pure functions, no I/O: the services feed them the valid log and persist the result.
 
+import type { TargetChange } from "./reports";
+
 export const REP_MIN = 6;
 export const REP_MAX = 12;
 
@@ -47,4 +49,32 @@ export function computeTargets<T extends LoggedSet>(log: T[], incrementKg: numbe
     targets.set(set.setPosition, { ...next, source: set });
   }
   return targets;
+}
+
+/**
+ * What one session changed in the targets: for each exercise (in the given order), the positions whose target
+ * after the session differs from the target computed without it. `log` is the full valid log of those exercises.
+ */
+export function targetChanges<T extends LoggedSet & { exerciseId: string; sessionId: string }>(
+  log: T[],
+  sessionId: string,
+  exerciseIds: string[],
+  incrementKg: number,
+): TargetChange[] {
+  const changes: TargetChange[] = [];
+  for (const exerciseId of exerciseIds) {
+    const own = log.filter((s) => s.exerciseId === exerciseId);
+    const before = computeTargets(
+      own.filter((s) => s.sessionId !== sessionId),
+      incrementKg,
+    );
+    const after = computeTargets(own, incrementKg);
+    for (const [setPosition, t] of after) {
+      const b = before.get(setPosition);
+      if (!b || b.weight !== t.weight || b.reps !== t.reps) {
+        changes.push({ exerciseId, setPosition, before: b ? { weight: b.weight, reps: b.reps } : null, after: { weight: t.weight, reps: t.reps } });
+      }
+    }
+  }
+  return changes;
 }
