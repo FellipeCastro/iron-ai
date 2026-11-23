@@ -2,14 +2,17 @@
   "name": "iron-ai",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
     "typecheck": "next typegen && tsc --noEmit",
-    "test": "vitest run",
-    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test": "node scripts/vitest.mjs run",
+    "test:integration": "node scripts/vitest.mjs run --config vitest.integration.config.ts",
     "test:all": "npm test && npm run test:integration",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
