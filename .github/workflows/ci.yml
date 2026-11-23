@@ -81,7 +81,9 @@ jobs:
 
   migrate-prod:
     # Aplica as migrações pendentes no banco de produção (Neon) antes de publicar o Trigger.dev.
-    # Roda como owner (DDL); o app usa o role restrito app_runtime. Use a URL direta (sem pooler).
+    # Roda como owner (DDL). Use a URL direta (sem pooler). O app ainda conecta como owner (DATABASE_URL), que
+    # ignora o RLS: as policies da role app_runtime (drizzle/0009) existem, mas nenhum código define `app.user_id`,
+    # então hoje são só defesa futura. O isolamento entre usuários vem dos filtros por user_id no código.
     # O deploy de produção da Vercel só roda depois deste job (ver deploy-vercel): o auto-deploy da main
     # pela integração Git está desligado em vercel.json. Ainda assim, o código antigo segue atendendo
     # durante a migração, então escreva migrações compatíveis com ele (adicionar antes de remover/renomear).

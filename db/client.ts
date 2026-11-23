@@ -8,6 +8,7 @@ if (!process.env.DATABASE_URL) {
   throw new Error("DATABASE_URL is not set");
 }
 
+// DATABASE_URL é o owner hoje: ignora o RLS e nada define `app.user_id`. Cada consulta precisa filtrar por usuário.
 // HTTP driver: one round-trip per query, no pooling needed on serverless.
 // No interactive transactions — use `db.batch([...])` for atomic multi-statement writes.
 export const db = drizzle({ client: neon(process.env.DATABASE_URL), schema });
