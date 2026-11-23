@@ -32,6 +32,8 @@ describe("role app_runtime", () => {
     // Idempotência de pagamentos: escritas só do servidor (webhook do Stripe, startCheckoutAction).
     stripe_events: "",
     idempotent_requests: "",
+    checkout_slots: "",
+    duplicate_cleanups: "",
     exercises: "SIUD",
     routines: "SIUD",
     routine_days: "SIUD",

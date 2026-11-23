@@ -72,11 +72,33 @@ export const stripeState = {
   subscriptions: new Map<string, FakeSubscription>(),
   sessions: new Map<string, FakeCheckoutSession>(),
   charges: new Map<string, FakeCharge>(),
+  /** Pagamentos de fatura: `invoice id` → payment intents pagos (lidos ao estornar uma assinatura duplicada). */
+  invoicePayments: new Map<string, string[]>(),
+  refunds: [] as FakeRefund[],
   idempotency: new Map<string, unknown>(),
   seq: 0,
   /** Faz o método falhar: `stripeState.fail.set("subscriptions.retrieve", new Error("boom"))`. */
   fail: new Map<string, Error>(),
+  /** Tamanho máximo de página das listagens (`null` = o `limit` pedido). Teste de paginação: `stripeState.pageSize = 1`. */
+  pageSize: null as number | null,
 };
+
+/** Como a Stripe: mais novos primeiro, em páginas de `limit`, continuando depois de `starting_after`. */
+function page<T extends { id: string; created?: number }>(items: T[], params: { limit?: number; starting_after?: string } = {}) {
+  const sorted = [...items].sort((a, b) => (b.created ?? 0) - (a.created ?? 0));
+  const start = params.starting_after ? sorted.findIndex((i) => i.id === params.starting_after) + 1 : 0;
+  const size = stripeState.pageSize ?? params.limit ?? 10;
+  const data = sorted.slice(start, start + size);
+  return { data, has_more: start + size < sorted.length };
+}
+
+/** Erro 5xx guardado pelo Stripe para uma idempotencyKey e devolvido de novo (header `idempotent-replayed`). */
+export const stripeServerError = (replayed: boolean) =>
+  Object.assign(new Error("An unknown error occurred"), {
+    type: "StripeAPIError",
+    statusCode: 500,
+    headers: replayed ? { "idempotent-replayed": "true" } : {},
+  });
 
 const failIfSet = (name: string) => {
   const err = stripeState.fail.get(name);
@@ -114,25 +136,63 @@ async function cancelSubscription(id: string, _params?: unknown, options?: { ide
   });
 }
 
-type FakeCheckoutSession = { id: string; url: string | null; customer?: string; status: "open" | "complete" | "expired"; metadata: Record<string, string> };
+type FakeCheckoutSession = {
+  id: string;
+  url: string | null;
+  customer?: string;
+  status: "open" | "complete" | "expired";
+  metadata: Record<string, string>;
+  created: number;
+  subscription?: string | null;
+};
 
 async function createCheckoutSession(
   params: { customer?: string; metadata?: Record<string, string> },
   options?: { idempotencyKey?: string },
 ) {
   failIfSet("checkout.sessions.create");
+  // Como a Stripe: a mesma chave com outros parâmetros (outro plano) é recusada, não devolve a Session guardada.
+  const saved = options?.idempotencyKey && (stripeState.idempotency.get(`checkout:${options.idempotencyKey}`) as FakeCheckoutSession | undefined);
+  if (saved && saved.metadata.plan !== params.metadata?.plan) {
+    throw Object.assign(new Error("Keys for idempotent requests can only be used with the same parameters they were first used with."), { type: "StripeIdempotencyError" });
+  }
   return idempotent(options, "checkout", () => {
     const id = `cs_test_${++stripeState.seq}`;
-    const session: FakeCheckoutSession = { id, url: `https://checkout.stripe.test/${id}`, customer: params.customer, status: "open", metadata: params.metadata ?? {} };
+    const session: FakeCheckoutSession = {
+      id,
+      url: `https://checkout.stripe.test/${id}`,
+      customer: params.customer,
+      status: "open",
+      metadata: params.metadata ?? {},
+      created: Math.floor(Date.now() / 1000),
+    };
     stripeState.sessions.set(id, session);
     return session;
   });
 }
 
+type FakeRefund = { id: string; payment_intent: string; amount: number; metadata: Record<string, string> };
+
+/** Como a Stripe: estornar de novo o mesmo pagamento (sem a mesma idempotencyKey) é erro `charge_already_refunded`. */
+async function createRefund(params: { payment_intent: string; metadata?: Record<string, string> }, options?: { idempotencyKey?: string }) {
+  failIfSet("refunds.create");
+  return idempotent(options, "refund", () => {
+    if (stripeState.refunds.some((r) => r.payment_intent === params.payment_intent)) {
+      throw Object.assign(new Error(`Charge for ${params.payment_intent} has already been refunded`), { code: "charge_already_refunded" });
+    }
+    const refund = { id: `re_${++stripeState.seq}`, payment_intent: params.payment_intent, amount: 1000, metadata: params.metadata ?? {} };
+    stripeState.refunds.push(refund);
+    return refund;
+  });
+}
+
 /** Como a Stripe: só sessões abertas têm `url`, e só uma sessão aberta pode ser expirada. */
-async function listCheckoutSessions({ customer, status }: { customer?: string; status?: string }) {
+async function listCheckoutSessions({ customer, status, ...params }: { customer?: string; status?: string; limit?: number; starting_after?: string }) {
   failIfSet("checkout.sessions.list");
-  return { data: [...stripeState.sessions.values()].filter((s) => (!customer || s.customer === customer) && (!status || s.status === status)) };
+  return page(
+    [...stripeState.sessions.values()].filter((s) => (!customer || s.customer === customer) && (!status || s.status === status)),
+    params,
+  );
 }
 
 async function expireCheckoutSession(id: string) {
@@ -148,7 +208,7 @@ async function retrieveCheckoutSession(id: string): Promise<{ id: string; custom
   failIfSet("checkout.sessions.retrieve");
   // Sessões criadas pelo próprio Stripe falso existem; qualquer outra precisa ser configurada no teste.
   const known = stripeState.sessions.get(id);
-  if (known) return { id, customer: known.customer ?? null, subscription: null, status: known.status };
+  if (known) return { id, customer: known.customer ?? null, subscription: known.subscription ?? null, status: known.status };
   throw new Error(`Sessão ${id} não configurada no Stripe falso`);
 }
 
@@ -174,9 +234,13 @@ export const stripeMock = {
     }),
   },
   subscriptions: {
-    list: vi.fn(async ({ customer }: { customer: string }) => {
+    list: vi.fn(async ({ customer, ...params }: { customer: string; limit?: number; starting_after?: string }) => {
       failIfSet("subscriptions.list");
-      return { data: [...stripeState.subscriptions.values()].filter((s) => s.customer === customer) };
+      // Como a Stripe: sem `status`, a listagem não traz as canceladas.
+      return page(
+        [...stripeState.subscriptions.values()].filter((s) => s.customer === customer && s.status !== "canceled"),
+        params,
+      );
     }),
     retrieve: vi.fn(async (id: string) => {
       failIfSet("subscriptions.retrieve");
@@ -204,6 +268,18 @@ export const stripeMock = {
     },
   },
   charges: { retrieve: vi.fn(retrieveCharge) },
+  invoicePayments: {
+    list: vi.fn(async ({ invoice }: { invoice: string }) => ({
+      data: (stripeState.invoicePayments.get(invoice) ?? []).map((pi) => ({ status: "paid", payment: { type: "payment_intent", payment_intent: pi } })),
+    })),
+  },
+  refunds: {
+    create: vi.fn(createRefund),
+    // O Stripe falso não liga estorno a cobrança: devolve todos (a cobrança `ch_x` é estornada via pagamento `pi_x`).
+    list: vi.fn(async ({ charge, ...params }: { charge: string; limit?: number; starting_after?: string }) =>
+      page(stripeState.refunds.filter((r) => r.payment_intent === charge.replace(/^ch_/, "pi_")), params),
+    ),
+  },
 };
 
 export const stripeModule = { stripe: () => stripeMock };
@@ -218,6 +294,8 @@ export function putSubscription(
     object: "subscription",
     cancel_at_period_end: false,
     trial_end: null,
+    created: now,
+    latest_invoice: null,
     items: { data: [{ price: { id: priceId }, current_period_end: now + 30 * 86400, current_period_start: now }] },
     ...sub,
   } as FakeSubscription;
@@ -361,8 +439,11 @@ export function resetMocks() {
   stripeState.subscriptions.clear();
   stripeState.sessions.clear();
   stripeState.charges.clear();
+  stripeState.invoicePayments.clear();
+  stripeState.refunds.length = 0;
   stripeState.idempotency.clear();
   stripeState.fail.clear();
+  stripeState.pageSize = null;
   stripeState.seq = 0;
   telegramCalls.length = 0;
   telegramState.fail.clear();
@@ -374,5 +455,6 @@ export function resetMocks() {
   stripeMock.checkout.sessions.retrieve.mockReset().mockImplementation(retrieveCheckoutSession);
   stripeMock.charges.retrieve.mockReset().mockImplementation(retrieveCharge);
   stripeMock.subscriptions.cancel.mockReset().mockImplementation(cancelSubscription);
+  stripeMock.refunds.create.mockReset().mockImplementation(createRefund);
   vi.clearAllMocks();
 }

@@ -129,6 +129,40 @@ export const idempotentRequests = pgTable(
   (t) => [primaryKey({ columns: [t.userId, t.scope, t.key] }), index("idempotent_requests_created_idx").on(t.createdAt)],
 ).enableRLS();
 
+// One row per user that serializes opening Stripe Checkout (lib/services/billing.ts), whatever idempotency key each
+// request carries (two tabs, a fresh key after an expired one). A request holds the short lease (`leaseToken`) while it
+// lists, expires and creates Sessions; the others wait. `generation` IS the Stripe idempotency key of the create, so
+// even a request that outlived its lease and a takeover share one key: Stripe opens at most one Session per
+// generation. It only advances once every open Session was confirmed closed. `sessionId` is the Session opened (or
+// reused) under the current generation: when set, the next attempt advances before creating. Server-only.
+export const checkoutSlots = pgTable("checkout_slots", {
+  userId: uuid("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  generation: integer("generation").notNull().default(0),
+  sessionId: text("session_id"),
+  leaseToken: uuid("lease_token"),
+  leasedAt: timestamp("leased_at", { withTimezone: true }),
+}).enableRLS();
+
+// A duplicate live subscription being cancelled and refunded (lib/subscription-sync.ts cancelDuplicateSubscriptions).
+// Recorded before the cancel, so a retry still finishes the refund and sync after the subscription stopped being
+// live. `operationId` (the Stripe event that recorded it) builds the Stripe idempotency keys and owns the owner alert;
+// `completedAt` null = refund or sync still owed. Server-only, like stripe_events.
+export const duplicateCleanups = pgTable(
+  "duplicate_cleanups",
+  {
+    subscriptionId: text("subscription_id").primaryKey(),
+    customerId: text("customer_id").notNull(),
+    keptSubscriptionId: text("kept_subscription_id").notNull(),
+    operationId: text("operation_id").notNull(),
+    refundedAmount: integer("refunded_amount"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+  },
+  (t) => [index("duplicate_cleanups_customer_idx").on(t.customerId), index("duplicate_cleanups_operation_idx").on(t.operationId)],
+).enableRLS();
+
 export const telegramLinks = pgTable("telegram_links", {
   userId: uuid("user_id")
     .primaryKey()
