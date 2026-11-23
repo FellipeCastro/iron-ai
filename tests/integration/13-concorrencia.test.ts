@@ -3,9 +3,9 @@ import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { startCheckoutAction } from "@/app/(app)/actions";
 import { POST } from "@/app/api/telegram/webhook/route";
-import { aiUsage, aiUsageUser, appliedUpdates, db, exercises, messages, sessions, setEntries, setTargets, subscriptions, telegramLinks, usageCounters, users } from "@/db";
+import { aiReservations, aiUsage, aiUsageUser, appliedUpdates, db, exercises, messages, sessions, setEntries, setTargets, subscriptions, telegramLinks, usageCounters, users } from "@/db";
 import { handleUpdate } from "@/lib/bot/handle-update";
-import { reserveAiBudget, reserveFallback, UserBudgetExceededError } from "@/lib/limits";
+import { BudgetExceededError, reserveAiBudget, reserveFallback, UserBudgetExceededError } from "@/lib/limits";
 import { syncSubscription } from "@/lib/services/billing";
 import { addSetToSession, deleteSetById, editSetById } from "@/lib/services/workout";
 import { renameExerciseForUser } from "@/lib/services/routine";
@@ -283,8 +283,8 @@ describe("#4 orçamento de IA reservado antes da chamada", () => {
       await new Promise((r) => setTimeout(r, 300));
       return { output_parsed: openaiState.parsed, output_text: JSON.stringify(openaiState.parsed), usage: { input_tokens: 1000, output_tokens: 500 } };
     });
-    // Falta 0,001 para o teto de US$ 5: a primeira reserva passa, as outras já encontram o teto atingido.
-    await db.insert(aiUsage).values({ date: today(), requests: 100, costUsd: 4.999 });
+    // Cabe exatamente 1 estimativa (0,003) até o teto de US$ 5: a primeira reserva passa, as outras passariam do teto.
+    await db.insert(aiUsage).values({ date: today(), requests: 100, costUsd: 4.997 });
 
     const results = await Promise.all([101, 102, 103, 104, 105].map((chat) => handle(telegramTextUpdate(chat, "supino 80x8"))));
 
@@ -292,7 +292,7 @@ describe("#4 orçamento de IA reservado antes da chamada", () => {
     expect(results.filter((r) => r.status === "processed")).toHaveLength(1);
     expect(results.filter((r) => r.status === "failed")).toHaveLength(4);
     // A estimativa (0,003) foi trocada pelo custo real (0,003): o gasto do dia é só o que foi de fato gasto.
-    expect((await globalRow()).costUsd).toBeCloseTo(5.002, 4);
+    expect((await globalRow()).costUsd).toBeCloseTo(5, 4);
     expect((await globalRow()).requests).toBe(101);
   });
 
@@ -310,7 +310,7 @@ describe("#4 orçamento de IA reservado antes da chamada", () => {
 
   it("quando 3 reservas do mesmo usuário chegam juntas e só cabe 1 no teto dele, então 1 passa, 2 recebem UserBudgetExceededError e o global só guarda a que passou", async () => {
     const user = await linkedUser(10);
-    await db.insert(aiUsageUser).values({ userId: user.id, date: today(), requests: 50, costUsd: 0.2495 });
+    await db.insert(aiUsageUser).values({ userId: user.id, date: today(), requests: 50, costUsd: 0.2465 });
 
     const results = await Promise.allSettled([0, 1, 2].map(() => reserveAiBudget(user.id, 0.003)));
 
@@ -318,9 +318,43 @@ describe("#4 orçamento de IA reservado antes da chamada", () => {
     const rejected = results.filter((r): r is PromiseRejectedResult => r.status === "rejected");
     expect(rejected).toHaveLength(2);
     expect(rejected.every((r) => r.reason instanceof UserBudgetExceededError)).toBe(true);
-    expect((await userRow(user.id)).costUsd).toBeCloseTo(0.2525, 4);
+    expect((await userRow(user.id)).costUsd).toBeCloseTo(0.2495, 4);
     // As 2 reservas que o teto do usuário barrou devolveram o que tinham tomado do global.
     expect((await globalRow()).costUsd).toBeCloseTo(0.003, 4);
+  });
+
+  it("quando a estimativa passaria do teto do usuário, então a reserva é recusada antes de o teto ser atingido e nada é gravado", async () => {
+    const user = await linkedUser(10);
+    // Abaixo do teto (0,25), mas 0,248 + 0,003 passaria dele.
+    await db.insert(aiUsageUser).values({ userId: user.id, date: today(), requests: 50, costUsd: 0.248 });
+
+    await expect(reserveAiBudget(user.id, 0.003)).rejects.toBeInstanceOf(UserBudgetExceededError);
+
+    expect((await userRow(user.id)).costUsd).toBeCloseTo(0.248, 4);
+    expect((await globalRow()).costUsd).toBe(0);
+    expect(await db.select().from(aiReservations)).toHaveLength(0);
+  });
+
+  it("quando a estimativa passaria do teto global, então a reserva é recusada e nem o usuário nem ai_reservations mudam", async () => {
+    const user = await linkedUser(10);
+    await db.insert(aiUsage).values({ date: today(), requests: 100, costUsd: 4.998 });
+
+    await expect(reserveAiBudget(user.id, 0.003)).rejects.toBeInstanceOf(BudgetExceededError);
+
+    expect((await globalRow()).costUsd).toBeCloseTo(4.998, 4);
+    expect((await userRow(user.id)).costUsd).toBe(0);
+    expect(await db.select().from(aiReservations)).toHaveLength(0);
+  });
+
+  it("quando 5 reservas de usuários diferentes chegam juntas e cabem só 2 no teto global, então exatamente 2 passam e o teto não é ultrapassado", async () => {
+    const users = await Promise.all([1, 2, 3, 4, 5].map((i) => linkedUser(200 + i)));
+    await db.insert(aiUsage).values({ date: today(), requests: 100, costUsd: 4.994 });
+
+    const results = await Promise.allSettled(users.map((u) => reserveAiBudget(u.id, 0.003)));
+
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(2);
+    expect((await globalRow()).costUsd).toBeCloseTo(5, 4);
+    expect(await db.select().from(aiReservations)).toHaveLength(2);
   });
 
   it("quando 3 reservas de fallback chegam juntas e só cabe 1 no teto do fallback, então só 1 é concedida", async () => {

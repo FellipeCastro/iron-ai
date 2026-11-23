@@ -111,10 +111,11 @@ export class UserBudgetExceededError extends Error {
   }
 }
 
-// A paid call is first RESERVED: an estimate is added to the day's cost in one atomic statement that only succeeds
-// while the ceiling is not reached. Checking and then paying lets every call in flight pass the same check (a
-// burst across users overshoots the global ceiling by the burst size). recordAiUsage then swaps the estimate for
-// the real cost, and releaseAiBudget gives it back when the call fails. Estimates keep up to 4 decimals (the column scale).
+// A paid call is first RESERVED: an estimate is added to the global and the user's daily cost, together with its
+// ai_reservations row, in one transaction that only succeeds while `cost + estimate <= ceiling` holds for both.
+// Checking and then paying lets every call in flight pass the same check (a burst overshoots the ceiling by the
+// burst size). recordAiUsage then swaps the estimate for the real cost, and releaseAiBudget gives it back when the
+// call fails. Estimates keep up to 4 decimals (the column scale).
 export const parseEstimateUsd = () => numberEnv("OPENAI_PARSE_ESTIMATE_USD", 0.003);
 export const fallbackEstimateUsd = () => numberEnv("OPENAI_FALLBACK_ESTIMATE_USD", 0.02);
 
@@ -129,40 +130,50 @@ export type AiReservation = {
   fallbackUsd: number;
 };
 
-/** Reserves `usd` against the global and the user's daily ceilings. Throws when either is already reached. */
+const rowsOf = (res: unknown) => (Array.isArray(res) ? res : (res as { rows: unknown[] }).rows) as Record<string, unknown>[];
+
+/**
+ * Reserves `usd` against the global and the user's daily ceilings: either both holds and the reservation row commit,
+ * or nothing does. Throws when `cost + usd` would pass either ceiling (the global one is checked first).
+ */
 export async function reserveAiBudget(userId: string, usd: number): Promise<AiReservation> {
   const date = utcDate();
-  // Row exists: add the estimate only while under the ceiling. No row yet: this insert creates it.
-  const [global] = await db
-    .insert(aiUsage)
-    .values({ date, costUsd: usd })
-    .onConflictDoUpdate({
-      target: aiUsage.date,
-      set: { costUsd: sql`${aiUsage.costUsd} + ${usd}` },
-      setWhere: sql`${aiUsage.costUsd} < ${dailyBudgetUsd()}`,
-    })
-    .returning({ date: aiUsage.date });
-  if (!global) throw new BudgetExceededError();
-
-  const [user] = await db
-    .insert(aiUsageUser)
-    .values({ userId, date, costUsd: usd })
-    .onConflictDoUpdate({
-      target: [aiUsageUser.userId, aiUsageUser.date],
-      set: { costUsd: sql`${aiUsageUser.costUsd} + ${usd}` },
-      setWhere: sql`${aiUsageUser.costUsd} < ${userDailyBudgetUsd()}`,
-    })
-    .returning({ date: aiUsageUser.date });
-  if (!user) {
-    await db.update(aiUsage).set({ costUsd: sql`${aiUsage.costUsd} - ${usd}` }).where(eq(aiUsage.date, date));
-    throw new UserBudgetExceededError();
-  }
-  // Persisted last: if the process dies before this, the hold has no row to recover from (a window of two statements).
-  const [row] = await db.insert(aiReservations).values({ userId, date, usd }).returning({ id: aiReservations.id });
-  return { id: row.id, date, userId, usd, fallbackUsd: 0 };
+  const [, , res] = await db.batch([
+    // Today's rows must exist before the reservation locks them (a row inserted inside the CTE is not visible to
+    // its sibling statements). Zero-cost rows change nothing.
+    db.insert(aiUsage).values({ date }).onConflictDoNothing({ target: aiUsage.date }),
+    db.insert(aiUsageUser).values({ userId, date }).onConflictDoNothing({ target: [aiUsageUser.userId, aiUsageUser.date] }),
+    // One statement: both rows are locked (global first, then user, the same order as releaseAiBudget), the
+    // ceilings are checked against the locked, current values, and the two holds and the reservation row are
+    // written only when both fit. Concurrent reservations wait on the locks and see each other's holds.
+    db.execute(sql`
+      with g as (
+        select cost_usd from ai_usage where date = ${date}::date for update
+      ), u as (
+        select cost_usd from ai_usage_user where user_id = ${userId}::uuid and date = ${date}::date for update
+      ), fits as (
+        select (select cost_usd from g) + ${usd}::numeric <= ${dailyBudgetUsd()}::numeric as global_ok,
+               (select cost_usd from u) + ${usd}::numeric <= ${userDailyBudgetUsd()}::numeric as user_ok
+      ), held_global as (
+        update ai_usage set cost_usd = cost_usd + ${usd}::numeric
+        where date = ${date}::date and (select global_ok and user_ok from fits)
+        returning 1
+      ), held_user as (
+        update ai_usage_user set cost_usd = cost_usd + ${usd}::numeric
+        where user_id = ${userId}::uuid and date = ${date}::date and (select global_ok and user_ok from fits)
+        returning 1
+      ), reservation as (
+        insert into ai_reservations (user_id, date, usd)
+        select ${userId}::uuid, ${date}::date, ${usd}::numeric where (select global_ok and user_ok from fits)
+        returning id
+      )
+      select global_ok, user_ok, (select id from reservation) as id from fits`),
+  ]);
+  const row = rowsOf(res)[0] as { global_ok: boolean; user_ok: boolean; id: string | null } | undefined;
+  if (!row?.global_ok) throw new BudgetExceededError();
+  if (!row.user_ok) throw new UserBudgetExceededError();
+  return { id: row.id!, date, userId, usd, fallbackUsd: 0 };
 }
-
-const rowsOf = (res: unknown) => (Array.isArray(res) ? res : (res as { rows: unknown[] }).rows) as Record<string, unknown>[];
 
 /** Reserves `usd` against today's fallback ceiling. False when it is already spent (the fallback bills ~7x the primary). */
 export async function reserveFallback(reservation: AiReservation, usd: number) {

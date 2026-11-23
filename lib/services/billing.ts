@@ -9,7 +9,6 @@ import { CHECKOUT_URL, DASHBOARD_URL, SETTINGS_URL } from "@/lib/routes";
 import { ACCESS_STATUSES, userHasAccess } from "@/lib/services/access";
 import { priceId, stripe, type Plan } from "@/lib/stripe";
 import { listAll } from "@/lib/stripe-client";
-import { deleteStripeCustomerById } from "@/lib/stripe-customer";
 import { syncSubscription } from "@/lib/subscription-sync";
 
 // The sync itself lives in lib/subscription-sync.ts so the Trigger.dev worker can run it too.
@@ -326,9 +325,4 @@ async function portalUrl(customer: string) {
 /** Customer Portal: cancel, switch plan, update the card, invoices. */
 export async function createPortalUrl(user: User) {
   return portalUrl(await ensureCustomer(user));
-}
-
-/** Deleting the customer cancels its subscriptions immediately, so nobody is billed after deleting the account. */
-export async function deleteStripeCustomer(user: User) {
-  if (user.stripeCustomerId) await deleteStripeCustomerById(user.stripeCustomerId);
 }

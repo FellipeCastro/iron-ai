@@ -1,7 +1,7 @@
 import { concurrencyLimit, task } from "@trigger.dev/sdk";
 import { eq } from "drizzle-orm";
 import { db, users } from "@/db/client";
-import { deleteStripeCustomerById } from "@/lib/stripe-customer";
+import { deleteAccount } from "@/lib/services/account";
 import { log } from "./log";
 
 export type ClerkUserPayload = { clerkId: string };
@@ -52,13 +52,9 @@ export const clerkUserDeleted = task({
       return { deleted: false };
     }
 
-    // Billing first, like the account deletion in the app: deleting the Stripe customer cancels its subscriptions,
-    // so nobody keeps being charged for an account that no longer exists. If Stripe fails the run throws and
+    // Same deletion as the app's (Stripe customer, then the user row). If Stripe fails the run throws and
     // Trigger.dev retries, with the user still in the database (the customer id is needed on the retry).
-    if (user.stripeCustomerId) await deleteStripeCustomerById(user.stripeCustomerId);
-
-    // Hard delete; every user-owned table cascades from `users`.
-    await db.delete(users).where(eq(users.id, user.id));
+    await deleteAccount(user);
 
     log.info("User deleted", { clerk_id: clerkId, user_id: user.id, stripe_customer_deleted: Boolean(user.stripeCustomerId) });
     return { deleted: true };

@@ -8,10 +8,11 @@ import { z } from "zod";
 import { currentAppUser } from "@/lib/data/load";
 import { MAX_DURATION_MIN } from "@/lib/engine/duration";
 import { DAY_LETTERS, MAX_PLANNED_SETS, renameExerciseForUser, saveRoutine } from "@/lib/services/routine";
-import { CheckoutInProgressError, createCheckoutUrl, createPortalUrl, deleteStripeCustomer, usableCheckoutUrl } from "@/lib/services/billing";
+import { BillingDeletionError, deleteAccount } from "@/lib/services/account";
+import { CheckoutInProgressError, createCheckoutUrl, createPortalUrl, usableCheckoutUrl } from "@/lib/services/billing";
 import { IdempotencyInProgressError, IdempotencyKeyReusedError, runOnce } from "@/lib/idempotency";
 import { userHasAccess } from "@/lib/services/access";
-import { createLinkToken, deleteUserRow, unlinkTelegram, updateSettings } from "@/lib/services/users";
+import { createLinkToken, unlinkTelegram, updateSettings } from "@/lib/services/users";
 import { addSetToSession, deleteExerciseFromSession, deleteSessionById, deleteSetById, editSetById, setSessionDuration } from "@/lib/services/workout";
 
 // Server Actions for the (app) pages. Each one resolves the signed-in user itself (they are reachable
@@ -290,14 +291,14 @@ export async function openBillingPortalAction(): Promise<ActionResult<{ url: str
 export async function deleteAccountAction(): Promise<ActionResult> {
   return traced("deleteAccountAction", async () => {
     const user = await currentAppUser();
-    // Billing first: if Stripe fails, nothing was deleted yet and the user can retry.
     try {
-      await deleteStripeCustomer(user);
+      await deleteAccount(user);
     } catch (err) {
-      Sentry.captureException(err, { tags: { action: "delete_account_billing" } });
+      if (!(err instanceof BillingDeletionError)) throw err;
+      // Nothing was deleted yet: the user can retry.
+      Sentry.captureException(err.cause, { tags: { action: "delete_account_billing" } });
       return fail("Não conseguimos cancelar sua assinatura. Tente de novo.");
     }
-    await deleteUserRow(user.id);
     try {
       const clerk = await clerkClient();
       await clerk.users.deleteUser(user.clerkId);

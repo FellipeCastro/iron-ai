@@ -35,9 +35,6 @@ export const updateSettings = (
   settings: { timezone: string; reminderTime: string | null; trainingDays: number[]; weightIncrementKg: number },
 ) => db.update(users).set(settings).where(eq(users.id, userId));
 
-/** Hard delete of the user row: every user table cascades from `users`. */
-export const deleteUserRow = (userId: string) => db.delete(users).where(eq(users.id, userId));
-
 // ---------- Deep-link tokens ----------
 
 export const LINK_TOKEN_TTL_MIN = 15;
