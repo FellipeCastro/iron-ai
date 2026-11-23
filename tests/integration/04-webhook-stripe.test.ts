@@ -45,8 +45,9 @@ describe("POST /api/webhooks/stripe — assinatura do webhook", () => {
 });
 
 describe("POST /api/webhooks/stripe — assinaturas", () => {
-  it("quando chega customer.subscription.created de um cliente conhecido, então grava status, price, current_period_end, trial_end e cancel_at_period_end", async () => {
+  it("quando chega customer.subscription.created de um cliente conhecido, então grava status, price, current_period_start/end, trial_end e cancel_at_period_end", async () => {
     const user = await customer();
+    const periodStart = unix(Date.now());
     const periodEnd = unix(Date.now() + 30 * DAY);
     const trialEnd = unix(Date.now() + 7 * DAY);
     putSubscription({
@@ -55,7 +56,7 @@ describe("POST /api/webhooks/stripe — assinaturas", () => {
       status: "trialing",
       trial_end: trialEnd,
       cancel_at_period_end: true,
-      items: { data: [{ price: { id: process.env.STRIPE_PRICE_ANNUAL }, current_period_end: periodEnd }] } as never,
+      items: { data: [{ price: { id: process.env.STRIPE_PRICE_ANNUAL }, current_period_start: periodStart, current_period_end: periodEnd }] } as never,
     });
 
     const res = await send(subEvent("customer.subscription.created", "sub_1"));
@@ -71,6 +72,7 @@ describe("POST /api/webhooks/stripe — assinaturas", () => {
       },
     ]);
     const [row] = await rows();
+    expect(row.currentPeriodStart?.getTime()).toBe(periodStart * 1000);
     expect(row.currentPeriodEnd.getTime()).toBe(periodEnd * 1000);
     expect(row.trialEnd?.getTime()).toBe(trialEnd * 1000);
   });

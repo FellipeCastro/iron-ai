@@ -268,6 +268,13 @@ export const stripeMock = {
     },
   },
   charges: { retrieve: vi.fn(retrieveCharge) },
+  invoices: {
+    // Configure por teste: `stripeMock.invoices.retrieve.mockResolvedValueOnce({ status: "open", hosted_invoice_url: ... })`.
+    retrieve: vi.fn(async (id: string): Promise<{ id: string; status: string; hosted_invoice_url: string | null }> => {
+      failIfSet("invoices.retrieve");
+      throw new Error(`Fatura ${id} não configurada no Stripe falso`);
+    }),
+  },
   invoicePayments: {
     list: vi.fn(async ({ invoice }: { invoice: string }) => ({
       data: (stripeState.invoicePayments.get(invoice) ?? []).map((pi) => ({ status: "paid", payment: { type: "payment_intent", payment_intent: pi } })),

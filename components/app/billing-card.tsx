@@ -64,6 +64,32 @@ export function BillingCard({ billing, timezone, checkout }: { billing: Billing;
     );
   }
 
+  // Grace ended with the card still failing. The subscription still exists in Stripe, so a new plan would bill twice:
+  // checkout sends past_due users to their open invoice instead (lib/services/billing.ts, openCheckout).
+  if (billing.status === "past_due") {
+    return (
+      <Card>
+        <CardTitle
+          title="Assinatura"
+          subtitle={billing.plan ? `Plano ${PLAN_NAME[billing.plan]}` : "Iron AI"}
+          action={<Badge tone="warn">Acesso suspenso</Badge>}
+        />
+        <p className="mt-4 text-[14px] text-[#3f3f46]">
+          Não conseguimos cobrar seu cartão e o acesso foi suspenso. Pague a fatura pendente para voltar a usar o Iron AI.
+        </p>
+        <div className="mt-6 flex flex-wrap gap-3">
+          <button type="button" disabled={pending} onClick={() => go(() => startCheckoutAction({ plan: billing.plan ?? "monthly" }))} className={buttonPrimary}>
+            Pagar fatura pendente
+          </button>
+          <button type="button" disabled={pending} onClick={() => go(openBillingPortalAction)} className={buttonSecondary}>
+            Gerenciar assinatura
+          </button>
+        </div>
+        {toast}
+      </Card>
+    );
+  }
+
   return (
     <Card>
       <CardTitle

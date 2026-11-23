@@ -79,6 +79,9 @@ export const subscriptions = pgTable("subscriptions", {
   // Stripe's status string: trialing, active, past_due, canceled, unpaid, incomplete, ...
   status: text("status").notNull(),
   priceId: text("price_id").notNull(),
+  // Start of the current period. On a failed renewal Stripe has already moved the period forward, so for past_due
+  // this is when the unpaid period began: the past_due grace counts from here. Null on rows synced before it existed.
+  currentPeriodStart: timestamp("current_period_start", { withTimezone: true }),
   currentPeriodEnd: timestamp("current_period_end", { withTimezone: true }).notNull(),
   trialEnd: timestamp("trial_end", { withTimezone: true }),
   cancelAtPeriodEnd: boolean("cancel_at_period_end").notNull().default(false),

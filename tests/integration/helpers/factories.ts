@@ -16,7 +16,7 @@ export async function createUser(overrides: Partial<typeof users.$inferInsert> =
 
 type SubscriptionOverrides = Partial<Omit<typeof subscriptions.$inferInsert, "userId">>;
 
-/** Assinatura local. Por padrão: `active`, vence em 30 dias. */
+/** Assinatura local. Por padrão: `active`, período começando agora e vencendo em 30 dias. */
 export async function createSubscription(userId: string, overrides: SubscriptionOverrides = {}) {
   const [sub] = await db
     .insert(subscriptions)
@@ -25,6 +25,7 @@ export async function createSubscription(userId: string, overrides: Subscription
       stripeSubscriptionId: `sub_${randomUUID()}`,
       status: "active",
       priceId: process.env.STRIPE_PRICE_MONTHLY!,
+      currentPeriodStart: new Date(),
       currentPeriodEnd: new Date(Date.now() + 30 * 86_400_000),
       ...overrides,
     })

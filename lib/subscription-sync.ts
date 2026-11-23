@@ -41,6 +41,7 @@ export async function syncSubscription(subscriptionId: string): Promise<string |
       stripeSubscriptionId: sub.id,
       status: sub.status,
       priceId: item.price.id,
+      currentPeriodStart: new Date(item.current_period_start * 1000),
       currentPeriodEnd: new Date(item.current_period_end * 1000),
       trialEnd: sub.trial_end ? new Date(sub.trial_end * 1000) : null,
       cancelAtPeriodEnd: sub.cancel_at_period_end,
