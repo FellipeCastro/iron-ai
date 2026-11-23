@@ -82,6 +82,42 @@ describe("startCheckoutAction", () => {
     expect(await subs()).toMatchObject([{ userId: user.id, stripeSubscriptionId: "sub_paid", status: "active" }]);
   });
 
+  describe("quando a carência do past_due acabou (a assinatura ainda existe no Stripe)", () => {
+    const expiredPastDue = async () => {
+      const user = await createUser({ stripeCustomerId: "cus_late" });
+      const now = Math.floor(Date.now() / 1000);
+      putSubscription({
+        id: "sub_late",
+        customer: "cus_late",
+        status: "past_due",
+        latest_invoice: "in_late",
+        items: { data: [{ price: { id: process.env.STRIPE_PRICE_MONTHLY! }, current_period_start: now - 8 * 86400, current_period_end: now + 22 * 86400 }] },
+      } as never);
+      signIn(user.clerkId);
+      return user;
+    };
+
+    it("então devolve a página da fatura em aberto, não o dashboard (que mandaria de volta para /assinar), e NÃO cria outro Checkout", async () => {
+      await expiredPastDue();
+      stripeMock.invoices.retrieve.mockResolvedValueOnce({ id: "in_late", status: "open", hosted_invoice_url: "https://invoice.stripe.test/in_late" });
+
+      const result = await checkout("annual");
+
+      expect(result).toEqual({ ok: true, data: { url: "https://invoice.stripe.test/in_late" } });
+      expect(stripeMock.checkout.sessions.create).not.toHaveBeenCalled();
+    });
+
+    it("sem fatura em aberto, então devolve o Customer Portal", async () => {
+      await expiredPastDue();
+      stripeMock.invoices.retrieve.mockResolvedValueOnce({ id: "in_late", status: "paid", hosted_invoice_url: null });
+
+      const result = await checkout("monthly");
+
+      expect(result).toMatchObject({ ok: true, data: { url: expect.stringContaining("portal.stripe.test/cus_late") } });
+      expect(stripeMock.checkout.sessions.create).not.toHaveBeenCalled();
+    });
+  });
+
   it("quando o usuário não tinha cliente Stripe, então cria 1 cliente e salva o id antes de abrir o Checkout", async () => {
     const user = await createUser();
     signIn(user.clerkId);

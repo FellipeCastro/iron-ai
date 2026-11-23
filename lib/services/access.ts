@@ -13,6 +13,12 @@ const PERIOD_BOUND_STATUSES = ["trialing", "active"];
 /**
  * How long past_due keeps access. Counted from the start of the unpaid period: on renewal Stripe moves the period
  * forward before charging, so a past_due subscription's current_period_end is the end of a period nobody paid for.
+ *
+ * Policy: one grace window per unpaid billing period, not per delinquency. If Stripe is still retrying when the next
+ * period starts, current_period_start moves forward and a new window opens. That can only happen when the Stripe
+ * retry schedule (Dashboard > Billing > failed payments) is longer than a billing period, so keep it shorter and end
+ * the subscription (cancel or unpaid) after the final retry. Once the window closes, the user pays the open invoice
+ * through the billing flow (lib/services/billing.ts, recoveryUrl).
  */
 export const PAST_DUE_GRACE_MS = 7 * 86_400_000;
 

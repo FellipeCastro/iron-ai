@@ -154,6 +154,9 @@ async function openCheckout(user: User, plan: Plan, customer: string, slot: Chec
   const current = subscriptions.find((s) => ACCESS_STATUSES.includes(s.status));
   if (current) {
     await syncSubscription(current.id);
+    // A past_due one whose grace ended: a new Checkout would bill twice, and the dashboard would send the user back
+    // here. Paying its open invoice is what brings the subscription (and access) back.
+    if (current.status === "past_due" && !(await userHasAccess(user.id))) return { url: await recoveryUrl(current, customer), sessionId: null };
     return dashboard;
   }
 
@@ -301,11 +304,28 @@ export async function usableCheckoutUrl(user: User, savedUrl: string): Promise<s
   return (await userHasAccess(user.id)) ? `${siteUrl()}${DASHBOARD_URL}` : null;
 }
 
-/** Customer Portal: cancel, switch plan, update the card, invoices. */
-export async function createPortalUrl(user: User) {
-  const customer = await ensureCustomer(user);
+/**
+ * Where a past_due subscriber pays: the hosted page of the latest invoice while it is open (paying it makes the
+ * subscription active again), otherwise the Customer Portal (update the card, see invoices).
+ */
+async function recoveryUrl(subscription: Stripe.Subscription, customer: string) {
+  const { latest_invoice: latest } = subscription;
+  const invoiceId = typeof latest === "string" ? latest : latest?.id;
+  if (invoiceId) {
+    const invoice = await stripe().invoices.retrieve(invoiceId);
+    if (invoice.status === "open" && invoice.hosted_invoice_url) return invoice.hosted_invoice_url;
+  }
+  return portalUrl(customer);
+}
+
+async function portalUrl(customer: string) {
   const session = await stripe().billingPortal.sessions.create({ customer, return_url: `${siteUrl()}${SETTINGS_URL}` });
   return session.url;
+}
+
+/** Customer Portal: cancel, switch plan, update the card, invoices. */
+export async function createPortalUrl(user: User) {
+  return portalUrl(await ensureCustomer(user));
 }
 
 /** Deleting the customer cancels its subscriptions immediately, so nobody is billed after deleting the account. */
