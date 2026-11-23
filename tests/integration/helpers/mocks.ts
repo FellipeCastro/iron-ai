@@ -79,7 +79,26 @@ export const stripeState = {
   seq: 0,
   /** Faz o método falhar: `stripeState.fail.set("subscriptions.retrieve", new Error("boom"))`. */
   fail: new Map<string, Error>(),
+  /** Tamanho máximo de página das listagens (`null` = o `limit` pedido). Teste de paginação: `stripeState.pageSize = 1`. */
+  pageSize: null as number | null,
 };
+
+/** Como a Stripe: mais novos primeiro, em páginas de `limit`, continuando depois de `starting_after`. */
+function page<T extends { id: string; created?: number }>(items: T[], params: { limit?: number; starting_after?: string } = {}) {
+  const sorted = [...items].sort((a, b) => (b.created ?? 0) - (a.created ?? 0));
+  const start = params.starting_after ? sorted.findIndex((i) => i.id === params.starting_after) + 1 : 0;
+  const size = stripeState.pageSize ?? params.limit ?? 10;
+  const data = sorted.slice(start, start + size);
+  return { data, has_more: start + size < sorted.length };
+}
+
+/** Erro 5xx guardado pelo Stripe para uma idempotencyKey e devolvido de novo (header `idempotent-replayed`). */
+export const stripeServerError = (replayed: boolean) =>
+  Object.assign(new Error("An unknown error occurred"), {
+    type: "StripeAPIError",
+    statusCode: 500,
+    headers: replayed ? { "idempotent-replayed": "true" } : {},
+  });
 
 const failIfSet = (name: string) => {
   const err = stripeState.fail.get(name);
@@ -124,6 +143,7 @@ type FakeCheckoutSession = {
   status: "open" | "complete" | "expired";
   metadata: Record<string, string>;
   created: number;
+  subscription?: string | null;
 };
 
 async function createCheckoutSession(
@@ -167,9 +187,12 @@ async function createRefund(params: { payment_intent: string; metadata?: Record<
 }
 
 /** Como a Stripe: só sessões abertas têm `url`, e só uma sessão aberta pode ser expirada. */
-async function listCheckoutSessions({ customer, status }: { customer?: string; status?: string }) {
+async function listCheckoutSessions({ customer, status, ...params }: { customer?: string; status?: string; limit?: number; starting_after?: string }) {
   failIfSet("checkout.sessions.list");
-  return { data: [...stripeState.sessions.values()].filter((s) => (!customer || s.customer === customer) && (!status || s.status === status)) };
+  return page(
+    [...stripeState.sessions.values()].filter((s) => (!customer || s.customer === customer) && (!status || s.status === status)),
+    params,
+  );
 }
 
 async function expireCheckoutSession(id: string) {
@@ -185,7 +208,7 @@ async function retrieveCheckoutSession(id: string): Promise<{ id: string; custom
   failIfSet("checkout.sessions.retrieve");
   // Sessões criadas pelo próprio Stripe falso existem; qualquer outra precisa ser configurada no teste.
   const known = stripeState.sessions.get(id);
-  if (known) return { id, customer: known.customer ?? null, subscription: null, status: known.status };
+  if (known) return { id, customer: known.customer ?? null, subscription: known.subscription ?? null, status: known.status };
   throw new Error(`Sessão ${id} não configurada no Stripe falso`);
 }
 
@@ -211,9 +234,13 @@ export const stripeMock = {
     }),
   },
   subscriptions: {
-    list: vi.fn(async ({ customer }: { customer: string }) => {
+    list: vi.fn(async ({ customer, ...params }: { customer: string; limit?: number; starting_after?: string }) => {
       failIfSet("subscriptions.list");
-      return { data: [...stripeState.subscriptions.values()].filter((s) => s.customer === customer) };
+      // Como a Stripe: sem `status`, a listagem não traz as canceladas.
+      return page(
+        [...stripeState.subscriptions.values()].filter((s) => s.customer === customer && s.status !== "canceled"),
+        params,
+      );
     }),
     retrieve: vi.fn(async (id: string) => {
       failIfSet("subscriptions.retrieve");
@@ -249,9 +276,9 @@ export const stripeMock = {
   refunds: {
     create: vi.fn(createRefund),
     // O Stripe falso não liga estorno a cobrança: devolve todos (a cobrança `ch_x` é estornada via pagamento `pi_x`).
-    list: vi.fn(async ({ charge }: { charge: string }) => ({
-      data: stripeState.refunds.filter((r) => r.payment_intent === charge.replace(/^ch_/, "pi_")),
-    })),
+    list: vi.fn(async ({ charge, ...params }: { charge: string; limit?: number; starting_after?: string }) =>
+      page(stripeState.refunds.filter((r) => r.payment_intent === charge.replace(/^ch_/, "pi_")), params),
+    ),
   },
 };
 
@@ -416,6 +443,7 @@ export function resetMocks() {
   stripeState.refunds.length = 0;
   stripeState.idempotency.clear();
   stripeState.fail.clear();
+  stripeState.pageSize = null;
   stripeState.seq = 0;
   telegramCalls.length = 0;
   telegramState.fail.clear();

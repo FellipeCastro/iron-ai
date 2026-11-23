@@ -4,7 +4,13 @@ import { concurrencyLimit, task } from "@trigger.dev/sdk";
 import { and, eq, isNull } from "drizzle-orm";
 import { db, stripeEvents } from "@/db/client";
 import { stripe } from "@/lib/stripe-client";
-import { cancelCustomerSubscriptions, cancelDuplicateSubscriptions, refundedOnlyForDuplicate, syncSubscription } from "@/lib/subscription-sync";
+import {
+  cancelCustomerSubscriptions,
+  cancelDuplicateSubscriptions,
+  completedDuplicateCleanups,
+  refundedForDuplicate,
+  syncSubscription,
+} from "@/lib/subscription-sync";
 import { log } from "./log";
 
 /**
@@ -53,13 +59,16 @@ async function apply(eventId: string, type: string, work: StripeEventWork) {
       const customer = await syncSubscription(work.subscriptionId);
       if (!customer) return;
       // Two live subscriptions = the user is billed twice: cancel and refund the newer one, and tell the owner.
-      const { keptSubscriptionId, cancelled } = await cancelDuplicateSubscriptions(customer, eventId);
-      if (cancelled.length > 0) {
+      await cancelDuplicateSubscriptions(customer, eventId);
+      // The alert is built from the saved cleanups this event owns, not from what this attempt cancelled: a retry
+      // after the cleanup finished but before Sentry acknowledged still sends it (alert() skips it once alertedAt is set).
+      const cleanups = await completedDuplicateCleanups(eventId);
+      if (cleanups.length > 0) {
         await alert("Stripe duplicate subscription cancelled and refunded", eventId, type, {
           customer_id: customer,
-          kept_subscription_id: keptSubscriptionId,
-          cancelled_subscription_ids: cancelled.map((c) => c.subscriptionId),
-          refunded_amount: cancelled.reduce((sum, c) => sum + c.refundedAmount, 0),
+          kept_subscription_id: cleanups[0].keptSubscriptionId,
+          cancelled_subscription_ids: cleanups.map((c) => c.subscriptionId),
+          refunded_amount: cleanups.reduce((sum, c) => sum + (c.refundedAmount ?? 0), 0),
         });
       }
       return;
@@ -77,9 +86,9 @@ async function apply(eventId: string, type: string, work: StripeEventWork) {
       // The body is a snapshot from when it was sent; also confirm with Stripe that the charge is fully refunded now.
       const charge = await stripe().charges.retrieve(work.chargeId);
       if (!charge.refunded) return;
-      // Our own refund of a duplicate subscription (already cancelled): cancelling everything would also end the
-      // subscription the user kept.
-      if (await refundedOnlyForDuplicate(charge.id)) return;
+      // Our own refund of a duplicate subscription (already cancelled), even if the charge also had earlier partial
+      // refunds: cancelling everything would also end the subscription the user kept.
+      if (await refundedForDuplicate(charge.id)) return;
       const cancelled = await cancelAfterRisk(charge, eventId);
       await alert("Stripe charge fully refunded", eventId, type, { charge_id: charge.id, cancelled });
       return;

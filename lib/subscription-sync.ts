@@ -1,9 +1,9 @@
 import { logger } from "@sentry/core";
-import { and, eq, isNull, ne, notInArray, sql } from "drizzle-orm";
-import { db, subscriptions, users } from "@/db/client";
+import { and, eq, isNotNull, isNull, ne, notInArray, sql } from "drizzle-orm";
+import { db, duplicateCleanups, subscriptions, users } from "@/db/client";
 import { isUniqueViolation } from "@/lib/db-errors";
 import { ACCESS_STATUSES } from "@/lib/services/access";
-import { stripe } from "@/lib/stripe-client";
+import { listAll, stripe } from "@/lib/stripe-client";
 
 // Kept free of Next/Clerk/server-only imports: used by the web app (lib/services/billing.ts re-exports it) and by
 // the Trigger.dev worker that processes Stripe webhook events (trigger/stripe-events.ts).
@@ -133,8 +133,8 @@ function findSavedRow(subscriptionId: string) {
  * again (or failing on an already-cancelled subscription).
  */
 export async function cancelCustomerSubscriptions(customerId: string, operationId: string) {
-  const open = await stripe().subscriptions.list({ customer: customerId, limit: 10 });
-  const live = open.data.filter((s) => ACCESS_STATUSES.includes(s.status));
+  const all = await listAll((page) => stripe().subscriptions.list({ customer: customerId, ...page }));
+  const live = all.filter((s) => ACCESS_STATUSES.includes(s.status));
   for (const sub of live) {
     await stripe().subscriptions.cancel(sub.id, {}, { idempotencyKey: `risk-cancel-${operationId}-${sub.id}` });
     await syncSubscription(sub.id);
@@ -146,46 +146,62 @@ export async function cancelCustomerSubscriptions(customerId: string, operationI
  * A customer may hold one live subscription. A second one (two Checkouts paid, e.g. before the one-Session-per-user
  * guard, or a Session paid on a stale tab) bills the user twice, and syncSubscription keeps only one of them locally.
  * Keeps the oldest live subscription; each newer one is cancelled right away and its latest invoice refunded in full.
- * Returns what this call cancelled (empty when nothing was duplicated, or another run already handled it).
  *
- * `operationId` names the business operation (the Stripe event id): the cancel and refund idempotency keys are built
- * from it, so a retry of the same event replays Stripe's saved answers. Runs of two events of the same customer may
- * race: only the one whose cancel succeeds refunds and reports it; the other sees the subscription already canceled.
+ * Each cleanup is recorded in `duplicate_cleanups` BEFORE the cancel: a cancelled subscription drops out of the live
+ * list, so without the row a retry after a failed refund or sync would no longer see that anything is owed. Every call
+ * then finishes all unfinished cleanups of the customer, whatever their subscription's status is now.
+ *
+ * `operationId` names the business operation (the Stripe event id). The first operation to record a cleanup owns it:
+ * the cancel and refund idempotency keys come from the row, so any retry (of this event or of another event of the
+ * same customer) replays Stripe's saved answers instead of refunding twice.
  */
 export async function cancelDuplicateSubscriptions(customerId: string, operationId: string) {
-  const all = await stripe().subscriptions.list({ customer: customerId, limit: 10 });
-  const live = all.data
+  const all = await listAll((page) => stripe().subscriptions.list({ customer: customerId, ...page }));
+  const live = all
     .filter((s) => ACCESS_STATUSES.includes(s.status))
     .sort((a, b) => a.created - b.created || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   const [kept, ...duplicates] = live;
-  const cancelled: { subscriptionId: string; refundedAmount: number }[] = [];
-  for (const sub of duplicates) {
-    if (!(await cancelOnce(sub.id, `duplicate-cancel-${operationId}-${sub.id}`))) continue;
-    const refundedAmount = await refundLatestInvoice(sub, operationId);
-    await syncSubscription(sub.id);
-    cancelled.push({ subscriptionId: sub.id, refundedAmount });
+  if (duplicates.length > 0) {
+    await db
+      .insert(duplicateCleanups)
+      .values(duplicates.map((s) => ({ subscriptionId: s.id, customerId, keptSubscriptionId: kept.id, operationId })))
+      .onConflictDoNothing({ target: duplicateCleanups.subscriptionId });
   }
-  // The cancelled one may have held the local row: let the kept one take it back.
-  if (kept && duplicates.length > 0) await syncSubscription(kept.id);
-  if (cancelled.length > 0) {
-    logger.warn("Duplicate subscriptions cancelled", {
-      customer_id: customerId,
-      kept_subscription_id: kept.id,
-      cancelled: cancelled.map((c) => c.subscriptionId).join(","),
-    });
+
+  const pending = await db
+    .select()
+    .from(duplicateCleanups)
+    .where(and(eq(duplicateCleanups.customerId, customerId), isNull(duplicateCleanups.completedAt)));
+  for (const cleanup of pending) {
+    const { subscriptionId, operationId: owner } = cleanup;
+    await cancelNow(subscriptionId, `duplicate-cancel-${owner}-${subscriptionId}`);
+    const refundedAmount = await refundLatestInvoice(await stripe().subscriptions.retrieve(subscriptionId), owner);
+    await syncSubscription(subscriptionId);
+    // The cancelled one may have held the local row: let the kept one take it back.
+    await syncSubscription(cleanup.keptSubscriptionId);
+    await db
+      .update(duplicateCleanups)
+      .set({ refundedAmount, completedAt: new Date() })
+      .where(and(eq(duplicateCleanups.subscriptionId, subscriptionId), isNull(duplicateCleanups.completedAt)));
+    logger.warn("Duplicate subscription cancelled", { customer_id: customerId, kept_subscription_id: cleanup.keptSubscriptionId, cancelled: subscriptionId });
   }
-  return { keptSubscriptionId: kept?.id ?? null, cancelled };
 }
 
-/** Cancels now. False when someone else (another event's run) already canceled it: that run owns the refund. */
-async function cancelOnce(subscriptionId: string, idempotencyKey: string) {
+/** The finished cleanups an operation owns: the payload of its owner alert, rebuilt the same way on every retry. */
+export function completedDuplicateCleanups(operationId: string) {
+  return db
+    .select()
+    .from(duplicateCleanups)
+    .where(and(eq(duplicateCleanups.operationId, operationId), isNotNull(duplicateCleanups.completedAt)));
+}
+
+/** Cancels now. Already canceled (by an earlier attempt under another key, or by hand) counts as done. */
+async function cancelNow(subscriptionId: string, idempotencyKey: string) {
   try {
     await stripe().subscriptions.cancel(subscriptionId, {}, { idempotencyKey });
-    return true;
   } catch (err) {
     const current = await stripe().subscriptions.retrieve(subscriptionId);
-    if (current.status === "canceled") return false;
-    throw err;
+    if (current.status !== "canceled") throw err;
   }
 }
 
@@ -216,8 +232,12 @@ async function refundLatestInvoice(sub: { id: string; latest_invoice: string | {
   return refunded;
 }
 
-/** True when the charge has refunds and every one of them was made by cancelDuplicateSubscriptions. */
-export async function refundedOnlyForDuplicate(chargeId: string) {
-  const refunds = await stripe().refunds.list({ charge: chargeId, limit: 10 });
-  return refunds.data.length > 0 && refunds.data.every((r) => Boolean(r.metadata?.[DUPLICATE_REFUND_METADATA]));
+/**
+ * True when cancelDuplicateSubscriptions refunded this charge: it belongs to a cancelled duplicate, never to the kept
+ * subscription (whose charges are never refunded by the cleanup). Other refunds on the same charge (an earlier partial
+ * refund made by hand) do not change that, so one marked refund is enough.
+ */
+export async function refundedForDuplicate(chargeId: string) {
+  const refunds = await listAll((page) => stripe().refunds.list({ charge: chargeId, ...page }));
+  return refunds.some((r) => Boolean(r.metadata?.[DUPLICATE_REFUND_METADATA]));
 }

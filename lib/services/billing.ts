@@ -2,11 +2,13 @@ import "server-only";
 import { clerkClient } from "@clerk/nextjs/server";
 import { and, eq, isNull, or, sql } from "drizzle-orm";
 import { createHash, randomUUID } from "node:crypto";
+import type Stripe from "stripe";
 import { checkoutSlots, db, users, type User } from "@/db";
 import { siteUrl } from "@/lib/env";
 import { CHECKOUT_URL, DASHBOARD_URL, SETTINGS_URL } from "@/lib/routes";
 import { ACCESS_STATUSES, userHasAccess } from "@/lib/services/access";
 import { priceId, stripe, type Plan } from "@/lib/stripe";
+import { listAll } from "@/lib/stripe-client";
 import { deleteStripeCustomerById } from "@/lib/stripe-customer";
 import { syncSubscription } from "@/lib/subscription-sync";
 
@@ -148,20 +150,31 @@ async function openCheckout(user: User, plan: Plan, customer: string, slot: Chec
 
   // The webhook may not have landed yet (paid, closed the tab, came back): ask Stripe before opening another
   // Checkout. Read under the lease, so a Session the other tab just paid is seen here.
-  const open = await stripe().subscriptions.list({ customer, limit: 10 });
-  const current = open.data.find((s) => ACCESS_STATUSES.includes(s.status));
+  const subscriptions = await listAll((page) => stripe().subscriptions.list({ customer, ...page }));
+  const current = subscriptions.find((s) => ACCESS_STATUSES.includes(s.status));
   if (current) {
     await syncSubscription(current.id);
     return dashboard;
   }
 
-  // Reuse the open Session for this plan and expire the rest, leaving at most one payable Session per customer.
-  const openSessions = await stripe().checkout.sessions.list({ customer, status: "open", limit: 10 });
-  const reusable = openSessions.data.find((s) => s.metadata?.plan === plan && s.url);
-  if (reusable?.url) return { url: reusable.url, sessionId: reusable.id };
-  // A failed expiry is not success: the Session may have been paid in the meantime, or may still be payable. Each
-  // one is confirmed closed, or the flow stops before creating a replacement.
-  const closures = await Promise.all(openSessions.data.map((s) => closeCheckoutSession(s.id)));
+  const openSessions = await listAll((page) => stripe().checkout.sessions.list({ customer, status: "open", ...page }));
+  // The Session recorded for this generation is no longer listed as open. Before its key is retired, find out why: a
+  // paid one (whose subscription may still be incomplete, e.g. a pending boleto) must not get a second Checkout.
+  if (slot.sessionId && !openSessions.some((s) => s.id === slot.sessionId)) {
+    const recorded = await stripe().checkout.sessions.retrieve(slot.sessionId);
+    const state = await settledState(recorded);
+    if (state === "paid") return dashboard;
+    if (state === "open") openSessions.push(recorded); // the list lagged behind: handled like any other open Session
+  }
+
+  // Reuse the open Session for this plan and expire every other one, leaving at most one payable Session per
+  // customer. A failed expiry is not success: the Session may have been paid in the meantime, or may still be
+  // payable. Each one is confirmed closed, or the flow stops before handing out or creating anything.
+  const reusable = openSessions.find((s) => s.metadata?.plan === plan && s.url);
+  const closures = await Promise.all(openSessions.filter((s) => s !== reusable).map((s) => closeCheckoutSession(s.id)));
+  if (reusable?.url && !closures.includes("completed")) return { url: reusable.url, sessionId: reusable.id };
+  // One of the others was just paid: the reusable one must not stay payable next to it.
+  if (reusable) closures.push(await closeCheckoutSession(reusable.id));
   // The current generation's key already opened a Session (now closed, or for the other plan): a new key, or Stripe
   // would replay that Session. With nothing recorded and nothing closed, the key is reused on purpose: a holder whose
   // lease expired may still be creating under it, and sharing the key makes Stripe return its Session.
@@ -172,23 +185,21 @@ async function openCheckout(user: User, plan: Plan, customer: string, slot: Chec
     // No plan in the key: one generation, one Session. A request for the other plan under the same key is refused by
     // Stripe (parameters differ) instead of opening a second payable Session; the retry then expires the first.
     const idempotencyKey = `checkout-${user.id}-g${slot.generation}`;
-    const session = await stripe().checkout.sessions.create(
-      {
-        mode: "subscription",
-        customer,
-        client_reference_id: user.id,
-        // Read back above to tell which plan an open Session is for.
-        metadata: { plan },
-        line_items: [{ price: priceId(plan), quantity: 1 }],
-        locale: "pt-BR",
-        success_url: `${siteUrl()}${CHECKOUT_URL}/sucesso?session_id={CHECKOUT_SESSION_ID}`,
-        // Back to the plan picker, which does not auto-redirect, so cancelling never loops.
-        cancel_url: `${siteUrl()}${CHECKOUT_URL}`,
-        // Must be identical across calls sharing an idempotency key, or Stripe rejects the second one.
-        integration_identifier: `iron-ai-${createHash("sha256").update(idempotencyKey).digest("hex").slice(0, 8)}`,
-      },
-      { idempotencyKey },
-    );
+    let session: Stripe.Checkout.Session;
+    try {
+      session = await createSession(user, plan, customer, idempotencyKey);
+    } catch (err) {
+      // Stripe saves a 5xx answer under the key and replays it for a day, so this generation is stuck. The create that
+      // failed may still have opened a Session: look for it before moving to a new key.
+      if (!isReplayedServerError(err)) throw err;
+      const found = await findSessionByKey(customer, idempotencyKey);
+      const state = found ? await settledState(found) : "closed";
+      if (state === "paid") return dashboard;
+      if (state === "open" && found?.url) return { url: found.url, sessionId: found.id };
+      // Nothing was opened under the key, or what was is closed for good: a new key cannot make a second payable one.
+      await advanceGeneration(user.id, slot);
+      continue;
+    }
     if (!session.url) throw new Error("Stripe returned a Checkout Session without a URL");
     // An old answer replayed for this key (a crash before `sessionId` was saved): use it only if still open.
     const replayed = session.created < Date.now() / 1000 - REPLAY_AGE_S;
@@ -200,6 +211,61 @@ async function openCheckout(user: User, plan: Plan, customer: string, slot: Chec
   }
   throw new Error("Stripe kept replaying closed Checkout Sessions");
 }
+
+function createSession(user: User, plan: Plan, customer: string, idempotencyKey: string) {
+  return stripe().checkout.sessions.create(
+    {
+      mode: "subscription",
+      customer,
+      client_reference_id: user.id,
+      // Read back above to tell which plan an open Session is for; the key finds the Session of a create whose
+      // answer was lost (findSessionByKey).
+      metadata: { plan, checkout_key: idempotencyKey },
+      line_items: [{ price: priceId(plan), quantity: 1 }],
+      locale: "pt-BR",
+      success_url: `${siteUrl()}${CHECKOUT_URL}/sucesso?session_id={CHECKOUT_SESSION_ID}`,
+      // Back to the plan picker, which does not auto-redirect, so cancelling never loops.
+      cancel_url: `${siteUrl()}${CHECKOUT_URL}`,
+      // Must be identical across calls sharing an idempotency key, or Stripe rejects the second one.
+      integration_identifier: `iron-ai-${createHash("sha256").update(idempotencyKey).digest("hex").slice(0, 8)}`,
+    },
+    { idempotencyKey },
+  );
+}
+
+/**
+ * A 5xx that Stripe replayed from its idempotency store: an earlier create under this key started running and failed.
+ * A fresh 5xx is not treated this way on purpose: its create may still be settling, so the request just fails and the
+ * key is kept; the next attempt gets the replay and reconciles.
+ */
+function isReplayedServerError(err: unknown) {
+  const { statusCode, headers } = err as { statusCode?: number; headers?: Record<string, string> };
+  return typeof statusCode === "number" && statusCode >= 500 && headers?.["idempotent-replayed"] === "true";
+}
+
+/** The Checkout Session a create under `idempotencyKey` opened, if any. Stripe keeps a key for a day: older ones never match. */
+async function findSessionByKey(customer: string, idempotencyKey: string) {
+  const since = Math.floor(Date.now() / 1000) - 2 * 86_400;
+  const sessions = await listAll((page) => stripe().checkout.sessions.list({ customer, created: { gte: since }, ...page }));
+  return sessions.find((s) => s.metadata?.checkout_key === idempotencyKey) ?? null;
+}
+
+/**
+ * What a Checkout Session means for a new attempt: "open" (still payable), "paid" (completed into a subscription that
+ * has not ended: synced, so the caller sends the user to the dashboard) or "closed" (expired, or its subscription has
+ * ended since: a new Checkout is fine).
+ */
+async function settledState(session: Stripe.Checkout.Session): Promise<"open" | "paid" | "closed"> {
+  if (session.status === "open") return "open";
+  const subscriptionId = typeof session.subscription === "string" ? session.subscription : session.subscription?.id;
+  if (session.status !== "complete" || !subscriptionId) return "closed";
+  const sub = await stripe().subscriptions.retrieve(subscriptionId);
+  if (ENDED_STATUSES.includes(sub.status)) return "closed";
+  await syncSubscription(subscriptionId);
+  return "paid";
+}
+
+const ENDED_STATUSES = ["canceled", "incomplete_expired"];
 
 /**
  * Records the Session opened under the current generation and frees the lease. Returns false when the lease was

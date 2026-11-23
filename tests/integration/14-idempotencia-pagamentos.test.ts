@@ -3,12 +3,13 @@ import { and, eq } from "drizzle-orm";
 import { describe, expect, it, vi } from "vitest";
 import { startCheckoutAction } from "@/app/(app)/actions";
 import { POST } from "@/app/api/webhooks/stripe/route";
-import { checkoutSlots, db, idempotentRequests, stripeEvents, subscriptions } from "@/db";
+import { checkoutSlots, db, duplicateCleanups, idempotentRequests, stripeEvents, subscriptions } from "@/db";
 import { runOnce } from "@/lib/idempotency";
+import { DASHBOARD_URL } from "@/lib/routes";
 import { userHasAccess } from "@/lib/services/access";
 import { processStripeEvent, type StripeEventPayload } from "@/trigger/stripe-events";
 import { createSubscription, createUser } from "./helpers/factories";
-import { putCharge, putSubscription, sentryMock, signIn, stripeMock, stripeState, triggerMock } from "./helpers/mocks";
+import { putCharge, putSubscription, sentryMock, signIn, stripeMock, stripeServerError, stripeState, triggerMock } from "./helpers/mocks";
 import { stripeEvent, stripeWebhookRequest } from "./helpers/requests";
 import { runTask, stripeTaskCalls, withStripeTasks } from "./helpers/tasks";
 
@@ -406,6 +407,103 @@ describe("checkout: no máximo 1 Checkout Session pagável por usuário, com qua
     expect(result).toMatchObject({ ok: true, data: { url: expect.stringContaining("checkout.stripe.test") } });
     expect(await slotOf(user.id)).toMatchObject({ leaseToken: null, generation: 0 });
   });
+
+  /** Primeiro Checkout (mensal) aberto e gravado na reivindicação, mais uma Session anual aberta que sobrou de outra requisição. */
+  async function reusableAndStaleSession() {
+    const user = await signedInUser();
+    const first = await startCheckoutAction({ plan: "monthly", idempotencyKey: randomUUID() });
+    const reusable = openSessions()[0];
+    const stale = { id: "cs_test_stale", url: "https://checkout.stripe.test/cs_test_stale", customer: reusable.customer, status: "open" as const, metadata: { plan: "annual" }, created: reusable.created };
+    stripeState.sessions.set(stale.id, stale);
+    return { user, first, reusable, stale };
+  }
+
+  it("quando há uma Session reutilizável e outra aberta (outro plano), então reusa a do plano e expira a outra", async () => {
+    const { first, reusable } = await reusableAndStaleSession();
+
+    const again = await startCheckoutAction({ plan: "monthly", idempotencyKey: randomUUID() });
+
+    expect(urlOf(again)).toBe(urlOf(first));
+    expect(openSessions().map((s) => s.id)).toEqual([reusable.id]);
+    expect(stripeMock.checkout.sessions.create).toHaveBeenCalledTimes(1);
+  });
+
+  it("quando a outra Session aberta é paga durante a limpeza, então vai para o painel e a reutilizável também é expirada", async () => {
+    const { reusable, stale } = await reusableAndStaleSession();
+    stripeMock.checkout.sessions.expire.mockImplementationOnce(async (id: string) => {
+      // Paga no instante em que ia ser expirada: o expire falha e o retrieve mostra a Session concluída.
+      Object.assign(stripeState.sessions.get(id)!, { status: "complete", url: null, subscription: "sub_paid" });
+      putSubscription({ id: "sub_paid", customer: stale.customer!, status: "active" });
+      throw new Error("Checkout Session is not expirable");
+    });
+
+    const result = await startCheckoutAction({ plan: "monthly", idempotencyKey: randomUUID() });
+
+    expect(urlOf(result)).toContain(DASHBOARD_URL);
+    expect(stripeState.sessions.get(reusable.id)!.status).toBe("expired");
+    expect(openSessions()).toHaveLength(0);
+  });
+
+  it("quando a Session gravada foi paga e a assinatura ainda está incompleta, então vai para o painel e não abre outra", async () => {
+    const user = await signedInUser();
+    await startCheckoutAction({ plan: "monthly", idempotencyKey: randomUUID() });
+    const recorded = openSessions()[0];
+    Object.assign(recorded, { status: "complete", url: null, subscription: "sub_pending" });
+    putSubscription({ id: "sub_pending", customer: recorded.customer!, status: "incomplete" });
+
+    const result = await startCheckoutAction({ plan: "monthly", idempotencyKey: randomUUID() });
+
+    expect(urlOf(result)).toContain(DASHBOARD_URL);
+    expect(stripeMock.checkout.sessions.create).toHaveBeenCalledTimes(1);
+    expect(await slotOf(user.id)).toMatchObject({ generation: 0, sessionId: recorded.id });
+  });
+
+  it("quando a Session gravada foi paga mas a assinatura dela já terminou, então abre uma Session nova com a chave seguinte", async () => {
+    const user = await signedInUser();
+    await startCheckoutAction({ plan: "monthly", idempotencyKey: randomUUID() });
+    const recorded = openSessions()[0];
+    Object.assign(recorded, { status: "complete", url: null, subscription: "sub_ended" });
+    putSubscription({ id: "sub_ended", customer: recorded.customer!, status: "incomplete_expired" });
+
+    const result = await startCheckoutAction({ plan: "monthly", idempotencyKey: randomUUID() });
+
+    expect(urlOf(result)).toContain("checkout.stripe.test");
+    expect(openSessions()).toHaveLength(1);
+    expect(await slotOf(user.id)).toMatchObject({ generation: 1 });
+  });
+
+  it("quando o Stripe guardou um 500 para a chave e nenhuma Session foi aberta com ela, então só a repetição avança a chave", async () => {
+    const user = await signedInUser();
+    stripeMock.checkout.sessions.create.mockRejectedValueOnce(stripeServerError(false)).mockRejectedValueOnce(stripeServerError(true));
+
+    // 500 novo: a criação pode ainda estar em andamento, então a chave fica.
+    expect(await startCheckoutAction({ plan: "monthly", idempotencyKey: randomUUID() })).toMatchObject({ ok: false });
+    expect(await slotOf(user.id)).toMatchObject({ generation: 0, leaseToken: null });
+
+    // 500 repetido: nenhuma Session tem a chave, então a geração avança e o Checkout abre.
+    const retried = await startCheckoutAction({ plan: "monthly", idempotencyKey: randomUUID() });
+
+    expect(urlOf(retried)).toContain("checkout.stripe.test");
+    const keys = stripeMock.checkout.sessions.create.mock.calls.map(([, options]) => (options as { idempotencyKey: string }).idempotencyKey);
+    expect(keys).toEqual([`checkout-${user.id}-g0`, `checkout-${user.id}-g0`, `checkout-${user.id}-g1`]);
+    expect(openSessions()).toHaveLength(1);
+  });
+
+  it("quando o Stripe guardou um 500 mas a Session da chave foi aberta, então devolve essa Session sem avançar a chave", async () => {
+    const user = await signedInUser();
+    stripeMock.checkout.sessions.create.mockImplementationOnce(async (params: { customer?: string; metadata?: Record<string, string> }) => {
+      // A criação aconteceu, mas a resposta guardada para a chave é um 500.
+      const id = "cs_test_lost";
+      stripeState.sessions.set(id, { id, url: `https://checkout.stripe.test/${id}`, customer: params.customer, status: "open", metadata: params.metadata ?? {}, created: Math.floor(Date.now() / 1000) });
+      throw stripeServerError(true);
+    });
+
+    const result = await startCheckoutAction({ plan: "monthly", idempotencyKey: randomUUID() });
+
+    expect(urlOf(result)).toBe("https://checkout.stripe.test/cs_test_lost");
+    expect(stripeMock.checkout.sessions.create).toHaveBeenCalledTimes(1);
+    expect(await slotOf(user.id)).toMatchObject({ generation: 0, sessionId: "cs_test_lost" });
+  });
 });
 
 describe("webhook do Stripe: cliente com 2 assinaturas vivas (cobrança dupla)", () => {
@@ -497,6 +595,81 @@ describe("webhook do Stripe: cliente com 2 assinaturas vivas (cobrança dupla)",
     expect(stripeState.subscriptions.get("sub_1")!.status).toBe("active");
     expect(stripeMock.subscriptions.cancel).toHaveBeenCalledTimes(1);
     expect(await userHasAccess(user.id)).toBe(true);
+  });
+
+  it("quando a listagem de assinaturas tem mais de 1 página, então a mais antiga (na última página) é a mantida", async () => {
+    const user = await doublyChargedCustomer();
+    stripeState.pageSize = 1; // mais novas primeiro: sub_2 na página 1, sub_1 só na página 2
+
+    await withStripeTasks(() => deliver(created("sub_2")));
+
+    expect(stripeState.subscriptions.get("sub_1")!.status).toBe("active");
+    expect(stripeState.subscriptions.get("sub_2")!.status).toBe("canceled");
+    expect(await subs()).toMatchObject([{ userId: user.id, stripeSubscriptionId: "sub_1" }]);
+  });
+
+  it("quando o estorno falha depois do cancelamento, então o retry estorna (mesma chave) e alerta, mesmo a assinatura já não estando viva", async () => {
+    await doublyChargedCustomer();
+    const event = created("sub_2");
+    stripeState.fail.set("refunds.create", new Error("stripe down"));
+
+    await expect(withStripeTasks(() => deliver(event))).rejects.toThrow("stripe down");
+    expect(stripeState.subscriptions.get("sub_2")!.status).toBe("canceled");
+    expect(stripeState.refunds).toHaveLength(0);
+    expect(await db.select().from(duplicateCleanups)).toMatchObject([{ subscriptionId: "sub_2", operationId: event.id, completedAt: null }]);
+
+    stripeState.fail.clear();
+    const [[, payload]] = stripeTaskCalls();
+    await runTask(processStripeEvent, payload as StripeEventPayload);
+
+    expect(stripeState.refunds.map((r) => r.payment_intent)).toEqual(["pi_2"]);
+    expect(stripeMock.refunds.create).toHaveBeenLastCalledWith(expect.anything(), { idempotencyKey: `duplicate-refund-${event.id}-pi_2` });
+    expect(await db.select().from(duplicateCleanups)).toMatchObject([{ subscriptionId: "sub_2", refundedAmount: 1000, completedAt: expect.any(Date) }]);
+    expect(duplicateAlerts()).toHaveLength(1);
+  });
+
+  it("quando o Sentry não confirma o alerta, então o retry alerta de novo mesmo sem nada novo a cancelar", async () => {
+    await doublyChargedCustomer();
+    const event = created("sub_2");
+    sentryMock.flush.mockResolvedValueOnce(false);
+
+    await expect(withStripeTasks(() => deliver(event))).rejects.toThrow(/did not acknowledge/);
+    expect((await events())[0].alertedAt).toBeNull();
+
+    const [[, payload]] = stripeTaskCalls();
+    await runTask(processStripeEvent, payload as StripeEventPayload);
+
+    expect(stripeMock.subscriptions.cancel).toHaveBeenCalledTimes(1);
+    expect(stripeState.refunds).toHaveLength(1);
+    // Mesmo event_id nas 2 tentativas (o Sentry deduplica); o alerta agora foi confirmado.
+    expect(duplicateAlerts()).toHaveLength(2);
+    expect(new Set(duplicateAlerts().map(([e]) => e.event_id)).size).toBe(1);
+    expect(duplicateAlerts()[1][0]).toMatchObject({ extra: expect.objectContaining({ cancelled_subscription_ids: ["sub_2"], refunded_amount: 1000 }) });
+    expect((await events())[0].alertedAt).toEqual(expect.any(Date));
+  });
+
+  it("quando a cobrança estornada pela limpeza também tem um estorno parcial anterior sem marca, então a assinatura mantida NÃO é cancelada", async () => {
+    const user = await doublyChargedCustomer();
+    await withStripeTasks(() => deliver(created("sub_2")));
+    stripeState.refunds.unshift({ id: "re_manual", payment_intent: "pi_2", amount: 300, metadata: {} });
+    putCharge({ id: "ch_2", customer: "cus_1", refunded: true });
+
+    await withStripeTasks(() => deliver(stripeEvent("charge.refunded", { id: "ch_2", object: "charge", customer: "cus_1", refunded: true })));
+
+    expect(stripeState.subscriptions.get("sub_1")!.status).toBe("active");
+    expect(await userHasAccess(user.id)).toBe(true);
+  });
+
+  it("quando a cobrança da assinatura mantida é estornada por inteiro, então ela é cancelada (estorno comum)", async () => {
+    const user = await doublyChargedCustomer();
+    await withStripeTasks(() => deliver(created("sub_2")));
+    stripeState.refunds.push({ id: "re_manual", payment_intent: "pi_1", amount: 1000, metadata: {} });
+    putCharge({ id: "ch_1", customer: "cus_1", refunded: true });
+
+    await withStripeTasks(() => deliver(stripeEvent("charge.refunded", { id: "ch_1", object: "charge", customer: "cus_1", refunded: true })));
+
+    expect(stripeState.subscriptions.get("sub_1")!.status).toBe("canceled");
+    expect(await userHasAccess(user.id)).toBe(false);
   });
 
   it("quando o cliente tem só 1 assinatura viva, então nada é cancelado nem estornado", async () => {

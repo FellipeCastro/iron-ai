@@ -145,6 +145,24 @@ export const checkoutSlots = pgTable("checkout_slots", {
   leasedAt: timestamp("leased_at", { withTimezone: true }),
 }).enableRLS();
 
+// A duplicate live subscription being cancelled and refunded (lib/subscription-sync.ts cancelDuplicateSubscriptions).
+// Recorded before the cancel, so a retry still finishes the refund and sync after the subscription stopped being
+// live. `operationId` (the Stripe event that recorded it) builds the Stripe idempotency keys and owns the owner alert;
+// `completedAt` null = refund or sync still owed. Server-only, like stripe_events.
+export const duplicateCleanups = pgTable(
+  "duplicate_cleanups",
+  {
+    subscriptionId: text("subscription_id").primaryKey(),
+    customerId: text("customer_id").notNull(),
+    keptSubscriptionId: text("kept_subscription_id").notNull(),
+    operationId: text("operation_id").notNull(),
+    refundedAmount: integer("refunded_amount"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+  },
+  (t) => [index("duplicate_cleanups_customer_idx").on(t.customerId), index("duplicate_cleanups_operation_idx").on(t.operationId)],
+).enableRLS();
+
 export const telegramLinks = pgTable("telegram_links", {
   userId: uuid("user_id")
     .primaryKey()

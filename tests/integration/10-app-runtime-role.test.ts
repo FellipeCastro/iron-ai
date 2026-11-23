@@ -33,6 +33,7 @@ describe("role app_runtime", () => {
     stripe_events: "",
     idempotent_requests: "",
     checkout_slots: "",
+    duplicate_cleanups: "",
     exercises: "SIUD",
     routines: "SIUD",
     routine_days: "SIUD",
