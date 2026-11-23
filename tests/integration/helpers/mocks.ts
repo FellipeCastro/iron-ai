@@ -72,6 +72,9 @@ export const stripeState = {
   subscriptions: new Map<string, FakeSubscription>(),
   sessions: new Map<string, FakeCheckoutSession>(),
   charges: new Map<string, FakeCharge>(),
+  /** Pagamentos de fatura: `invoice id` → payment intents pagos (lidos ao estornar uma assinatura duplicada). */
+  invoicePayments: new Map<string, string[]>(),
+  refunds: [] as FakeRefund[],
   idempotency: new Map<string, unknown>(),
   seq: 0,
   /** Faz o método falhar: `stripeState.fail.set("subscriptions.retrieve", new Error("boom"))`. */
@@ -114,18 +117,52 @@ async function cancelSubscription(id: string, _params?: unknown, options?: { ide
   });
 }
 
-type FakeCheckoutSession = { id: string; url: string | null; customer?: string; status: "open" | "complete" | "expired"; metadata: Record<string, string> };
+type FakeCheckoutSession = {
+  id: string;
+  url: string | null;
+  customer?: string;
+  status: "open" | "complete" | "expired";
+  metadata: Record<string, string>;
+  created: number;
+};
 
 async function createCheckoutSession(
   params: { customer?: string; metadata?: Record<string, string> },
   options?: { idempotencyKey?: string },
 ) {
   failIfSet("checkout.sessions.create");
+  // Como a Stripe: a mesma chave com outros parâmetros (outro plano) é recusada, não devolve a Session guardada.
+  const saved = options?.idempotencyKey && (stripeState.idempotency.get(`checkout:${options.idempotencyKey}`) as FakeCheckoutSession | undefined);
+  if (saved && saved.metadata.plan !== params.metadata?.plan) {
+    throw Object.assign(new Error("Keys for idempotent requests can only be used with the same parameters they were first used with."), { type: "StripeIdempotencyError" });
+  }
   return idempotent(options, "checkout", () => {
     const id = `cs_test_${++stripeState.seq}`;
-    const session: FakeCheckoutSession = { id, url: `https://checkout.stripe.test/${id}`, customer: params.customer, status: "open", metadata: params.metadata ?? {} };
+    const session: FakeCheckoutSession = {
+      id,
+      url: `https://checkout.stripe.test/${id}`,
+      customer: params.customer,
+      status: "open",
+      metadata: params.metadata ?? {},
+      created: Math.floor(Date.now() / 1000),
+    };
     stripeState.sessions.set(id, session);
     return session;
+  });
+}
+
+type FakeRefund = { id: string; payment_intent: string; amount: number; metadata: Record<string, string> };
+
+/** Como a Stripe: estornar de novo o mesmo pagamento (sem a mesma idempotencyKey) é erro `charge_already_refunded`. */
+async function createRefund(params: { payment_intent: string; metadata?: Record<string, string> }, options?: { idempotencyKey?: string }) {
+  failIfSet("refunds.create");
+  return idempotent(options, "refund", () => {
+    if (stripeState.refunds.some((r) => r.payment_intent === params.payment_intent)) {
+      throw Object.assign(new Error(`Charge for ${params.payment_intent} has already been refunded`), { code: "charge_already_refunded" });
+    }
+    const refund = { id: `re_${++stripeState.seq}`, payment_intent: params.payment_intent, amount: 1000, metadata: params.metadata ?? {} };
+    stripeState.refunds.push(refund);
+    return refund;
   });
 }
 
@@ -204,6 +241,18 @@ export const stripeMock = {
     },
   },
   charges: { retrieve: vi.fn(retrieveCharge) },
+  invoicePayments: {
+    list: vi.fn(async ({ invoice }: { invoice: string }) => ({
+      data: (stripeState.invoicePayments.get(invoice) ?? []).map((pi) => ({ status: "paid", payment: { type: "payment_intent", payment_intent: pi } })),
+    })),
+  },
+  refunds: {
+    create: vi.fn(createRefund),
+    // O Stripe falso não liga estorno a cobrança: devolve todos (a cobrança `ch_x` é estornada via pagamento `pi_x`).
+    list: vi.fn(async ({ charge }: { charge: string }) => ({
+      data: stripeState.refunds.filter((r) => r.payment_intent === charge.replace(/^ch_/, "pi_")),
+    })),
+  },
 };
 
 export const stripeModule = { stripe: () => stripeMock };
@@ -218,6 +267,8 @@ export function putSubscription(
     object: "subscription",
     cancel_at_period_end: false,
     trial_end: null,
+    created: now,
+    latest_invoice: null,
     items: { data: [{ price: { id: priceId }, current_period_end: now + 30 * 86400, current_period_start: now }] },
     ...sub,
   } as FakeSubscription;
@@ -361,6 +412,8 @@ export function resetMocks() {
   stripeState.subscriptions.clear();
   stripeState.sessions.clear();
   stripeState.charges.clear();
+  stripeState.invoicePayments.clear();
+  stripeState.refunds.length = 0;
   stripeState.idempotency.clear();
   stripeState.fail.clear();
   stripeState.seq = 0;
@@ -374,5 +427,6 @@ export function resetMocks() {
   stripeMock.checkout.sessions.retrieve.mockReset().mockImplementation(retrieveCheckoutSession);
   stripeMock.charges.retrieve.mockReset().mockImplementation(retrieveCharge);
   stripeMock.subscriptions.cancel.mockReset().mockImplementation(cancelSubscription);
+  stripeMock.refunds.create.mockReset().mockImplementation(createRefund);
   vi.clearAllMocks();
 }

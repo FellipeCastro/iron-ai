@@ -4,7 +4,7 @@ import { concurrencyLimit, task } from "@trigger.dev/sdk";
 import { and, eq, isNull } from "drizzle-orm";
 import { db, stripeEvents } from "@/db/client";
 import { stripe } from "@/lib/stripe-client";
-import { cancelCustomerSubscriptions, syncSubscription } from "@/lib/subscription-sync";
+import { cancelCustomerSubscriptions, cancelDuplicateSubscriptions, refundedOnlyForDuplicate, syncSubscription } from "@/lib/subscription-sync";
 import { log } from "./log";
 
 /**
@@ -49,9 +49,21 @@ export const processStripeEvent = task({
 
 async function apply(eventId: string, type: string, work: StripeEventWork) {
   switch (work.kind) {
-    case "subscription":
-      await syncSubscription(work.subscriptionId);
+    case "subscription": {
+      const customer = await syncSubscription(work.subscriptionId);
+      if (!customer) return;
+      // Two live subscriptions = the user is billed twice: cancel and refund the newer one, and tell the owner.
+      const { keptSubscriptionId, cancelled } = await cancelDuplicateSubscriptions(customer, eventId);
+      if (cancelled.length > 0) {
+        await alert("Stripe duplicate subscription cancelled and refunded", eventId, type, {
+          customer_id: customer,
+          kept_subscription_id: keptSubscriptionId,
+          cancelled_subscription_ids: cancelled.map((c) => c.subscriptionId),
+          refunded_amount: cancelled.reduce((sum, c) => sum + c.refundedAmount, 0),
+        });
+      }
       return;
+    }
     case "dispute": {
       const charge = await stripe().charges.retrieve(work.chargeId);
       const cancelled = await cancelAfterRisk(charge, eventId);
@@ -65,6 +77,9 @@ async function apply(eventId: string, type: string, work: StripeEventWork) {
       // The body is a snapshot from when it was sent; also confirm with Stripe that the charge is fully refunded now.
       const charge = await stripe().charges.retrieve(work.chargeId);
       if (!charge.refunded) return;
+      // Our own refund of a duplicate subscription (already cancelled): cancelling everything would also end the
+      // subscription the user kept.
+      if (await refundedOnlyForDuplicate(charge.id)) return;
       const cancelled = await cancelAfterRisk(charge, eventId);
       await alert("Stripe charge fully refunded", eventId, type, { charge_id: charge.id, cancelled });
       return;

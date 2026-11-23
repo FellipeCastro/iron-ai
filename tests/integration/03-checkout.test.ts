@@ -89,7 +89,7 @@ describe("startCheckoutAction", () => {
     let savedWhenCheckoutCreated: string | null | undefined;
     stripeMock.checkout.sessions.create.mockImplementationOnce(async (params: { customer?: string }) => {
       savedWhenCheckoutCreated = await customerOf(user.id);
-      return { id: "cs_test_x", url: "https://checkout.stripe.test/cs_test_x", customer: params.customer, status: "open" as const, metadata: {} };
+      return { id: "cs_test_x", url: "https://checkout.stripe.test/cs_test_x", customer: params.customer, status: "open" as const, metadata: {}, created: Math.floor(Date.now() / 1000) };
     });
 
     await checkout("monthly");

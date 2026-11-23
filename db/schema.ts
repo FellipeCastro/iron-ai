@@ -129,6 +129,22 @@ export const idempotentRequests = pgTable(
   (t) => [primaryKey({ columns: [t.userId, t.scope, t.key] }), index("idempotent_requests_created_idx").on(t.createdAt)],
 ).enableRLS();
 
+// One row per user that serializes opening Stripe Checkout (lib/services/billing.ts), whatever idempotency key each
+// request carries (two tabs, a fresh key after an expired one). A request holds the short lease (`leaseToken`) while it
+// lists, expires and creates Sessions; the others wait. `generation` IS the Stripe idempotency key of the create, so
+// even a request that outlived its lease and a takeover share one key: Stripe opens at most one Session per
+// generation. It only advances once every open Session was confirmed closed. `sessionId` is the Session opened (or
+// reused) under the current generation: when set, the next attempt advances before creating. Server-only.
+export const checkoutSlots = pgTable("checkout_slots", {
+  userId: uuid("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  generation: integer("generation").notNull().default(0),
+  sessionId: text("session_id"),
+  leaseToken: uuid("lease_token"),
+  leasedAt: timestamp("leased_at", { withTimezone: true }),
+}).enableRLS();
+
 export const telegramLinks = pgTable("telegram_links", {
   userId: uuid("user_id")
     .primaryKey()
