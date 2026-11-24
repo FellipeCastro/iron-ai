@@ -284,43 +284,37 @@ export function weekReport(input: { sessions: number; planned: number; sets: num
   ].join("\n");
 }
 
-const MAX_RECORD_LINES = 10;
 const shortDate = (iso: string) => `${iso.slice(8)}/${iso.slice(5, 7)}`;
-/** "+12%" / "−8%" against the previous period; null when there is nothing to compare with. */
-const percentChange = (now: number, before: number) => {
+
+/** "Carga total 16% maior que na semana anterior", or null when there is nothing to compare with. */
+function loadComparison(now: number, before: number, prev: string) {
   if (before <= 0) return null;
   const pct = Math.round(((now - before) / before) * 100);
-  return `${pct >= 0 ? "+" : "−"}${Math.abs(pct)}%`;
-};
+  if (pct === 0) return `➡️ Carga total igual à ${prev}`;
+  return pct > 0 ? `📈 Carga total ${pct}% maior que na ${prev}` : `📉 Carga total ${-pct}% menor que na ${prev}`;
+}
 
-/** Automatic Monday report. `range` holds the local dates of the period (inclusive). */
+/** Automatic Sunday report. `range` holds the local dates of the period (inclusive). */
 export function periodReportText(kind: ReportKind, range: { from: string; to: string }, r: PeriodReport) {
   const prev = kind === "week" ? "semana anterior" : "mês anterior";
   const title =
     kind === "week"
       ? `Resumo da semana · ${shortDate(range.from)} a ${shortDate(range.to)}`
       : `Resumo de ${new Date(`${range.from}T00:00:00Z`).toLocaleDateString("pt-BR", { month: "long", timeZone: "UTC" })}`;
-  const volumeChange = percentChange(r.volume, r.previous.volume);
 
-  const lines = [
-    `<b>${title}</b>`,
-    "",
-    `🗓️ ${plural(r.sessions, "treino", "treinos")} · ${plural(r.sets, "série", "séries")}`,
-    `📦 Volume total: <b>${kg(Math.round(r.volume))}</b>${volumeChange ? ` (${volumeChange} vs ${prev})` : ""}`,
-  ];
-  if (r.previous.sets === 0) lines.push(`<i>Sem treinos ${kind === "week" ? "na semana" : "no mês"} anterior para comparar.</i>`);
+  const lines = [`<b>${title}</b>`, "", `🗓️ ${plural(r.sessions, "treino", "treinos")} · ${plural(r.sets, "série", "séries")}`];
+  const comparison = loadComparison(r.volume, r.previous.volume, prev);
+  if (comparison) lines.push(comparison);
+  else lines.push(`<i>Sem treinos ${kind === "week" ? "na semana" : "no mês"} anterior para comparar.</i>`);
 
-  lines.push("", "<b>Volume por grupo muscular</b>");
-  for (const g of r.groups) {
-    const change = percentChange(g.volume, g.previousVolume);
-    const detail = g.sets ? `${kg(Math.round(g.volume))} · ${plural(g.sets, "série", "séries")}` : "sem treino";
-    lines.push(`• <b>${groupLabel(g.group)}</b>: ${detail}${change ? ` (${change})` : ""}`);
+  lines.push("", "<b>Séries por grupo muscular</b>");
+  for (const g of [...r.groups].sort((a, b) => b.sets - a.sets)) {
+    lines.push(`• <b>${groupLabel(g.group)}</b>: ${g.sets ? plural(g.sets, "série", "séries") : "sem treino"}`);
   }
 
   lines.push("", `<b>Recordes batidos</b>${r.records.length ? ` (${r.records.length})` : ""}`);
   if (r.records.length === 0) lines.push("Nenhum desta vez. A constância constrói os próximos. 💪");
-  for (const rec of r.records.slice(0, MAX_RECORD_LINES)) lines.push(`🏆 ${esc(rec.name)}: ${load(rec.weight, rec.reps)}`);
-  if (r.records.length > MAX_RECORD_LINES) lines.push(`… e mais ${r.records.length - MAX_RECORD_LINES}`);
+  for (const rec of r.records) lines.push(`🏆 ${esc(rec.name)}: ${load(rec.weight, rec.reps)}`);
   if (r.previous.records > 0 || r.records.length > 0) {
     lines.push(`<i>${kind === "week" ? "Semana" : "Mês"} anterior: ${plural(r.previous.records, "recorde", "recordes")}.</i>`);
   }
