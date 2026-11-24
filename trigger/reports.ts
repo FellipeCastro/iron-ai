@@ -9,9 +9,9 @@ import { sendMessage, TelegramError } from "@/lib/telegram/client";
 import { errorAttrs, log } from "./log";
 
 /**
- * Weekly report every Monday morning (local time) for the week that ended Sunday, plus the monthly one on the
- * first Monday of the month. Runs hourly: each user's 09:00 falls in some hour's run, and a late run still sends the same day.
- * Tuesday morning retries Monday's reports whose send failed in the last Monday run.
+ * Weekly report every Sunday evening (local time) for the week ending that day, plus the monthly one on the
+ * first Sunday of the month. Runs hourly: each user's 18:00 falls in some hour's run, and a late run still sends the same day.
+ * Monday morning retries Sunday's reports whose send failed in the last Sunday run.
  * Safe to run twice: the (user, kind, period) row is claimed before sending.
  */
 export const reports = schedules.task({
